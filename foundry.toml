@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+ast = true
+out = "out"
+libs = ["lib"]
+build_info = true
+extra_output = ["storageLayout"]
+ffi = true
+viaIR = true
+
+fs_permissions = [{ access = "read", path = "./broadcast" },{ access = "read", path = "./out" }]
+
+
+[etherscan]
+dbc-testnet = { key = "abc", url = "https://rpc-testnet.dbcwallet.io", chain = "19850818" }
+
+
+[rpc_endpoints]
+dbc-testnet = "https://rpc-testnet.dbcwallet.io"
+bsc-testnet = "https://data-seed-prebsc-1-s3.binance.org:8545"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
