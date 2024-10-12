@@ -9,14 +9,12 @@ import "abdk-libraries-solidity/ABDKMath64x64.sol";
 import "./interface/IPrecompileContract.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {console} from "forge-std/console.sol";
 import "./library/Ln.sol";
+import "./interface/IStateContract.sol";
 
-/// @custom:oz-upgrades-from NFTStakingV6
-contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     IPrecompileContract public precompileContract;
-    uint256 public constant secondsPerBlock = 6;
+    uint8 public constant secondsPerBlock = 6;
     IERC20 public rewardToken;
 
     uint256 public rewardAmountPerSecond;
@@ -59,7 +57,7 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         address to;
     }
 
-    mapping(address => uint256) public walletAddress2StakingMachineCount;
+    mapping(address => uint8) public walletAddress2StakingMachineCount;
 
     address[] public addressInStaking;
 
@@ -69,8 +67,6 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
 
     IERC721 public nftToken;
 
-    mapping(address => mapping(uint256 => uint256[])) public userStakes;
-
     struct LockedRewardDetail {
         uint256 amount;
         uint256 unlockAt;
@@ -78,19 +74,40 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
 
     mapping(string => LockedRewardDetail[]) public machineId2LockedRewardDetails;
 
-    uint256 public constant MAX_NFTS_PER_MACHINE = 20;
+    uint8 public constant MAX_NFTS_PER_MACHINE = 20;
     uint256 public daily_reward;
-    uint256 public constant REWARD_DURATION = 60 days;
-    //    uint256 public constant REWARD_DURATION = 0.5 days; //todo: change to 60 days
+//    uint256 public constant REWARD_DURATION = 60 days;
+    uint256 public constant REWARD_DURATION = 0.05 days; //todo: change to 60 days
 
     uint256 public constant LOCK_PERIOD = 180 days;
-    uint256 public constant DAILY_UNLOCK_RATE = 5; // 0.5% = 5/1000
+    uint8 public constant DAILY_UNLOCK_RATE = 5; // 0.5% = 5/1000
     uint256 public constant SECONDS_PER_DAY = 1 days;
 
-    struct RewardPausedDetail {
-        uint256 pausedAtBlockNumber;
-        uint256 recoverAtBlockNumber;
-    }
+
+//    struct MachineInfo {
+//        uint256 calcPoint;
+//        uint256 gpuCount;
+//        uint256 reserveAmount;
+//    }
+//
+//    struct StakeHolderInfo {
+//        address holder;
+//        uint256 totalCalcPoint;
+//        uint256 totalGPUCount;
+//        uint256 totalReservedAmount;
+//        string[] machineIds;
+//        mapping(string => MachineInfo) machineId2Info;
+//    }
+//
+//    struct SimpleStakeHolder {
+//        address holder;
+//        uint256 totalCalcPoint;
+//    }
+//
+//    SimpleStakeHolder[3] public topStakeHolders;
+//    mapping(address => StakeHolderInfo) public stakeHolders;
+
+    uint8 public phaseLevel;
 
     struct MachineInfo {
         uint256 calcPoint;
@@ -115,11 +132,6 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
     SimpleStakeHolder[3] public topStakeHolders;
     mapping(address => StakeHolderInfo) public stakeHolders;
 
-    RewardPausedDetail[] public rewardPausedDetails;
-
-    mapping(address => mapping(string => uint256[])) public address2NftTokenIds;
-
-    uint256 public phaseLevel;
 
     event nonlinearCoefficientChanged(uint256 nonlinearCoefficientNumerator, uint256 nonlinearCoefficientDenominator);
 
@@ -154,12 +166,11 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         address _nftToken,
         address _rewardToken,
         address _precompileContract,
-        uint256 _phase_level
+        uint8 _phase_level
     ) public initializer {
         __ReentrancyGuard_init();
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
-        __ReentrancyGuard_init();
         nftToken = IERC721(_nftToken);
         phaseLevel = _phase_level;
         nonlinearCoefficientNumerator = 1;
@@ -286,7 +297,7 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         require(calcPoint > 0, "machine calc point not found");
         uint256 rentDuration = getRentingDuration(msgToSign, substrateSig, substratePubKey, machineId, rentId);
         require(
-            rentDuration * secondsPerBlock >= REWARD_DURATION, "rent duration is too short, must be longer than 60 days"
+            rentDuration * secondsPerBlock >= REWARD_DURATION, "rent duration must be longer than 60 days"
         );
 
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
@@ -310,7 +321,6 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         if (amount > 0) {
             stakeholder2Reserved[stakeholder] += amount;
             totalReservedAmount += amount;
-            console.log("transferFrom", stakeholder, address(this), amount);
             rewardToken.transferFrom(stakeholder, address(this), amount);
         }
         for (uint256 i = 0; i < nftTokenIds.length; i++) {
@@ -364,10 +374,10 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
     function getMachineCalcPoint(string memory machineId) internal view returns (uint256) {
         return precompileContract.getMachineCalcPoint(machineId);
     }
-
-    function getMachineGPUCount(string memory machineId) public view returns (uint256) {
-        return precompileContract.getMachineGPUCount(machineId);
-    }
+//
+//    function getMachineGPUCount(string memory machineId) public view returns (uint256) {
+//        return precompileContract.getMachineGPUCount(machineId);
+//    }
 
     function getRentDuration(uint256 lastClaimAt, uint256 slashAt, uint256 endAt, string memory machineId)
         public
@@ -455,13 +465,11 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
             return 0;
         }
         uint256 rewardStartAt = getRewardStartAt();
-        console.log("machineId", machineId);
-        console.log("rewardStartAt", rewardStartAt);
+
         uint256 lastClaimAtBlockNumber = stakeInfo.lastClaimAtBlockNumber;
         if (rewardStartAt > stakeInfo.lastClaimAtBlockNumber) {
             lastClaimAtBlockNumber = rewardStartAt;
         }
-        console.log("lastClaimAtBlockNumber", lastClaimAtBlockNumber);
 
         uint256 slashedAt = getSlashedAt(machineId);
         uint256 totalRewardDuration = _getStakeHolderRentDuration(
@@ -470,10 +478,8 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         if (totalRewardDuration == 0) {
             return 0;
         }
-        console.log("StakeHolderRentDuration", totalRewardDuration);
 
         totalRewardDuration = getValidRewardDuration(stakeInfo.lastClaimAtBlockNumber, totalRewardDuration, phaseLevel);
-        console.log("totalRewardDuration", totalRewardDuration);
 
         uint256 rewardPerSecond_ = rewardPerSecond();
         if (rewardPerSecond_ == 0) {
@@ -481,11 +487,8 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         }
 
         uint256 rentDuration = getDlcMachineRentDuration(stakeInfo.lastClaimAtBlockNumber, slashedAt, machineId);
-        console.log("DlcMachineRentDuration", rentDuration);
 
         uint256 totalBaseReward = rewardPerSecond_ * totalRewardDuration;
-
-        console.log("totalBaseReward", totalBaseReward);
 
         uint256 currentMachineMultiCalcPoint =
             (stakeInfo.calcPoint * (totalRewardDuration - rentDuration) + stakeInfo.calcPoint * 13 / 10 * rentDuration);
@@ -552,20 +555,12 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
             }
         }
 
-        console.log("machine CalcPoint", stakeInfo.calcPoint);
-        console.log("_totalStakedMachineMultiCalcPoint", _totalStakedMachineMultiCalcPoint);
-        console.log("currentMachineMultiCalcPoint", currentMachineMultiCalcPoint);
-
         uint256 baseRewardAmount = totalBaseReward * currentMachineMultiCalcPoint / _totalStakedMachineMultiCalcPoint;
-        console.log("baseRewardAmount", baseRewardAmount);
 
         uint256 value = 0;
         if (stakeInfo.reservedAmount > baseReserveAmount) {
             value = stakeInfo.reservedAmount - baseReserveAmount;
         }
-
-        uint256 tmp = 1 + value / baseReserveAmount;
-        console.log("tmp", tmp);
 
         uint256 totalRewardAmount = baseRewardAmount
             + baseRewardAmount * nonlinearCoefficientNumerator / nonlinearCoefficientDenominator
@@ -573,7 +568,6 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         if (totalRewardAmount + otherRewardAmount > totalBaseReward) {
             totalRewardAmount = totalRewardAmount * totalBaseReward / (totalRewardAmount + otherRewardAmount);
         }
-        console.log("totalRewardAmount", totalRewardAmount);
 
         return totalRewardAmount;
     }
@@ -644,12 +638,9 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
 
         uint256 rewardAmount = _getTotalRewardAmount(machineId, stakeInfo);
         if (rewardAmount > 0) {
-            console.log("block.number", block.number);
-            console.log("stakeInfo.lastClaimAtBlockNumber", stakeInfo.lastClaimAtBlockNumber);
-
             require(
                 (block.number - stakeInfo.lastClaimAtBlockNumber) * secondsPerBlock >= 1 days,
-                "can not claim yet since last claim less than 1 day"
+                "last claim less than 1 day"
             );
         }
         uint256 leftSlashAmount = getLeftSlashedAmount(machineId);
@@ -784,6 +775,7 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
             }
         }
         _unStakeAndClaim(msgToSign, substrateSig, substratePubKey, machineId, stakeholder);
+        removeMachine(stakeholder, machineId);
     }
 
     function _unStakeAndClaim(
@@ -851,21 +843,16 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
     function addNFTs(string calldata machineId, uint256[] calldata nftTokenIds) external {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(stakeInfo.holder == msg.sender, "not stakeholder");
-        uint256[] storage machineNftTokenIds = address2NftTokenIds[msg.sender][machineId];
         require(stakeInfo.nftTokenIds.length + nftTokenIds.length <= MAX_NFTS_PER_MACHINE, "too many nfts, max is 20");
         for (uint256 i = 0; i < nftTokenIds.length; i++) {
             uint256 tokenID = nftTokenIds[i];
             nftToken.transferFrom(msg.sender, address(this), tokenID);
             stakeInfo.nftTokenIds.push(tokenID);
-            machineNftTokenIds.push(tokenID);
         }
 
-        console.log("add nfts", machineId, stakeInfo.nftTokenIds.length);
         uint256 oldCalcPoint = stakeInfo.calcPoint;
-        console.log("old calc", machineId, oldCalcPoint);
 
         uint256 newCalcPoint = getMachineCalcPoint(machineId) * stakeInfo.nftTokenIds.length;
-        console.log("new calc", machineId, newCalcPoint);
         if (totalCalcPoint >= oldCalcPoint) {
             totalCalcPoint = totalCalcPoint - oldCalcPoint + newCalcPoint;
         } else {
@@ -898,11 +885,11 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         addressInStaking.pop();
     }
 
-    function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
-        uint256 index = findStringIndex(arr, addr);
-        arr[index] = arr[arr.length - 1];
-        arr.pop();
-    }
+//    function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
+//        uint256 index = findStringIndex(arr, addr);
+//        arr[index] = arr[arr.length - 1];
+//        arr.pop();
+//    }
 
     function findMachineIdIndex(string memory machineId) internal view returns (uint256) {
         for (uint256 i = 0; i < machineIds.length; i++) {
@@ -913,14 +900,14 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         revert("Element not found");
     }
 
-    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256) {
-        for (uint256 i = 0; i < arr.length; i++) {
-            if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
-                return i;
-            }
-        }
-        revert("Element not found");
-    }
+//    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256) {
+//        for (uint256 i = 0; i < arr.length; i++) {
+//            if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
+//                return i;
+//            }
+//        }
+//        revert("Element not found");
+//    }
 
     function findAddressInStakingIndex(address addr) internal view returns (uint256) {
         for (uint256 i = 0; i < addressInStaking.length; i++) {
@@ -951,8 +938,141 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         return precompileContract.getDlcNftStakingBurnedRentFeeByMachine(phaseLevel, machineId);
     }
 
-    function getWalletAddressInStaking() external view returns (uint256) {
-        return addressInStaking.length;
+    function getTotalRewardAmount(address _holder) public returns (uint256, uint256) {
+        uint256 totalReleasedAmount = 0;
+        uint256 totalLockedAmount = 0;
+        string[] memory machineIdsOfHolder = getHolderMachineIds(_holder);
+        for (uint256 i = 0; i < machineIdsOfHolder.length; i++) {
+            string memory machineId = machineIdsOfHolder[i];
+            uint256 claimedAmount = machineId2StakeInfos[machineIdsOfHolder[i]].claimedAmount;
+            (uint256 canClaimedAmount, uint256 lockedAmount) = getRewardAmountCanClaim(machineId);
+            totalReleasedAmount += claimedAmount + canClaimedAmount;
+            totalLockedAmount += lockedAmount;
+        }
+        return (totalReleasedAmount, totalLockedAmount);
+    }
+//
+//    function addOrUpdateStakeHolder(
+//        address _holder,
+//        string memory _machineId,
+//        uint256 _calcPoint,
+//        uint256 _reservedAmount
+//    ) internal {
+//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+//
+//        if (stakeHolderInfo.holder == address(0)) {
+//            stakeHolderInfo.holder = _holder;
+//        }
+//
+//        MachineInfo memory previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+//        stakeHolderInfo.machineId2Info[_machineId].calcPoint = _calcPoint;
+//        if (stakeHolderInfo.machineId2Info[_machineId].gpuCount == 0) {
+//            uint256 gpuCount = getMachineGPUCount(_machineId);
+//            stakeHolderInfo.machineId2Info[_machineId].gpuCount = gpuCount;
+//
+//            stakeHolderInfo.totalGPUCount = stakeHolderInfo.totalGPUCount + gpuCount;
+//        }
+//        if (previousMachineInfo.reserveAmount == 0 && previousMachineInfo.calcPoint == 0) {
+//            stakeHolderInfo.totalReservedAmount += _reservedAmount;
+//            stakeHolderInfo.machineId2Info[_machineId].reserveAmount = _reservedAmount;
+//            stakeHolderInfo.machineIds.push(_machineId);
+//        }
+//
+//        stakeHolderInfo.totalCalcPoint = stakeHolderInfo.totalCalcPoint + _calcPoint - previousMachineInfo.calcPoint;
+//
+//        updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
+//    }
+//
+//    function removeMachine(address _holder, string memory _machineId) internal {
+//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+//
+//        MachineInfo memory stakeInfoToRemove = stakeHolderInfo.machineId2Info[_machineId];
+//        require(stakeInfoToRemove.calcPoint > 0, "Machine not found");
+//
+//        stakeHolderInfo.totalCalcPoint -= stakeInfoToRemove.calcPoint;
+//        stakeHolderInfo.totalGPUCount -= stakeInfoToRemove.gpuCount;
+//        stakeHolderInfo.totalReservedAmount -= stakeInfoToRemove.reserveAmount;
+//        removeStringValueOfArray(_machineId, stakeHolderInfo.machineIds);
+//        delete stakeHolderInfo.machineId2Info[_machineId];
+//
+//        updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
+//    }
+//
+//    function updateTopStakeHolders(address _holder, uint256 _totalCalcPoint) internal {
+//        uint256 minIndex = 0;
+//        bool shouldInsert = false;
+//
+//        for (uint256 i = 1; i < topStakeHolders.length; i++) {
+//            if (topStakeHolders[i].totalCalcPoint < topStakeHolders[minIndex].totalCalcPoint) {
+//                minIndex = i;
+//            }
+//        }
+//
+//        if (topStakeHolders[minIndex].totalCalcPoint == 0 || _totalCalcPoint > topStakeHolders[minIndex].totalCalcPoint)
+//        {
+//            topStakeHolders[minIndex] = SimpleStakeHolder(_holder, _totalCalcPoint);
+//            shouldInsert = true;
+//        }
+//
+//        if (shouldInsert) {
+//            sortTopStakeHolders();
+//        }
+//    }
+//
+//    function sortTopStakeHolders() internal {
+//        for (uint256 i = 0; i < topStakeHolders.length - 1; i++) {
+//            for (uint256 j = i + 1; j < topStakeHolders.length; j++) {
+//                if (topStakeHolders[i].totalCalcPoint < topStakeHolders[j].totalCalcPoint) {
+//                    SimpleStakeHolder memory temp = topStakeHolders[i];
+//                    topStakeHolders[i] = topStakeHolders[j];
+//                    topStakeHolders[j] = temp;
+//                }
+//            }
+//        }
+//    }
+//
+//    function getTotalRewardAmount(address _holder) public returns (uint256, uint256) {
+//        uint256 totalReleasedAmount = 0;
+//        uint256 totalLockedAmount = 0;
+//        for (uint256 i = 0; i < stakeHolders[_holder].machineIds.length; i++) {
+//            string storage machineId = stakeHolders[_holder].machineIds[i];
+//            uint256 claimedAmount = machineId2StakeInfos[stakeHolders[_holder].machineIds[i]].claimedAmount;
+//            (uint256 canClaimedAmount, uint256 lockedAmount) = getRewardAmountCanClaim(machineId);
+//            totalReleasedAmount += claimedAmount + canClaimedAmount;
+//            totalLockedAmount += lockedAmount;
+//        }
+//        return (totalReleasedAmount, totalLockedAmount);
+//    }
+//
+
+
+
+
+
+
+    function version() external pure returns (uint256)  {
+        return 1;
+    }
+
+
+    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256) {
+        for (uint256 i = 0; i < arr.length; i++) {
+            if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
+                return i;
+            }
+        }
+        revert("Element not found");
+    }
+
+
+    function getMachineGPUCount(string memory machineId) public view returns (uint256) {
+        return precompileContract.getMachineGPUCount(machineId);
+    }
+
+    function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
+        uint256 index = findStringIndex(arr, addr);
+        arr[index] = arr[arr.length - 1];
+        arr.pop();
     }
 
     function addOrUpdateStakeHolder(
@@ -961,6 +1081,7 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         uint256 _calcPoint,
         uint256 _reservedAmount
     ) internal {
+
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -971,14 +1092,10 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         stakeHolderInfo.machineId2Info[_machineId].calcPoint = _calcPoint;
         if (stakeHolderInfo.machineId2Info[_machineId].gpuCount == 0) {
             uint256 gpuCount = getMachineGPUCount(_machineId);
+
             stakeHolderInfo.machineId2Info[_machineId].gpuCount = gpuCount;
-            console.log("before :: _machineId total Gpu", stakeHolderInfo.totalGPUCount);
+
             stakeHolderInfo.totalGPUCount = stakeHolderInfo.totalGPUCount + gpuCount;
-
-            console.log("_machineId", _machineId);
-            console.log("_holder", _holder);
-
-            console.log("_machineId total Gpu", stakeHolderInfo.totalGPUCount);
         }
         if (previousMachineInfo.reserveAmount == 0 && previousMachineInfo.calcPoint == 0) {
             stakeHolderInfo.totalReservedAmount += _reservedAmount;
@@ -1009,17 +1126,30 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
     function updateTopStakeHolders(address _holder, uint256 _totalCalcPoint) internal {
         uint256 minIndex = 0;
         bool shouldInsert = false;
+        bool isExistingHolder = false;
 
-        for (uint256 i = 1; i < topStakeHolders.length; i++) {
-            if (topStakeHolders[i].totalCalcPoint < topStakeHolders[minIndex].totalCalcPoint) {
-                minIndex = i;
+        for (uint256 i = 0; i < topStakeHolders.length; i++) {
+            if (topStakeHolders[i].holder == _holder) {
+                if (_totalCalcPoint > topStakeHolders[i].totalCalcPoint) {
+                    topStakeHolders[i].totalCalcPoint = _totalCalcPoint;
+                    shouldInsert = true;
+                }
+                isExistingHolder = true;
+                break;
             }
         }
 
-        if (topStakeHolders[minIndex].totalCalcPoint == 0 || _totalCalcPoint > topStakeHolders[minIndex].totalCalcPoint)
-        {
-            topStakeHolders[minIndex] = SimpleStakeHolder(_holder, _totalCalcPoint);
-            shouldInsert = true;
+        if (!isExistingHolder) {
+            for (uint256 i = 1; i < topStakeHolders.length; i++) {
+                if (topStakeHolders[i].totalCalcPoint < topStakeHolders[minIndex].totalCalcPoint) {
+                    minIndex = i;
+                }
+            }
+
+            if (topStakeHolders[minIndex].totalCalcPoint == 0 || _totalCalcPoint > topStakeHolders[minIndex].totalCalcPoint) {
+                topStakeHolders[minIndex] = SimpleStakeHolder(_holder, _totalCalcPoint);
+                shouldInsert = true;
+            }
         }
 
         if (shouldInsert) {
@@ -1039,20 +1169,11 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         }
     }
 
-    function getTotalRewardAmount(address _holder) public returns (uint256, uint256) {
-        uint256 totalReleasedAmount = 0;
-        uint256 totalLockedAmount = 0;
-        for (uint256 i = 0; i < stakeHolders[_holder].machineIds.length; i++) {
-            string storage machineId = stakeHolders[_holder].machineIds[i];
-            uint256 claimedAmount = machineId2StakeInfos[stakeHolders[_holder].machineIds[i]].claimedAmount;
-            (uint256 canClaimedAmount, uint256 lockedAmount) = getRewardAmountCanClaim(machineId);
-            totalReleasedAmount += claimedAmount + canClaimedAmount;
-            totalLockedAmount += lockedAmount;
-        }
-        return (totalReleasedAmount, totalLockedAmount);
+    function getHolderMachineIds(address _holder) public view returns (string[] memory)  {
+        return stakeHolders[_holder].machineIds;
     }
 
-    function getRentedGPUCountOfStakeHolder(address _holder) public view returns (uint256) {
+    function getRentedGPUCountOfStakeHolder(address _holder) external view returns (uint256) {
         uint256 totalRentedGpuCount = 0;
         for (uint256 i = 0; i < stakeHolders[_holder].machineIds.length; i++) {
             string memory machineId = stakeHolders[_holder].machineIds[i];
@@ -1062,7 +1183,7 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         return totalRentedGpuCount;
     }
 
-    function getBurnedRentFeeOfStakeHolder(address _holder) public view returns (uint256) {
+    function getBurnedRentFeeOfStakeHolder(address _holder) external view returns (uint256) {
         uint256 totalRentedRentFee = 0;
         for (uint256 i = 0; i < stakeHolders[_holder].machineIds.length; i++) {
             string memory machineId = stakeHolders[_holder].machineIds[i];
@@ -1072,11 +1193,15 @@ contract NFTStakingV7 is Initializable, OwnableUpgradeable, UUPSUpgradeable, Ree
         return totalRentedRentFee;
     }
 
-    function getTopStakeHolders() public view returns (SimpleStakeHolder[3] memory) {
-        return topStakeHolders;
-    }
+    function getTopStakeHolders() external view returns (address[3] memory top3HoldersAddress,uint256[3] memory top3HoldersCalcPoint) {
+        for (uint256 i = 0; i < topStakeHolders.length; i++) {
+            address holder = topStakeHolders[i].holder;
+            uint256 _totalCalcPoint = topStakeHolders[i].totalCalcPoint;
+            top3HoldersAddress[i] = holder;
+            top3HoldersCalcPoint[i] = _totalCalcPoint;
+        }
 
-    function version() public pure returns (uint256) {
-        return 1;
+        return (top3HoldersAddress, top3HoldersCalcPoint);
     }
 }
+

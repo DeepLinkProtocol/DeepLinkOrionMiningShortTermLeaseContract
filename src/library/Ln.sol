@@ -36,7 +36,7 @@ library LogarithmLibrary {
      * @return lnDenominator 计算出的自然对数的分母（精度为10^18，通常为 10^18）
      */
     function lnAsFraction(uint256 numerator, uint256 denominator)
-        external
+        internal
         pure
         returns (uint256 lnNumerator, uint256 lnDenominator)
     {

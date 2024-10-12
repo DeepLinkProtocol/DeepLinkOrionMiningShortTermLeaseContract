@@ -2,16 +2,21 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {NFTStakingV7} from "../src/NFTStaking.sol";
+import {NFTStaking} from "../src/NFTStaking.sol";
+import {NFTStakingState} from "../src/state/NFTStakingState.sol";
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "../src/interface/IPrecompileContract.sol";
 import {Deploy} from "../script/DeployForTest.s.sol";
+import {DeployState} from "../script/state/DeployForTest.s.sol";
+
 import {DLCNode} from "./MockERC721.t.sol";
 import {MockERC20} from "forge-std/mocks/MockERC20.sol";
 
 contract StakingTest is Test {
-    NFTStakingV7 public staking;
+    NFTStaking public staking;
+    NFTStakingState public state;
     address public rewardTokenAddr = address(0x0);
     address public precompileContractAddr = address(0x1);
     address public nftAddr;
@@ -27,7 +32,14 @@ contract StakingTest is Test {
         assertEq(DLCNode(nftAddr).owner(), address(this));
         Deploy deploy = new Deploy();
         address proxy = deploy.deploy();
-        staking = NFTStakingV7(proxy);
+        staking = NFTStaking(proxy);
+
+        DeployState stateDeploy = new DeployState();
+//        address stateProxy = stateDeploy.deploy();
+//        state = NFTStakingState(stateProxy);
+//        state.addOrUpdateStakeHolder(0x0000000000000000000000000000000000000001, "machineId", 100, 0);
+//        state.setPrecompileContract(precompileContractAddr);
+//        state.setValidCaller(address(staking));
         assertEq(staking.owner(), address(this));
         rewardTokenAddr = address(new MockERC20());
         MockERC20(rewardTokenAddr).initialize("rewardToken", "rwd", 18);
@@ -35,6 +47,7 @@ contract StakingTest is Test {
         staking.setRewardToken(rewardTokenAddr);
         staking.setPrecompileContract(precompileContractAddr);
         staking.setNftToken(nftAddr);
+//        staking.setStateContract(address(state));
 
         deal(rewardTokenAddr, stakeHolder, 1000000 * 1e18);
         vm.prank(stakeHolder);
@@ -44,7 +57,6 @@ contract StakingTest is Test {
         deal(rewardTokenAddr, stakeHolder2, 1000000 * 1e18);
         vm.prank(stakeHolder2);
         MockERC20(rewardTokenAddr).approve(proxy, 100000 * 1e18);
-        console.log("proxy ", proxy);
         assertEq(MockERC20(rewardTokenAddr).balanceOf(stakeHolder2), 1000000 * 1e18);
 
         vm.mockCall(
@@ -185,10 +197,10 @@ contract StakingTest is Test {
         tokenIds[0] = 1;
         vm.prank(stakeHolder);
         staking.stake("abc", "sig", "pubkey", machineId, 0, tokenIds, 1);
-        console.log("aaa");
-        staking.getTopStakeHolders()[0].holder;
-        assertEq(staking.getTopStakeHolders()[0].holder, stakeHolder);
-        assertEq(staking.getTopStakeHolders()[0].totalCalcPoint, 100);
+
+        (address[3] memory  topHolders, uint256[3] memory topCalcPoints) = state.getTopStakeHolders();
+        assertEq(topHolders[0], stakeHolder);
+        assertEq(topCalcPoints[0], 100);
 
         assertTrue(staking.isStaking(machineId));
 
@@ -256,14 +268,13 @@ contract StakingTest is Test {
             vm.prank(stakeHolder);
             assertEq(staking.getReward(machineId), staking.rewardPerSecond() * secondsAfterRewardStart);
 
-            uint256[] memory tokenIds1 = new uint256[](1);
-            tokenIds1[0] = 2;
+            uint256[] memory tokenIds0 = new uint256[](1);
+            tokenIds0[0] = 2;
             vm.roll(10);
             assertEq(vm.getBlockNumber(), 10);
 
             vm.prank(stakeHolder2);
-            staking.stake("abc", "sig", "pubkey", machineId2, 100000 * 1e18, tokenIds, 2);
-            console.log("bbb");
+            staking.stake("abc", "sig", "pubkey", machineId2, 100000 * 1e18, tokenIds0, 2);
 
             vm.mockCall(
                 precompileContractAddr,
@@ -289,7 +300,6 @@ contract StakingTest is Test {
 
             vm.prank(stakeHolder2);
             staking.addNFTs(machineId2, tokenIds2);
-            console.log("ccc");
 
             vm.prank(stakeHolder2);
             uint256 reward3 = staking.getReward(machineId2);
@@ -327,18 +337,19 @@ contract StakingTest is Test {
                 abi.encodeWithSelector(IPrecompileContract.getMachineCalcPoint.selector),
                 abi.encode(200)
             );
-            uint256[] memory tokenIds = new uint256[](1);
+
+            uint256[] memory tokenIds1 = new uint256[](1);
             tokenIds2[0] = 3;
             vm.prank(stakeHolder);
-            staking.stake("abc", "sig", "pubkey", machineId3, 10 * 1e18, tokenIds, 3);
-            console.log("ddd");
+            staking.stake("abc", "sig", "pubkey", machineId3, 10 * 1e18, tokenIds1, 3);
 
-            staking.getTopStakeHolders()[0].holder;
-            assertEq(staking.getTopStakeHolders()[0].holder, stakeHolder);
-            assertEq(staking.getTopStakeHolders()[0].totalCalcPoint, 300);
+
+            (address[3] memory topHolders1, uint256[3] memory topCalcPoints1) = state.getTopStakeHolders();
+            assertEq(topHolders1[0], stakeHolder);
+            assertEq(topCalcPoints1[0], 300);
 
             (address holder, uint256 calcPoint, uint256 gpuCount, uint256 totalReservedAmount) =
-                staking.stakeHolders(stakeHolder);
+                state.stakeHolders(stakeHolder);
 
             assertEq(holder, stakeHolder);
             assertEq(calcPoint, 300);
