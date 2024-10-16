@@ -7,7 +7,6 @@ build_info = true
 extra_output = ["storageLayout"]
 ffi = true
 viaIR = true
-
 fs_permissions = [{ access = "read", path = "./broadcast" },{ access = "read", path = "./out" }]
 
 

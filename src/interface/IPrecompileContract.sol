@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 interface IPrecompileContract {
     function getMachineCalcPoint(string memory machineId) external view returns (uint256 calcPoint);
 
-    function getMachineGPUCount(string memory machineId) external view returns (uint256);
+    function getMachineGPUCount(string memory machineId) external view returns (uint8);
 
     function getRentDuration(uint256 lastClaimAt, uint256 slashClaimAt, uint256 endAt, string memory machineId)
         external

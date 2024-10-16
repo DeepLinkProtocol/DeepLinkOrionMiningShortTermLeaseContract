@@ -20,7 +20,7 @@ contract Upgrade is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address transparentProxy = address(0xC1d4F981a24fDF37E44291E5C9424496e1c7b8b2);
+        address transparentProxy = address(0x7BEE3694B3A24480F8315f84C00E55c356f8f7DE);
 
         //                Options memory opts;
         //
@@ -28,7 +28,7 @@ contract Upgrade is Script {
         //
         //                Upgrades.validateUpgrade("NFTStaking.sol:NFTStaking", opts);
 
-        Upgrades.upgradeProxy(transparentProxy, "NFTStaking.sol:NFTStaking", "");
+        Upgrades.upgradeProxy(transparentProxy, "NFTStakingState.sol:NFTStakingState", "");
 
         vm.stopBroadcast();
     }
