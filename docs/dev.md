@@ -1,6 +1,6 @@
 ### Contract Name: IDCMachineNFTStaking
 
-### Contract Address: 0xc1d4f981a24fdf37e44291e5c9424496e1c7b8b2.
+### Contract Address: 0xc1d4f981a24fdf37e44291e5c9424496e1c7b8b2
 
 ### ABI : https://blockscout-testnet.dbcscan.io/address/0xb0f96782D0Ce268715bFdF813a016BF53eD17268?tab=contract
 
