@@ -686,7 +686,20 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         canClaimAmount += _dailyReleaseAmount;
 
         if (canClaimAmount > 0) {
-            rewardToken.transfer(stakeholder, canClaimAmount);
+            uint256 reservedAmount = stakeholder2Reserved[stakeholder];
+            if (reservedAmount < baseReserveAmount){
+                uint256 leftAmountShouldReserve = baseReserveAmount - reservedAmount;
+                if (canClaimAmount >= leftAmountShouldReserve) {
+                    stakeholder2Reserved[stakeholder] += leftAmountShouldReserve;
+                    stakeInfo.reservedAmount += leftAmountShouldReserve;
+                    rewardToken.transfer(stakeholder, canClaimAmount -leftAmountShouldReserve);
+                }else{
+                    stakeholder2Reserved[stakeholder] += canClaimAmount;
+                    stakeInfo.reservedAmount += canClaimAmount;
+                }
+            }else{
+                rewardToken.transfer(stakeholder, canClaimAmount);
+            }
         }
         stakeInfo.claimedAmount += canClaimAmount;
         stakeInfo.lastClaimAtBlockNumber = block.number;
