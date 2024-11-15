@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Script} from "forge-std/Script.sol";
-import {NFTStakingState} from "../../src/state/NFTStakingState.sol";
+import {Rent} from "../../src/rent/Rent.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {console} from "forge-std/Test.sol";
@@ -32,24 +32,25 @@ contract Deploy is Script {
     function deploy() public returns (address proxy, address logic) {
         Options memory opts;
 
-        logic = Upgrades.deployImplementation("NFTStakingState.sol:NFTStakingState", opts);
-
-        address precompileContract = vm.envAddress("PRECOMPILE_CONTRACT");
-        console.log("precompileContract Address:", precompileContract);
-
-        uint8 phaseLevel = uint8(vm.envUint("PHASE_LEVEL"));
-        console.log("phaseLevel:", phaseLevel);
+        logic = Upgrades.deployImplementation("Rent.sol:Rent", opts);
 
         address stakingProxy = vm.envAddress("STAKING_PROXY");
         console.log("Staking Proxy Address:", stakingProxy);
 
-        address rentProxy = vm.envAddress("RENT_PROXY");
-        console.log("Rent Proxy Address:", rentProxy);
+        address stateProxy = vm.envAddress("STATE_PROXY");
+        console.log("State Proxy Address:", stateProxy);
+
+        address precompileContract = vm.envAddress("PRECOMPILE_CONTRACT");
+        console.log("precompileContract Address:", precompileContract);
+
+        address rewardTokenContract = vm.envAddress("REWARD_TOKEN_CONTRACT");
+        console.log("rewardTokenContract Address:", rewardTokenContract);
 
         proxy = Upgrades.deployUUPSProxy(
-            "NFTStakingState.sol:NFTStakingState",
+            "Rent.sol:Rent",
             abi.encodeCall(
-                NFTStakingState.initialize, (msg.sender, precompileContract, rentProxy, stakingProxy, phaseLevel)
+                Rent.initialize,
+                (msg.sender, precompileContract, rewardTokenContract, stakingProxy, address(0x00), address(0x00))
             )
         );
         return (proxy, logic);

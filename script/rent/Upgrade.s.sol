@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {Script} from "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 //import  {Options} from  "openzeppelin-foundry-upgrades/Options.sol";
-import {console} from "forge-std/Test.sol";
+import "forge-std/console.sol";
 
 contract Upgrade is Script {
     function run() public {
@@ -21,16 +21,10 @@ contract Upgrade is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address stateProxy = vm.envAddress("STATE_PROXY");
-        console.log("State Proxy Address:", stateProxy);
+        address rentProxy = vm.envAddress("RENT_PROXY");
+        console.log("Rent Proxy Address:", rentProxy);
 
-        //                Options memory opts;
-        //
-        //                opts.referenceContract = "NFTStakingOld.sol:NFTStaking";
-        //
-        //                Upgrades.validateUpgrade("NFTStaking.sol:NFTStaking", opts);
-
-        Upgrades.upgradeProxy(stateProxy, "NFTStakingState.sol:NFTStakingState", "");
+        Upgrades.upgradeProxy(rentProxy, "Rent.sol:Rent", "");
 
         vm.stopBroadcast();
     }

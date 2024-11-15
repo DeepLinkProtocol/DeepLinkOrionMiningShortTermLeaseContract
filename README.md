@@ -1,5 +1,5 @@
-# DeepLinkOrionMiningShortTermLeaseContract
-Orion GPU Mining Short-Term Lease Contract
+# DeepLinkOrionMiningLongTermLeaseContract
+DeepLink Orion GPU Mining Long-Term Lease Contract
 
 ## Foundry
 

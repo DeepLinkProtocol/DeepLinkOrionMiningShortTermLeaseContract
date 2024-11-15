@@ -15,7 +15,9 @@ contract DeployState is Script {
         vm.startBroadcast();
         NFTStakingState staking = new NFTStakingState();
         ERC1967Proxy proxy = new ERC1967Proxy(address(staking), "");
-        NFTStakingState(address(proxy)).initialize(msg.sender, address(0xb1ba8D79abecdDa60Fa2f19e7d8328A8602275a3), 1);
+        NFTStakingState(address(proxy)).initialize(
+            msg.sender, address(0xb1ba8D79abecdDa60Fa2f19e7d8328A8602275a3), address(0x00), address(0x00), 1
+        );
         vm.stopBroadcast();
         return address(proxy);
     }

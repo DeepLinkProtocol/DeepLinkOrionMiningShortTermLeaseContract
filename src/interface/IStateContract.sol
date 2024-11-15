@@ -2,28 +2,32 @@
 pragma solidity ^0.8.20;
 
 interface IStateContract {
+    function getMachinesInStaking(uint256 page, uint256 pageSize) external view returns (string[] memory);
+
     function addOrUpdateStakeHolder(
         address _holder,
         string memory _machineId,
         uint256 _calcPoint,
-        uint256 _reservedAmount
+        uint256 _reservedAmount,
+        uint8 _gpuCount,
+        bool isAdd
     ) external;
 
     function removeMachine(address _holder, string memory _machineId) external;
 
-    function getHolderMachineIds(address _holder) external view returns (string[] memory);
+    function setBurnedRentFee(address _holder, string memory _machineId, uint256 fee) external;
 
-    function getTotalGPUCountOfStakeHolder(address _holder) external view returns (uint256);
+    function addRentedGPUCount(address _holder, string memory _machineId, uint8 rentedGPUCount) external;
 
-    function getRentedGPUCountOfStakeHolder(address _holder) external view returns (uint256);
+    function subRentedGPUCount(address _holder, string memory _machineId, uint8 rentedGPUCount) external;
 
-    function getBurnedRentFeeOfStakeHolder(address _holder) external view returns (uint256);
+    function addReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) external;
+    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) external;
 
-    function getCalcPointOfStakeHolders(address _holder) external view returns (uint256);
-
-
-    function getTopStakeHolders()
-        external
-        view
-        returns (address[3] memory top3HoldersAddress, uint256[3] memory top3HoldersCalcPoint);
+    function addClaimedRewardAmount(
+        address _holder,
+        string memory _machineId,
+        uint256 totalClaimedAmount,
+        uint256 releasedAmount
+    ) external;
 }

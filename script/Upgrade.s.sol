@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Script} from "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 //import  {Options} from  "openzeppelin-foundry-upgrades/Options.sol";
+import {console} from "forge-std/Test.sol";
 
 contract Upgrade is Script {
     function run() public {
@@ -20,7 +21,9 @@ contract Upgrade is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address transparentProxy = address(0xC1d4F981a24fDF37E44291E5C9424496e1c7b8b2);
+        address stakingProxy = vm.envAddress("STAKING_PROXY");
+        console.log("Staking Proxy Address:", stakingProxy);
+        address transparentProxy = address(stakingProxy);
 
         //                Options memory opts;
         //

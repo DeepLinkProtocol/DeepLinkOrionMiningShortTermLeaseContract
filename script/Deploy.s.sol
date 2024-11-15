@@ -35,18 +35,29 @@ contract Deploy is Script {
 
         logic = Upgrades.deployImplementation("NFTStaking.sol:NFTStaking", opts);
 
+        address precompileContract = vm.envAddress("PRECOMPILE_CONTRACT");
+        console.log("precompileContract Address:", precompileContract);
+
+        address nftContract = vm.envAddress("NFT_CONTRACT");
+        console.log("nftContract Address:", nftContract);
+
+        address rewardTokenContract = vm.envAddress("REWARD_TOKEN_CONTRACT");
+        console.log("rewardTokenContract Address:", rewardTokenContract);
+
+        uint8 phaseLevel = uint8(vm.envUint("PHASE_LEVEL"));
+        console.log("phaseLevel:", phaseLevel);
+
+        address stateProxy = vm.envAddress("STATE_PROXY");
+        console.log("State Proxy Address:", stateProxy);
+
+        address rentProxy = vm.envAddress("RENT_PROXY");
+        console.log("Rent Proxy Address:", rentProxy);
+
         proxy = Upgrades.deployUUPSProxy(
             "NFTStaking.sol:NFTStaking",
             abi.encodeCall(
                 NFTStaking.initialize,
-                (
-                    msg.sender,
-                    address(0xfabDca15b28d8437C148EcC484817Fc28a85aDB8),
-                    address(0x6e3c821b32950ABcf44bCE71c7f905a3cB960113),
-                    address(0xb1ba8D79abecdDa60Fa2f19e7d8328A8602275a3),
-                    address(0xb1BA8d79AbEcDDA60Fa2f19e7D8328a8602275A4),
-                    1
-                )
+                (msg.sender, nftContract, rewardTokenContract, precompileContract, stateProxy, rentProxy, phaseLevel)
             )
         );
         return (proxy, logic);
