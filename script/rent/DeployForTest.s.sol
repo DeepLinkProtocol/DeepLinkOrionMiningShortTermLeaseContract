@@ -19,7 +19,6 @@ contract DeployRent is Script {
             msg.sender,
             address(0xb1ba8D79abecdDa60Fa2f19e7d8328A8602275a3),
             address(0xb1ba8D79abecdDa60Fa2f19e7d8328A8602275a3),
-            address(0xb1ba8D79abecdDa60Fa2f19e7d8328A8602275a3),
             address(0x00),
             address(0x00)
         );

@@ -10,4 +10,6 @@ interface IStakingContract {
     function getTotalGPUCountInStaking() external view returns (uint256);
     function getLeftGPUCountToStartReward() external view returns (uint256);
     function getTotalCalcPointAndReservedAmount() external view returns (uint256, uint256);
+    function canRent(string calldata machineId) external view returns (bool);
+    function getMachinePricePerHour(string memory machineId) external view returns (uint256);
 }

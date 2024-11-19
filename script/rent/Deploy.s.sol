@@ -40,9 +40,6 @@ contract Deploy is Script {
         address stateProxy = vm.envAddress("STATE_PROXY");
         console.log("State Proxy Address:", stateProxy);
 
-        address precompileContract = vm.envAddress("PRECOMPILE_CONTRACT");
-        console.log("precompileContract Address:", precompileContract);
-
         address rewardTokenContract = vm.envAddress("REWARD_TOKEN_CONTRACT");
         console.log("rewardTokenContract Address:", rewardTokenContract);
 
@@ -50,7 +47,7 @@ contract Deploy is Script {
             "Rent.sol:Rent",
             abi.encodeCall(
                 Rent.initialize,
-                (msg.sender, precompileContract, rewardTokenContract, stakingProxy, address(0x00), address(0x00))
+                (msg.sender, rewardTokenContract, stakingProxy, address(0x00), address(0x00))
             )
         );
         return (proxy, logic);
