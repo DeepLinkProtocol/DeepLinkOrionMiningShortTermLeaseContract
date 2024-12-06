@@ -86,49 +86,20 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         Finished
     }
 
-    mapping(string => mapping(address => Vote))
-        public pendingSlashMachineId2ApprovedAdmins;
+    mapping(string => mapping(address => Vote)) public pendingSlashMachineId2ApprovedAdmins;
     mapping(string => uint8) public pendingSlashMachineId2ApprovedCount;
     mapping(string => uint8) public pendingSlashMachineId2RefuseCount;
 
-    mapping(StakingType => mapping(address => uint256))
-        public stakeHolder2RentFeeOfStakingType;
-    mapping(StakingType => mapping(address => uint256))
-        public stakeHolder2RentedGPUCountOfStakingType;
+    mapping(StakingType => mapping(address => uint256)) public stakeHolder2RentFeeOfStakingType;
+    mapping(StakingType => mapping(address => uint256)) public stakeHolder2RentedGPUCountOfStakingType;
     mapping(StakingType => uint256) public stakingType2totalRentedGPUCount;
 
-    event RentMachine(
-        uint256 rentId,
-        string machineId,
-        uint256 rentEndTime,
-        uint8 gpuCount,
-        address renter
-    );
-    event RenewRent(
-        uint256 rentId,
-        uint256 additionalRentBlockNumbers,
-        uint256 additionalRentFee,
-        address renter
-    );
-    event EndRentMachine(
-        uint256 rentId,
-        string machineId,
-        uint256 rentEndTime,
-        uint8 gpuCount,
-        address renter
-    );
-    event ReportMachineFault(
-        uint256 rentId,
-        string machineId,
-        address reporter
-    );
+    event RentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter);
+    event RenewRent(uint256 rentId, uint256 additionalRentBlockNumbers, uint256 additionalRentFee, address renter);
+    event EndRentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter);
+    event ReportMachineFault(uint256 rentId, string machineId, address reporter);
     event BurnedFee(
-        string machineId,
-        uint256 rentId,
-        uint256 burnTime,
-        uint256 burnDLCAmount,
-        address renter,
-        uint8 rentGpuCount
+        string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
     );
     event ApprovedReport(string machineId, address admin);
     event RefusedReport(string machineId, address admin);
@@ -164,37 +135,27 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         voteThreshold = 2;
 
         if (_phaseOneOrionStakingContract != address(0x0)) {
-            phaseOneOrionStakingContract = IStakingContract(
-                _phaseOneOrionStakingContract
-            );
+            phaseOneOrionStakingContract = IStakingContract(_phaseOneOrionStakingContract);
             currentStakingType = StakingType.phaseOne;
             currentStakingContract = phaseOneOrionStakingContract;
         }
 
         if (_phaseTwoOrionStakingContract != address(0x0)) {
-            phaseTwoOrionStakingContract = IStakingContract(
-                _phaseTwoOrionStakingContract
-            );
+            phaseTwoOrionStakingContract = IStakingContract(_phaseTwoOrionStakingContract);
             currentStakingType = StakingType.phaseTwo;
             currentStakingContract = phaseTwoOrionStakingContract;
         }
 
         if (_phaseThreeOrionStakingContract != address(0x0)) {
-            phaseThreeOrionStakingContract = IStakingContract(
-                _phaseThreeOrionStakingContract
-            );
+            phaseThreeOrionStakingContract = IStakingContract(_phaseThreeOrionStakingContract);
             currentStakingType = StakingType.phaseThree;
             currentStakingContract = phaseThreeOrionStakingContract;
         }
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
-    function setAdminsToApproveMachineFaultReporting(
-        address[] calldata admins
-    ) external onlyOwner {
+    function setAdminsToApproveMachineFaultReporting(address[] calldata admins) external onlyOwner {
         adminsToApprove = admins;
     }
 
@@ -202,19 +163,13 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         feeToken = IRewardToken(_feeToken);
     }
 
-    function setCurrentStakingContract(
-        StakingType _stakingType,
-        address addr
-    ) external onlyOwner {
+    function setCurrentStakingContract(StakingType _stakingType, address addr) external onlyOwner {
         require(_stakingType != StakingType.Unknown, "staking type not found");
         currentStakingType = _stakingType;
         currentStakingContract = IStakingContract(addr);
     }
 
-    function findUintIndex(
-        uint256[] memory arr,
-        uint256 v
-    ) internal pure returns (uint256) {
+    function findUintIndex(uint256[] memory arr, uint256 v) internal pure returns (uint256) {
         for (uint256 i = 0; i < arr.length; i++) {
             if (arr[i] == v) {
                 return i;
@@ -229,25 +184,16 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         arr.pop();
     }
 
-    function findStringIndex(
-        string[] memory arr,
-        string memory v
-    ) internal pure returns (uint256) {
+    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256) {
         for (uint256 i = 0; i < arr.length; i++) {
-            if (
-                keccak256(abi.encodePacked(arr[i])) ==
-                keccak256(abi.encodePacked(v))
-            ) {
+            if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
                 return i;
             }
         }
         revert("Element not found");
     }
 
-    function removeValueOfStringArray(
-        string memory addr,
-        string[] storage arr
-    ) internal {
+    function removeValueOfStringArray(string memory addr, string[] storage arr) internal {
         uint256 index = findStringIndex(arr, addr);
         arr[index] = arr[arr.length - 1];
         arr.pop();
@@ -259,41 +205,20 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return lastRentId;
     }
 
-    function getMachinePrice(
-        string memory machineId,
-        uint256 rentBlockNumbers
-    ) public view returns (uint256) {
+    function getMachinePrice(string memory machineId, uint256 rentBlockNumbers) public view returns (uint256) {
         uint256 oneHourBlocks = 1 hours / SECONDS_PER_BLOCK;
-        return
-            (rentBlockNumbers *
-                currentStakingContract.getMachinePricePerHour(machineId)) /
-            oneHourBlocks;
+        return (rentBlockNumbers * currentStakingContract.getMachinePricePerHour(machineId)) / oneHourBlocks;
     }
 
-    function getMachinePricePerHour(
-        string memory machineId
-    ) public view returns (uint256) {
+    function getMachinePricePerHour(string memory machineId) public view returns (uint256) {
         return currentStakingContract.getMachinePricePerHour(machineId);
     }
 
-    function rentMachine(
-        string calldata machineId,
-        uint256 rentBlockNumbers,
-        uint256 rentFee
-    ) external {
-        require(
-            currentStakingContract.canRent(machineId, rentBlockNumbers),
-            "machine can not rent"
-        );
+    function rentMachine(string calldata machineId, uint256 rentBlockNumbers, uint256 rentFee) external {
+        require(currentStakingContract.canRent(machineId, rentBlockNumbers), "machine can not rent");
         require(!isRented(machineId), "machine already rented");
-        require(
-            rentBlockNumbers >= 10 minutes / SECONDS_PER_BLOCK,
-            "rent duration should be greater than 10 minutes"
-        );
-        require(
-            rentBlockNumbers <= 2 hours / SECONDS_PER_BLOCK,
-            "rent duration should be less than 2 hours"
-        );
+        require(rentBlockNumbers >= 10 minutes / SECONDS_PER_BLOCK, "rent duration should be greater than 10 minutes");
+        require(rentBlockNumbers <= 2 hours / SECONDS_PER_BLOCK, "rent duration should be less than 2 hours");
 
         uint256 rentDuration = rentBlockNumbers * SECONDS_PER_BLOCK;
         require(rentDuration > 0, "rent duration should be greater than 0");
@@ -318,14 +243,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // burn rent fee
         feeToken.burnFrom(msg.sender, rentFeeInFact);
-        emit BurnedFee(
-            machineId,
-            lastRentId,
-            block.timestamp,
-            rentFeeInFact,
-            msg.sender,
-            1
-        );
+        emit BurnedFee(machineId, lastRentId, block.timestamp, rentFeeInFact, msg.sender, 1);
 
         // add machine burn info
         BurnedDetail memory burnedDetail = BurnedDetail({
@@ -337,14 +255,10 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         });
 
         address machineHolder = getMachineHolder(machineId);
-        stakeHolder2RentedGPUCountOfStakingType[currentStakingType][
-            machineHolder
-        ] += 1;
+        stakeHolder2RentedGPUCountOfStakingType[currentStakingType][machineHolder] += 1;
         stakingType2totalRentedGPUCount[currentStakingType] += 1;
 
-        stakeHolder2RentFeeOfStakingType[currentStakingType][
-            machineHolder
-        ] += rentFeeInFact;
+        stakeHolder2RentFeeOfStakingType[currentStakingType][machineHolder] += rentFeeInFact;
         BurnedInfo storage burnedInfo = machineId2BurnedInfo[machineId];
         burnedInfo.details.push(burnedDetail);
         burnedInfo.totalBurnedAmount += rentFeeInFact;
@@ -364,24 +278,11 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         currentStakingContract.rentMachine(machineId, rentFee, 1);
 
-        emit RentMachine(
-            lastRentId,
-            machineId,
-            block.timestamp + rentDuration,
-            1,
-            msg.sender
-        );
+        emit RentMachine(lastRentId, machineId, block.timestamp + rentDuration, 1, msg.sender);
     }
 
-    function renewRent(
-        uint256 rentId,
-        uint256 additionalRentBlockNumbers,
-        uint256 additionalRentFee
-    ) external {
-        require(
-            rentInfos[rentId].renter == msg.sender,
-            "Only the renter can renew the rent"
-        );
+    function renewRent(uint256 rentId, uint256 additionalRentBlockNumbers, uint256 additionalRentFee) external {
+        require(rentInfos[rentId].renter == msg.sender, "Only the renter can renew the rent");
         string memory machineId = rentInfos[rentId].machineId;
         require(isRented(machineId), "Machine is not currently rented");
         require(
@@ -393,21 +294,11 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             "Additional rent duration should be less than 2 hours"
         );
 
-        uint256 additionalRentDuration = additionalRentBlockNumbers *
-            SECONDS_PER_BLOCK;
-        require(
-            additionalRentDuration > 0,
-            "Additional rent duration should be greater than 0"
-        );
+        uint256 additionalRentDuration = additionalRentBlockNumbers * SECONDS_PER_BLOCK;
+        require(additionalRentDuration > 0, "Additional rent duration should be greater than 0");
 
-        uint256 additionalRentFeeInFact = getMachinePrice(
-            rentInfos[rentId].machineId,
-            additionalRentBlockNumbers
-        );
-        require(
-            additionalRentFee >= additionalRentFeeInFact,
-            "Additional rent fee not enough"
-        );
+        uint256 additionalRentFeeInFact = getMachinePrice(rentInfos[rentId].machineId, additionalRentBlockNumbers);
+        require(additionalRentFee >= additionalRentFeeInFact, "Additional rent fee not enough");
 
         StakingType stakingType = currentStakingType;
         require(currentStakingType != StakingType.Unknown, "machine not found");
@@ -418,14 +309,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // Burn additional rent fee
         feeToken.burnFrom(msg.sender, additionalRentFeeInFact);
 
-        emit BurnedFee(
-            machineId,
-            rentId,
-            block.timestamp,
-            additionalRentFeeInFact,
-            msg.sender,
-            1
-        );
+        emit BurnedFee(machineId, rentId, block.timestamp, additionalRentFeeInFact, msg.sender, 1);
 
         // add machine burn info
         BurnedDetail memory burnedDetail = BurnedDetail({
@@ -438,35 +322,24 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         address machineHolder = getMachineHolder(machineId);
 
-        stakeHolder2RentFeeOfStakingType[currentStakingType][
-            machineHolder
-        ] += additionalRentFeeInFact;
+        stakeHolder2RentFeeOfStakingType[currentStakingType][machineHolder] += additionalRentFeeInFact;
         BurnedInfo storage burnedInfo = machineId2BurnedInfo[machineId];
         burnedInfo.details.push(burnedDetail);
         burnedInfo.totalBurnedAmount += additionalRentFeeInFact;
 
         // update total burned amount
         if (stakingType == StakingType.phaseOne) {
-            burnedSummary
-                .phaseOneOrionTotalBurnedAmount += additionalRentFeeInFact;
+            burnedSummary.phaseOneOrionTotalBurnedAmount += additionalRentFeeInFact;
         } else if (stakingType == StakingType.phaseTwo) {
-            burnedSummary
-                .phaseTwoOrionTotalBurnedAmount += additionalRentFeeInFact;
+            burnedSummary.phaseTwoOrionTotalBurnedAmount += additionalRentFeeInFact;
         } else if (stakingType == StakingType.phaseThree) {
-            burnedSummary
-                .phaseThreeOrionTotalBurnedAmount += additionalRentFeeInFact;
+            burnedSummary.phaseThreeOrionTotalBurnedAmount += additionalRentFeeInFact;
         } else if (stakingType == StakingType.commonStaking) {
-            burnedSummary
-                .commonStakingTotalBurnedAmount += additionalRentFeeInFact;
+            burnedSummary.commonStakingTotalBurnedAmount += additionalRentFeeInFact;
         }
         burnedSummary.totalBurnedAmount += additionalRentFeeInFact;
 
-        emit RenewRent(
-            rentId,
-            additionalRentBlockNumbers,
-            additionalRentFee,
-            msg.sender
-        );
+        emit RenewRent(rentId, additionalRentBlockNumbers, additionalRentFee, msg.sender);
     }
 
     function endRentMachine(uint256 rentId) external {
@@ -486,35 +359,19 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         delete rentInfos[rentId];
         removeValueOfUintArray(rentId, machineId2RentIds[machineId]);
 
-        stakeHolder2RentedGPUCountOfStakingType[currentStakingType][
-            machineHolder
-        ] -= rentedGPUCount;
+        stakeHolder2RentedGPUCountOfStakingType[currentStakingType][machineHolder] -= rentedGPUCount;
         stakingType2totalRentedGPUCount[currentStakingType] -= rentedGPUCount;
 
         currentStakingContract.endRentMachine(machineId, rentedGPUCount);
-        emit EndRentMachine(
-            rentId,
-            machineId,
-            rentInfo.rentEndTime,
-            rentInfo.gpuCount,
-            rentInfo.renter
-        );
+        emit EndRentMachine(rentId, machineId, rentInfo.rentEndTime, rentInfo.gpuCount, rentInfo.renter);
     }
 
-    function getMachineHolder(
-        string memory machineId
-    ) internal view returns (address) {
+    function getMachineHolder(string memory machineId) internal view returns (address) {
         return currentStakingContract.getMachineHolder(machineId);
     }
 
-    function reportMachineFault(
-        uint256 rentId,
-        uint256 reserveAmount
-    ) external {
-        require(
-            reserveAmount == REPORT_RESERVE_AMOUNT,
-            "reserve amount should be 10000"
-        );
+    function reportMachineFault(uint256 rentId, uint256 reserveAmount) external {
+        require(reserveAmount == REPORT_RESERVE_AMOUNT, "reserve amount should be 10000");
         require(currentStakingType != StakingType.Unknown, "machine not found");
         RentInfo memory rentInfo = rentInfos[rentId];
         require(rentInfo.renter == msg.sender, "not rent owner");
@@ -528,19 +385,10 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit ReportMachineFault(rentId, rentInfo.machineId, msg.sender);
     }
 
-    function approveMachineFaultReporting(
-        string calldata machineId
-    ) external onlyAdmins {
-        require(
-            pendingSlashMachineId2Renter[machineId] != address(0x0),
-            "not found reported machine"
-        );
+    function approveMachineFaultReporting(string calldata machineId) external onlyAdmins {
+        require(pendingSlashMachineId2Renter[machineId] != address(0x0), "not found reported machine");
 
-        require(
-            pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] !=
-                Vote.Finished,
-            "vote already finished"
-        );
+        require(pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] != Vote.Finished, "vote already finished");
         pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] = Vote.Yes;
         emit ApprovedReport(machineId, msg.sender);
         pendingSlashMachineId2ApprovedCount[machineId] += 1;
@@ -553,9 +401,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             delete pendingSlashMachineId2ApprovedCount[machineId];
 
             for (uint8 i = 0; i < adminsToApprove.length; i++) {
-                pendingSlashMachineId2ApprovedAdmins[machineId][
-                    adminsToApprove[i]
-                ] = Vote.Finished;
+                pendingSlashMachineId2ApprovedAdmins[machineId][adminsToApprove[i]] = Vote.Finished;
             }
 
             address reporter = machineId2Reporter[machineId];
@@ -565,19 +411,10 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function rejectMachineFaultReporting(
-        string calldata machineId
-    ) external onlyAdmins {
-        require(
-            pendingSlashMachineId2Renter[machineId] != address(0),
-            "not found reported machine"
-        );
+    function rejectMachineFaultReporting(string calldata machineId) external onlyAdmins {
+        require(pendingSlashMachineId2Renter[machineId] != address(0), "not found reported machine");
 
-        require(
-            pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] !=
-                Vote.Finished,
-            "vote already finished"
-        );
+        require(pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] != Vote.Finished, "vote already finished");
         pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] = Vote.No;
         pendingSlashMachineId2RefuseCount[machineId] += 1;
         emit RefusedReport(machineId, msg.sender);
@@ -587,19 +424,12 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             delete pendingSlashMachineId2ApprovedCount[machineId];
 
             for (uint8 i = 0; i < adminsToApprove.length; i++) {
-                pendingSlashMachineId2ApprovedAdmins[machineId][
-                    adminsToApprove[i]
-                ] = Vote.Finished;
+                pendingSlashMachineId2ApprovedAdmins[machineId][adminsToApprove[i]] = Vote.Finished;
             }
 
-            uint256 amountPerAdmin = REPORT_RESERVE_AMOUNT /
-                adminsToApprove.length;
+            uint256 amountPerAdmin = REPORT_RESERVE_AMOUNT / adminsToApprove.length;
             for (uint256 i = 0; i < adminsToApprove.length; i++) {
-                feeToken.transferFrom(
-                    address(this),
-                    adminsToApprove[i],
-                    amountPerAdmin
-                );
+                feeToken.transferFrom(address(this), adminsToApprove[i], amountPerAdmin);
             }
 
             address reporter = machineId2Reporter[machineId];
@@ -614,37 +444,20 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return 6;
     }
 
-    function getBurnedRentFeeByStakeHolder(
-        uint8 phaseLevel,
-        address stakeHolder
-    ) public view returns (uint256) {
+    function getBurnedRentFeeByStakeHolder(uint8 phaseLevel, address stakeHolder) public view returns (uint256) {
         if (phaseLevel == 1) {
-            return
-                stakeHolder2RentFeeOfStakingType[StakingType.phaseOne][
-                    stakeHolder
-                ];
+            return stakeHolder2RentFeeOfStakingType[StakingType.phaseOne][stakeHolder];
         }
         if (phaseLevel == 2) {
-            return
-                stakeHolder2RentFeeOfStakingType[StakingType.phaseTwo][
-                    stakeHolder
-                ];
+            return stakeHolder2RentFeeOfStakingType[StakingType.phaseTwo][stakeHolder];
         }
         if (phaseLevel == 3) {
-            return
-                stakeHolder2RentFeeOfStakingType[StakingType.phaseThree][
-                    stakeHolder
-                ];
+            return stakeHolder2RentFeeOfStakingType[StakingType.phaseThree][stakeHolder];
         }
-        return
-            stakeHolder2RentFeeOfStakingType[StakingType.commonStaking][
-                stakeHolder
-            ];
+        return stakeHolder2RentFeeOfStakingType[StakingType.commonStaking][stakeHolder];
     }
 
-    function getTotalBurnedRentFee(
-        uint8 phaseLevel
-    ) public view returns (uint256) {
+    function getTotalBurnedRentFee(uint8 phaseLevel) public view returns (uint256) {
         if (phaseLevel == 1) {
             return burnedSummary.phaseOneOrionTotalBurnedAmount;
         }
@@ -657,18 +470,11 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return burnedSummary.commonStakingTotalBurnedAmount;
     }
 
-    function getRentedGPUCountOfStakeHolder(
-        address stakeHolder
-    ) public view returns (uint256) {
-        return
-            stakeHolder2RentedGPUCountOfStakingType[currentStakingType][
-                stakeHolder
-            ];
+    function getRentedGPUCountOfStakeHolder(address stakeHolder) public view returns (uint256) {
+        return stakeHolder2RentedGPUCountOfStakingType[currentStakingType][stakeHolder];
     }
 
-    function getTotalRentedGPUCount(
-        uint256 phaseLevel
-    ) public view returns (uint256) {
+    function getTotalRentedGPUCount(uint256 phaseLevel) public view returns (uint256) {
         if (phaseLevel == 1) {
             return stakingType2totalRentedGPUCount[StakingType.phaseOne];
         }

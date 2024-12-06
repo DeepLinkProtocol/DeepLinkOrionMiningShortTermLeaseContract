@@ -482,6 +482,14 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return rentContract.isRented(machineId);
     }
 
+    function getMachineUploadInfo(string memory machineId)
+        external
+        view
+        returns (IStakingContract.MachineUploadInfo memory)
+    {
+        return stakingContract.getMachineUploadInfo(machineId);
+    }
+
     function version() external pure returns (uint256) {
         return 1;
     }
