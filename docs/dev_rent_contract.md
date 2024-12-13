@@ -10,6 +10,8 @@
 
 * rentMachine(string  machineId, uint256 rentBlockNumbers, uint8 gpuCount, uint256 rentFee) - Rent machine with given rent fee and rent block numbers and gpu count.
 
+* renewRent(uint256 rentId, uint256 additionalRentBlockNumbers, uint256 additionalRentFee) - Renew rent with given rent id, additional rent block numbers and additional rent fee.
+
 * endRentMachine(uint256 rentId) - End rent machine with given rent id. only machine owner can call this function
 
 * setAdminsToApproveMachineFaultReporting(address[] admins) - set admins to approve or reject machine fault reporting. only contract owner can call this function.

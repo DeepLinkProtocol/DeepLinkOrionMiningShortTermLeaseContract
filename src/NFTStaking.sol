@@ -14,6 +14,7 @@ import "./interface/IRewardToken.sol";
 import "./interface/IRentContract.sol";
 import "forge-std/console.sol";
 
+/// @custom:oz-upgrades-from OldNFTStaking
 contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
     uint256 public constant BASE_RESERVE_AMOUNT = 1000 * 1e18;
@@ -88,6 +89,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
 
     mapping(string => MachineUploadInfo) public machineId2UploadInfo;
 
+    address public dlcClientWalletAddress;
     event staked(address indexed stakeholder, string machineId, uint256 stakeAtBlockNumber);
     event unStaked(address indexed stakeholder, string machineId, uint256 unStakeAtBlockNumber);
     event claimed(
@@ -105,6 +107,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     event RentMachine(string machineId);
     event EndRentMachine(string machineId, uint256 rentedGpuCount);
     event ReportMachineFault(string machineId, address renter);
+    event DLCClientWalletSet(address indexed addr);
 
     modifier onlyRentContract() {
         require(msg.sender == address(rentContract), "only rent contract can call this function");
@@ -181,6 +184,10 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     function setRewardStartAt(uint256 blockNumber) external onlyOwner {
         require(blockNumber >= block.number, "block number must be greater than current block number");
         rewardStartAtBlockNumber = blockNumber;
+    }
+
+    function setDLCClientWallet(address addr) external onlyOwner {
+        dlcClientWalletAddress = addr;
     }
 
     function getDailyRewardAmount() public view returns (uint256) {
@@ -346,6 +353,9 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         uint256 rentEndAt = 0;
         if (availableRentBlockNumbers > 0) {
             rentEndAt = block.number + availableRentBlockNumbers;
+        }
+        if (nextRenterCanRentAt == 0){
+            nextRenterCanRentAt = block.number;
         }
         // if (rewardStartAtBlockNumber > 0) {
         //     require(
@@ -622,6 +632,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         require(stakeInfo.holder == stakeholder, "not stakeholder");
         require(stakeInfo.startAtBlockNumber > 0, "staking not found");
         require(block.number > stakeInfo.rentEndAt, "staking not ended");
+        require(block.number - stakeInfo.rentEndAt > 2 hours / SECONDS_PER_BLOCK, "staking must be more than 2 hours");
 
         // if (rewardStartAtBlockNumber > 0) {
         //     require(
@@ -632,6 +643,16 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         claim(machineId);
         _unStake(machineId, stakeholder);
         stateContract.removeMachine(stakeholder, machineId);
+    }
+
+    function unStake(string calldata machineId)  public nonReentrant {
+        require(msg.sender == dlcClientWalletAddress, "not dlc client wallet");
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        require(stakeInfo.startAtBlockNumber > 0, "staking not found");
+        require(block.number > stakeInfo.rentEndAt, "staking not ended");
+        require(block.number - stakeInfo.rentEndAt > 2 hours / SECONDS_PER_BLOCK, "staking must be more than 2 hours");
+        _unStake(machineId, stakeInfo.holder);
+        stateContract.removeMachine(stakeInfo.holder, machineId);
     }
 
     function _unStake(string calldata machineId, address stakeholder) internal {
@@ -726,6 +747,11 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         stateContract.setBurnedRentFee(stakeInfo.holder, machineId, fee);
         stateContract.addRentedGPUCount(stakeInfo.holder, machineId, rentedGPUCount);
         emit RentMachine(machineId);
+    }
+
+    function renewRentMachine(string calldata machineId, uint256 fee) external onlyRentContract {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        stateContract.setBurnedRentFee(stakeInfo.holder, machineId, fee);
     }
 
     function endRentMachine(string calldata machineId, uint8 rentedGPUCount) external onlyRentContract {

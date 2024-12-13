@@ -96,12 +96,6 @@ contract StakingTest is Test {
         string memory machineId2 = "machineId2";
         string memory machineId3 = "machineId3";
 
-        vm.mockCall(
-            precompileContractAddr,
-            abi.encodeWithSelector(IPrecompileContract.getOwnerRentEndAt.selector),
-            abi.encode(14400 * 65)
-        );
-
         vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.transferFrom.selector), abi.encode(true));
         vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.balanceOf.selector), abi.encode(1));
 
@@ -533,25 +527,9 @@ contract StakingTest is Test {
         console.log("rewardTokenAddr", rewardTokenAddr);
         assertEq(address(rent.feeToken()), rewardTokenAddr, "???");
 
-        vm.mockCall(
-            precompileContractAddr,
-            abi.encodeWithSelector(IPrecompileContract.getOwnerRentEndAt.selector),
-            abi.encode(14400 * 65)
-        );
 
-        vm.mockCall(
-            precompileContractAddr,
-            abi.encodeWithSelector(IPrecompileContract.getMachineGPUCount.selector),
-            abi.encode(1)
-        );
         vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.transferFrom.selector), abi.encode(true));
         vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.balanceOf.selector), abi.encode(1));
-
-        vm.mockCall(
-            precompileContractAddr,
-            abi.encodeWithSelector(IPrecompileContract.getMachineGPUCount.selector),
-            abi.encode(1)
-        );
 
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = 1;
@@ -620,9 +598,10 @@ contract StakingTest is Test {
 
         uint256 tokenSupplyBeforeRent = Token(rewardTokenAddr).totalSupply();
 
-        uint256 fee = rent.getMachinePrice(machineId2, 600);
+        uint256 halfHour = 300;
+        uint256 fee = rent.getMachinePrice(machineId2, halfHour);
         vm.startPrank(renter);
-        rent.rentMachine(machineId2, 600, fee);
+        rent.rentMachine(machineId2, halfHour, fee);
         vm.stopPrank();
         uint256 tokenSupplyAfterRent = Token(rewardTokenAddr).totalSupply();
         assertEq(tokenSupplyBeforeRent - tokenSupplyAfterRent, fee, "total supply after rent failed");

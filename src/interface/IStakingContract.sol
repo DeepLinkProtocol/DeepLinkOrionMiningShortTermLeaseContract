@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 interface IStakingContract {
     function isStaking(string calldata machineId) external view returns (bool);
     function rentMachine(string calldata machineId, uint256 fee, uint8 rentedGPUCount) external;
+    function renewRentMachine(string calldata machineId, uint256 fee) external;
     function endRentMachine(string calldata machineId, uint8 rentedGPUCount) external;
     function reportMachineFault(string calldata machineId, address renter) external;
     function getMachineHolder(string memory machineId) external view returns (address);

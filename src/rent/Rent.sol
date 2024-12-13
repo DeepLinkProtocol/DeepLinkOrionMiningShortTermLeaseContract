@@ -366,6 +366,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
         burnedSummary.totalBurnedAmount += additionalRentFeeInFact;
 
+        currentStakingContract.renewRentMachine(machineId,additionalRentFee);
         emit RenewRent(rentId, additionalRentBlockNumbers, additionalRentFee, msg.sender);
     }
 
