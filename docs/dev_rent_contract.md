@@ -1,6 +1,5 @@
 ### Contract:
-    Rent: 0xe8fd234653518e34953e8f218c32d835e10893e8
-      -- ABI: https://blockscout-testnet.dbcscan.io/address/0x85699b9BD0233E21c2520A92327800b969D31Edd?tab=contract
+    Rent: 0xad530d6dbc2c33042d90f6fb9985d89af8b6f9e5
 
 ### Network : DeepBrainChain Testnet
 
