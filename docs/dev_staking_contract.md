@@ -2,7 +2,7 @@
     Staking: 
       -- Address: 0x2add61b9c3e98672ee0abe3f14241b8673d2c1e3
 ### Network : DeepBrainChain Testnet
-
+    Explorer: https://test.dbcscan.io/
 #### Staking Contract Methods:
 
 * stake(string  machineId, uint256 amount, uint256[] nftTokenIds, uint256 rentId) - Stake machine with given machine id, amount, nft token ids and rent id.

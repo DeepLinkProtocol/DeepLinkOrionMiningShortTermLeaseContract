@@ -2,7 +2,7 @@
     Rent: 0xad530d6dbc2c33042d90f6fb9985d89af8b6f9e5
 
 ### Network : DeepBrainChain Testnet
-
+    Explorer: https://test.dbcscan.io/
 #### Rent Contract Methods:
 
 * getDLCMachineRentFee(string memory machineId, uint256 rentBlockNumbers, uint256 rentGpuNumbers) returns (uint256) - Get rent fee for given machine id, rent block numbers and rent gpu numbers.

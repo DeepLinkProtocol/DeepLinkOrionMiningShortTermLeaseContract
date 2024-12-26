@@ -94,6 +94,11 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         phaseLevel = _phase_level;
     }
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function setStakingContract(address caller) external onlyOwner {

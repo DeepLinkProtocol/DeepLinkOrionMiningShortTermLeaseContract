@@ -2,7 +2,7 @@
     State:
       -- Address:0x5f8bf45dd6d87494814bcd8f3c321bd1ce4d0391
 ### Network : DeepBrainChain Testnet
-
+    Explorer: https://test.dbcscan.io/
 #### State Contract Methods:
 
 * getMachinesInStaking(uint256 page, uint256 pageSize) returns (string[]) - Get Machine In staking

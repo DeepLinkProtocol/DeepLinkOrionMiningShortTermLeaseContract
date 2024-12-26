@@ -533,7 +533,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         }
 
         if (canClaimAmount > 0) {
-            rewardToken.mint(stakeholder, canClaimAmount);
+            rewardToken.transfer(stakeholder, canClaimAmount);
         }
 
         stakeInfo.claimedAmount += canClaimAmount;
@@ -583,7 +583,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         // the amount should be transfer to reserve
         totalReservedAmount += moveToReserveAmount;
         stakeInfo.reservedAmount += moveToReserveAmount;
-        rewardToken.mint(address(this), moveToReserveAmount);
+//        rewardToken.mint(address(this), moveToReserveAmount);
         stateContract.addReserveAmount(msg.sender, machineId, moveToReserveAmount);
         return (moveToReserveAmount, canClaimAmount);
     }
