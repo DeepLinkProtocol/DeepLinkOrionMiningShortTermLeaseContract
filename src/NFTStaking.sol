@@ -100,6 +100,8 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         bool paidSlash
     );
 
+    address  canUpgradeAddress;
+
     event RewardTokenSet(address indexed addr);
     event NftTokenSet(address indexed addr);
     event AddNFTs(string machineId, uint256[] nftTokenIds);
@@ -161,8 +163,19 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         rewardStartGPUThreshold = _threshold;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        require(msg.sender == canUpgradeAddress, "only canUpgradeAddress can authorize upgrade");
+        canUpgradeAddress = address(0);
+    }
 
+    function setUpgradeAddress(address addr)external onlyOwner {
+        canUpgradeAddress = addr;
+    }
+
+    function requestUpgradeAddress(address addr)external pure returns (bytes memory) {
+        bytes memory data = abi.encodeWithSignature("setUpgradeAddress(address)",addr);
+        return data;
+    }
     function setStateContract(address _stateContract) external onlyOwner {
         stateContract = IStateContract(_stateContract);
     }
@@ -209,45 +222,30 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
 
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) internal {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-        console.log("ssssaaa");
 
         // update global reward rate
         updateRewardPerCalcPoint();
-        console.log("ssssaaa2");
 
         uint256 lnReserveAmount = LogarithmLibrary.LnUint256(
             stakeInfo.reservedAmount > BASE_RESERVE_AMOUNT ? stakeInfo.reservedAmount : BASE_RESERVE_AMOUNT
         );
-
-        console.log("rewardPerUnit", rewardPerUnit);
-        console.log("stakeInfo.userRewardDebt", stakeInfo.userRewardDebt);
 
         // update pending rewards of the machine
         stakeInfo.pendingRewards += ((rewardPerUnit - stakeInfo.userRewardDebt) * stakeInfo.calcPoint * lnReserveAmount)
             / LogarithmLibrary.getDecimals();
 
         stakeInfo.userRewardDebt = rewardPerUnit;
-        console.log("ssssaaa4");
 
         uint256 oldLnReserved = LogarithmLibrary.LnUint256(
             stakeInfo.reservedAmount > BASE_RESERVE_AMOUNT ? stakeInfo.reservedAmount : BASE_RESERVE_AMOUNT
         );
-        console.log("ssssaaa5");
 
         uint256 newLnReserved =
             LogarithmLibrary.LnUint256(reserveAmount > BASE_RESERVE_AMOUNT ? reserveAmount : BASE_RESERVE_AMOUNT);
-        console.log("ssssaaa6");
-
-        console.log("totalAdjustUnit", totalAdjustUnit);
-        console.log("stakeInfo.calcPoint", stakeInfo.calcPoint);
-        console.log("oldLnReserved", oldLnReserved);
-        console.log("totalCalcPoint", totalCalcPoint);
-        console.log("CalcPoint", calcPoint);
 
         totalAdjustUnit -= stakeInfo.calcPoint * oldLnReserved;
         totalAdjustUnit += calcPoint * newLnReserved;
         totalCalcPoint = totalCalcPoint - stakeInfo.calcPoint + calcPoint;
-        console.log("ssssaaa7");
 
         stakeInfo.calcPoint = calcPoint;
         if (reserveAmount > stakeInfo.reservedAmount) {
@@ -739,7 +737,6 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         stakeInfo.isRentedByUser = true;
 
         uint256 newCalcPoint = (stakeInfo.calcPoint * 13) / 10;
-        console.log("newCalcPoint", newCalcPoint);
         joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
         stateContract.addOrUpdateStakeHolder(
             stakeInfo.holder, machineId, newCalcPoint, stakeInfo.reservedAmount, 0, false
