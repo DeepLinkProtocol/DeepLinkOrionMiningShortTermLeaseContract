@@ -6,7 +6,6 @@ import {NFTStaking} from "../src/NFTStaking.sol";
 import {NFTStakingState} from "../src/state/NFTStakingState.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "../src/interface/IPrecompileContract.sol";
 import {Deploy} from "../script/DeployForTest.s.sol";
 import {DeployState} from "../script/state/DeployForTest.s.sol";
 import {DeployRent} from "../script/rent/DeployForTest.s.sol";
@@ -73,7 +72,7 @@ contract StakingTest is Test {
         vm.prank(stakeHolder2);
         IRewardToken(rewardTokenAddr).approve(proxy, 100000 * 1e18);
         assertEq(IRewardToken(rewardTokenAddr).balanceOf(stakeHolder2), 1000000 * 1e18);
-        IRewardToken(rewardTokenAddr).setMinter(address(staking), 2000000000 * 1e18);
+        deal(rewardTokenAddr, address(staking), 1000000 * 1e18);
     }
 
     function test_mock_contract() public {
@@ -262,7 +261,6 @@ contract StakingTest is Test {
         );
         vm.stopPrank();
 
-        uint256[] memory tokenIds1 = new uint256[](1);
         tokenIds2[0] = 3;
         vm.startPrank(stakeHolder);
         // staking.stake(machineId3, 10 * 1e18, tokenIds2, 3);
@@ -527,7 +525,6 @@ contract StakingTest is Test {
         console.log("rewardTokenAddr", rewardTokenAddr);
         assertEq(address(rent.feeToken()), rewardTokenAddr, "???");
 
-
         vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.transferFrom.selector), abi.encode(true));
         vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.balanceOf.selector), abi.encode(1));
 
@@ -708,7 +705,6 @@ contract StakingTest is Test {
         tokenIds0[0] = 2;
         vm.startPrank(stakeHolder2);
         staking.stake(machineId2, 0, tokenIds0, "gpu_type", 100, 3600, "cpu_type", 100, 0, 0, 100, 0, 0, 0, 0);
-
         passHours(1);
 
         uint256 reward2 = staking.getReward(machineId2);
@@ -724,7 +720,7 @@ contract StakingTest is Test {
         uint256 fee = rent.getMachinePrice(machineId2, 1200);
         vm.startPrank(renter);
         rent.rentMachine(machineId2, 1200, fee);
-        return passHours(1);
+        passHours(1);
         vm.stopPrank();
 
         vm.startPrank(stakeHolder2);
@@ -746,6 +742,8 @@ contract StakingTest is Test {
         admins[4] = admin5;
         rent.setAdminsToApproveMachineFaultReporting(admins);
         vm.startPrank(admin1);
+
+        assertEq(staking.totalCalcPoint(), 230);
         rent.approveMachineFaultReporting(machineId2);
 
         uint256 holderBalanceBeforeSlashAndClaim = Token(rewardTokenAddr).balanceOf(stakeHolder2);

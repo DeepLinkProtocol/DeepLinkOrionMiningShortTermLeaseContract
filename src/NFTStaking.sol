@@ -5,7 +5,6 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "abdk-libraries-solidity/ABDKMath64x64.sol";
-import "./interface/IPrecompileContract.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "./library/Ln.sol";
@@ -90,6 +89,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     mapping(string => MachineUploadInfo) public machineId2UploadInfo;
 
     address public dlcClientWalletAddress;
+
     event staked(address indexed stakeholder, string machineId, uint256 stakeAtBlockNumber);
     event unStaked(address indexed stakeholder, string machineId, uint256 unStakeAtBlockNumber);
     event claimed(
@@ -100,7 +100,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         bool paidSlash
     );
 
-    address  canUpgradeAddress;
+    address canUpgradeAddress;
 
     event RewardTokenSet(address indexed addr);
     event NftTokenSet(address indexed addr);
@@ -168,14 +168,15 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         canUpgradeAddress = address(0);
     }
 
-    function setUpgradeAddress(address addr)external onlyOwner {
+    function setUpgradeAddress(address addr) external onlyOwner {
         canUpgradeAddress = addr;
     }
 
-    function requestUpgradeAddress(address addr)external pure returns (bytes memory) {
-        bytes memory data = abi.encodeWithSignature("setUpgradeAddress(address)",addr);
+    function requestUpgradeAddress(address addr) external pure returns (bytes memory) {
+        bytes memory data = abi.encodeWithSignature("setUpgradeAddress(address)", addr);
         return data;
     }
+
     function setStateContract(address _stateContract) external onlyOwner {
         stateContract = IStateContract(_stateContract);
     }
@@ -352,7 +353,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         if (availableRentBlockNumbers > 0) {
             rentEndAt = block.number + availableRentBlockNumbers;
         }
-        if (nextRenterCanRentAt == 0){
+        if (nextRenterCanRentAt == 0) {
             nextRenterCanRentAt = block.number;
         }
         // if (rewardStartAtBlockNumber > 0) {
@@ -581,7 +582,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         // the amount should be transfer to reserve
         totalReservedAmount += moveToReserveAmount;
         stakeInfo.reservedAmount += moveToReserveAmount;
-//        rewardToken.mint(address(this), moveToReserveAmount);
+        //        rewardToken.mint(address(this), moveToReserveAmount);
         stateContract.addReserveAmount(msg.sender, machineId, moveToReserveAmount);
         return (moveToReserveAmount, canClaimAmount);
     }
@@ -643,7 +644,7 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         stateContract.removeMachine(stakeholder, machineId);
     }
 
-    function unStake(string calldata machineId)  public nonReentrant {
+    function unStake(string calldata machineId) public nonReentrant {
         require(msg.sender == dlcClientWalletAddress, "not dlc client wallet");
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(stakeInfo.startAtBlockNumber > 0, "staking not found");
@@ -669,11 +670,6 @@ contract NFTStaking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
 
         uint256 currentTime = block.number;
         stakeInfo.endAtBlockNumber = currentTime;
-        if (totalCalcPoint >= stakeInfo.calcPoint) {
-            totalCalcPoint -= stakeInfo.calcPoint;
-        } else {
-            totalCalcPoint = 0;
-        }
 
         for (uint256 i = 0; i < stakeInfo.nftTokenIds.length; i++) {
             if (stakeInfo.nftTokenIds[i] == 0) {

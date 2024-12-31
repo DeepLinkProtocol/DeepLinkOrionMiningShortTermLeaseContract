@@ -4,13 +4,11 @@ pragma solidity ^0.8.20;
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "../interface/IPrecompileContract.sol";
 import "../interface/IRentContract.sol";
 import "../interface/IStakingContract.sol";
 
 /// @custom:oz-upgrades-from OldNFTStakingState
 contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    IPrecompileContract public precompileContract;
     IRentContract public rentContract;
     IStakingContract public stakingContract;
 
@@ -78,17 +76,13 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _;
     }
 
-    function initialize(
-        address _initialOwner,
-        address _precompileContract,
-        address _rentContract,
-        address _stakingContract,
-        uint8 _phase_level
-    ) public initializer {
+    function initialize(address _initialOwner, address _rentContract, address _stakingContract, uint8 _phase_level)
+        public
+        initializer
+    {
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
 
-        precompileContract = IPrecompileContract(_precompileContract);
         rentContract = IRentContract(_rentContract);
         stakingContract = IStakingContract(_stakingContract);
         phaseLevel = _phase_level;
@@ -105,10 +99,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         stakingContract = IStakingContract(caller);
     }
 
-    function setPrecompileContract(address _precompileContract) external onlyOwner {
-        precompileContract = IPrecompileContract(_precompileContract);
-    }
-
     function setRentContract(address _rentContract) external onlyOwner {
         rentContract = IRentContract(_rentContract);
     }
@@ -120,14 +110,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             }
         }
         revert("Element not found");
-    }
-
-    function getMachineCalcPoint(string memory machineId) public view returns (uint256) {
-        return precompileContract.getMachineCalcPoint(machineId);
-    }
-
-    function getMachineGPUCount(string memory machineId) public view returns (uint8) {
-        return precompileContract.getMachineGPUCount(machineId);
     }
 
     function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
@@ -329,26 +311,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function getHolderMachineIds(address _holder) external view returns (string[] memory) {
         return stakeHolders[_holder].machineIds;
-    }
-
-    function getTotalGPUCountOfStakeHolder(address _holder) public view returns (uint256) {
-        uint256 totalGpuCount = 0;
-        for (uint256 i = 0; i < stakeHolders[_holder].machineIds.length; i++) {
-            string memory machineId = stakeHolders[_holder].machineIds[i];
-            uint256 gpuCount = precompileContract.getMachineGPUCount(machineId);
-            totalGpuCount += gpuCount;
-        }
-        return totalGpuCount;
-    }
-
-    function getCalcPointOfStakeHolders(address _holder) external view returns (uint256) {
-        uint256 totalCalcPoint = 0;
-        for (uint256 i = 0; i < stakeHolders[_holder].machineIds.length; i++) {
-            string memory machineId = stakeHolders[_holder].machineIds[i];
-            uint256 calcPoint = getMachineCalcPoint(machineId);
-            totalCalcPoint += calcPoint;
-        }
-        return totalCalcPoint;
     }
 
     function getTopStakeHolders(uint256 offset, uint256 limit)

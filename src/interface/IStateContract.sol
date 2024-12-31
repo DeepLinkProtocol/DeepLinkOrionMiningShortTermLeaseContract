@@ -30,5 +30,4 @@ interface IStateContract {
         uint256 totalClaimedAmount,
         uint256 releasedAmount
     ) external;
-
 }
