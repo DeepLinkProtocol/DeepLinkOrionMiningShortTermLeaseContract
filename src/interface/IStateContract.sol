@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 interface IStateContract {
-    function getMachinesInStaking(uint256 page, uint256 pageSize) external view returns (string[] memory);
+    function getMachinesInStaking(uint256 page, uint256 pageSize) external view returns (string[] memory, uint256);
 
     function addOrUpdateStakeHolder(
         address _holder,
@@ -14,13 +14,9 @@ interface IStateContract {
     ) external;
 
     function removeMachine(address _holder, string memory _machineId) external;
-
     function setBurnedRentFee(address _holder, string memory _machineId, uint256 fee) external;
-
-    function addRentedGPUCount(address _holder, string memory _machineId, uint8 rentedGPUCount) external;
-
-    function subRentedGPUCount(address _holder, string memory _machineId, uint8 rentedGPUCount) external;
-
+    function addRentedGPUCount(address _holder, string memory _machineId) external;
+    function subRentedGPUCount(address _holder, string memory _machineId) external;
     function addReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) external;
     function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) external;
 

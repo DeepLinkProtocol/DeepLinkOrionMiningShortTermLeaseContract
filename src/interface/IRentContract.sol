@@ -1,9 +1,23 @@
 pragma solidity ^0.8.20;
 
 interface IRentContract {
-    function getTotalBurnedRentFee(uint8 phaseLevel) external view returns (uint256);
+    enum NotifyType {
+        ContractRegister,
+        MachineRegister,
+        MachineUnregister,
+        MachineOnline,
+        MachineOffline
+    }
 
-    function getTotalRentedGPUCount(uint256 phaseLevel) external view returns (uint256);
+    function notify(NotifyType tp, string calldata machineId) external returns (bool);
+
+    function getTotalBurnedRentFee() external view returns (uint256);
+
+    function getTotalRentedGPUCount() external view returns (uint256);
 
     function isRented(string calldata machineId) external view returns (bool);
+
+    function getRenter(string calldata machineId) external view returns (address);
+
+    function paidSlash(address holder, string memory machineId) external;
 }

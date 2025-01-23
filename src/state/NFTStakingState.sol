@@ -12,8 +12,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     IRentContract public rentContract;
     IStakingContract public stakingContract;
 
-    uint8 public phaseLevel;
-
     string[] public machineIds;
     uint256 public addressCountInStaking;
     mapping(address => uint8) public address2MachineCount;
@@ -72,20 +70,21 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     modifier onlyNftStakingAddress() {
-        require(msg.sender == address(stakingContract), "Only NFTStakingAddress can call this function");
+        require(msg.sender == address(stakingContract), "Only NFTStakingContractAddress can call this function");
         _;
     }
 
-    function initialize(address _initialOwner, address _rentContract, address _stakingContract, uint8 _phase_level)
-        public
-        initializer
-    {
+    modifier onlyRentAddress() {
+        require(msg.sender == address(rentContract), "Only RentContractAddress can call this function");
+        _;
+    }
+
+    function initialize(address _initialOwner, address _rentContract, address _stakingContract) public initializer {
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
 
         rentContract = IRentContract(_rentContract);
         stakingContract = IStakingContract(_stakingContract);
-        phaseLevel = _phase_level;
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -118,7 +117,7 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         arr.pop();
     }
 
-    function setBurnedRentFee(address _holder, string memory _machineId, uint256 fee) external onlyNftStakingAddress {
+    function setBurnedRentFee(address _holder, string memory _machineId, uint256 fee) external onlyRentAddress {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -130,10 +129,7 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         stakeHolderInfo.burnedRentFee += fee;
     }
 
-    function addRentedGPUCount(address _holder, string memory _machineId, uint8 rentedGPUCount)
-        external
-        onlyNftStakingAddress
-    {
+    function addRentedGPUCount(address _holder, string memory _machineId) external onlyRentAddress {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -141,14 +137,11 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-        previousMachineInfo.rentedGPUCount += rentedGPUCount;
-        stakeHolderInfo.rentedGPUCount += rentedGPUCount;
+        previousMachineInfo.rentedGPUCount += 1;
+        stakeHolderInfo.rentedGPUCount += 1;
     }
 
-    function subRentedGPUCount(address _holder, string memory _machineId, uint8 rentedGPUCount)
-        external
-        onlyNftStakingAddress
-    {
+    function subRentedGPUCount(address _holder, string memory _machineId) external onlyNftStakingAddress {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -156,9 +149,9 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-        if (previousMachineInfo.rentedGPUCount >= rentedGPUCount) {
-            previousMachineInfo.rentedGPUCount -= rentedGPUCount;
-            stakeHolderInfo.rentedGPUCount -= rentedGPUCount;
+        if (previousMachineInfo.rentedGPUCount >= 1) {
+            previousMachineInfo.rentedGPUCount -= 1;
+            stakeHolderInfo.rentedGPUCount -= 1;
         }
     }
 
@@ -395,10 +388,15 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         revert("Element not found");
     }
 
-    function getMachinesInStaking(uint256 startIndex, uint256 pageSize) external view returns (string[] memory) {
-        require(startIndex < machineIds.length, "Start index out of bounds");
+    function getMachinesInStaking(uint256 startIndex, uint256 pageSize)
+        external
+        view
+        returns (string[] memory, uint256)
+    {
+        if (startIndex < machineIds.length) {
+            return (new string[](0), machineIds.length);
+        }
 
-        // 计算返回的数组大小
         uint256 endIndex = startIndex + pageSize;
         if (endIndex > machineIds.length) {
             endIndex = machineIds.length;
@@ -410,15 +408,15 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             pageItems[i] = machineIds[startIndex + i];
         }
 
-        return pageItems;
+        return (pageItems, machineIds.length);
     }
 
     function getRentedGPUCountInDlcNftStaking() external view returns (uint256) {
-        return rentContract.getTotalRentedGPUCount(phaseLevel);
+        return rentContract.getTotalRentedGPUCount();
     }
 
     function getTotalDlcNftStakingBurnedRentFee() external view returns (uint256) {
-        return rentContract.getTotalBurnedRentFee(phaseLevel);
+        return rentContract.getTotalBurnedRentFee();
     }
 
     function getTotalGPUCountInStaking() public view returns (uint256) {
@@ -438,8 +436,8 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             totalCalcPoint: totalCalcPoint,
             totalGPUCount: totalGPUCount,
             totalCalcPointPoolCount: addressCountInStaking,
-            totalRentedGPUCount: rentContract.getTotalRentedGPUCount(phaseLevel),
-            totalBurnedRentFee: rentContract.getTotalBurnedRentFee(phaseLevel),
+            totalRentedGPUCount: rentContract.getTotalRentedGPUCount(),
+            totalBurnedRentFee: rentContract.getTotalBurnedRentFee(),
             totalReservedAmount: totalReservedAmount,
             leftGPUCountBeforeRewardStart: _leftGPUCountBeforeRewardStart
         });
@@ -447,14 +445,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function isRented(string calldata machineId) external view returns (bool) {
         return rentContract.isRented(machineId);
-    }
-
-    function getMachineUploadInfo(string memory machineId)
-        external
-        view
-        returns (IStakingContract.MachineUploadInfo memory)
-    {
-        return stakingContract.getMachineUploadInfo(machineId);
     }
 
     function version() external pure returns (uint256) {

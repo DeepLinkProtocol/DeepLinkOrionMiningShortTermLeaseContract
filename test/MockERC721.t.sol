@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-contract DLCNode is Initializable, ERC721Upgradeable, OwnableUpgradeable {
+contract DLCNode is ERC721, Ownable {
     uint256 private _nextTokenId;
     uint256 private TOKEN_CAP;
 
@@ -19,12 +19,16 @@ contract DLCNode is Initializable, ERC721Upgradeable, OwnableUpgradeable {
 
     event mintedToken(address indexed to, uint256 startTokenId, uint256 endTokenId);
 
-    function initialize(address initialOwner) public initializer {
-        __ERC721_init("DLC-Node", "DLCN");
-        __Ownable_init(initialOwner);
+    constructor(address owner) ERC721("name_", "symbol_") Ownable(owner) {
         TOKEN_CAP = 120_000;
         setLevel2TokenIdRange();
     }
+    //    function initialize(address initialOwner) public initializer {
+    //        __ERC721_init("DLC-Node", "DLCN");
+    //        __Ownable_init(initialOwner);
+    //        TOKEN_CAP = 120_000;
+    //        setLevel2TokenIdRange();
+    //    }
 
     function setLevel2TokenIdRange() internal onlyOwner {
         levelNumber2TokenIdRange[1] = TokenIdRange(1, 8000, 1);

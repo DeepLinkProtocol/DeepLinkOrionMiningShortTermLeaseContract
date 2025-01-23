@@ -43,10 +43,13 @@ contract Deploy is Script {
         address rewardTokenContract = vm.envAddress("REWARD_TOKEN_CONTRACT");
         console.log("rewardTokenContract Address:", rewardTokenContract);
 
+        address precompileContract = vm.envAddress("PRECOMPILE_CONTRACT");
+        console.log("precompileContract Address:", precompileContract);
+
         proxy = Upgrades.deployUUPSProxy(
             "Rent.sol:Rent",
             abi.encodeCall(
-                Rent.initialize, (msg.sender, rewardTokenContract, stakingProxy, address(0x00), address(0x00))
+                Rent.initialize, (msg.sender, precompileContract, stakingProxy, stateProxy, rewardTokenContract)
             )
         );
         return (proxy, logic);
