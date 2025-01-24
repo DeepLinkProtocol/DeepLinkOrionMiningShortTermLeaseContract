@@ -2,7 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "./interface/IStateContract.sol";
 import "./interface/IRewardToken.sol";
@@ -15,7 +16,13 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @custom:oz-upgrades-from OldNFTStaking
-contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable, UUPSUpgradeable {
+contract NFTStaking is
+    Initializable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
+    UUPSUpgradeable,
+    IERC1155Receiver
+{
     string public constant PROJECT_NAME = "DeepLink";
     uint8 public constant SECONDS_PER_BLOCK = 6;
     uint256 public constant BASE_RESERVE_AMOUNT = 1000 * 1e18;
@@ -30,7 +37,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
     IRentContract public rentContract;
     IDBCAIContract public dbcAIContract;
     ITool public toolContract;
-    IERC721 public nftToken;
+    IERC1155 public nftToken;
     IRewardToken public rewardToken;
 
     address public canUpgradeAddress;
@@ -70,6 +77,8 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         uint256 calcPoint;
         uint256 reservedAmount;
         uint256[] nftTokenIds;
+        uint256[] tokenIdBalances;
+        uint256 nftCount;
         uint256 claimedAmount;
         uint256 pendingRewards;
         uint256 userRewardDebt;
@@ -77,7 +86,6 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         uint256 gpuCount;
         uint256 nextRenterCanRentAt;
     }
-
 
     mapping(address => bool) public dlcClientWalletAddress;
 
@@ -110,6 +118,30 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         _disableInitializers();
     }
 
+    function onERC1155BatchReceived(
+        address, /* unusedParameter */
+        address, /* unusedParameter */
+        uint256[] calldata, /* unusedParameter */
+        uint256[] calldata, /* unusedParameter */
+        bytes calldata /* unusedParameter */
+    ) external pure override returns (bytes4) {
+        return this.onERC1155BatchReceived.selector;
+    }
+
+    function onERC1155Received(
+        address, /* unusedParameter */
+        address, /* unusedParameter */
+        uint256, /* unusedParameter */
+        uint256, /* unusedParameter */
+        bytes calldata /* unusedParameter */
+    ) external pure override returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IERC1155Receiver).interfaceId;
+    }
+
     modifier onlyRentContractOrThis() {
         require(
             msg.sender == address(rentContract) || msg.sender == address(this),
@@ -138,7 +170,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         __UUPSUpgradeable_init();
 
         rewardToken = IRewardToken(_rewardToken);
-        nftToken = IERC721(_nftToken);
+        nftToken = IERC1155(_nftToken);
         stateContract = IStateContract(_stateContract);
         rentContract = IRentContract(_rentContract);
         dbcAIContract = IDBCAIContract(_dbcAIContract);
@@ -197,7 +229,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
     }
 
     function setNftToken(address token) external onlyOwner {
-        nftToken = IERC721(token);
+        nftToken = IERC1155(token);
     }
 
     function setRewardStartAt(uint256 timestamp) external onlyOwner {
@@ -221,22 +253,26 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         string calldata machineId,
         uint256 amount,
         uint256[] calldata nftTokenIds,
+        uint256[] calldata nftTokenIdBalances,
         uint256 stakeHours
     ) external nonReentrant {
+        require(nftTokenIds.length == nftTokenIdBalances.length, "nft token ids and balances length not match");
         (address machineOwner, uint256 calcPoint, uint256 cpuRate,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
         require(cpuRate >= 3500, "cpu rate must be greater than or equal to 3500");
-        require(msg.sender == machineOwner || dlcClientWalletAddress[msg.sender], "sender must be machine owner or admin");
+        require(
+            msg.sender == machineOwner || dlcClientWalletAddress[msg.sender], "sender must be machine owner or admin"
+        );
         require(calcPoint > 0, "machine calc point not found");
         require(
-            (stakeHours >= 2) || stakeHours == 0,
-            "available rent duration must be greater than or equal to 2 hours"
+            (stakeHours >= 2) || stakeHours == 0, "available rent duration must be greater than or equal to 2 hours"
         );
 
         address stakeholder = msg.sender;
         require(!isStaking(machineId), "machine already staked");
         require(nftTokenIds.length > 0, "nft token ids is empty");
-        calcPoint = calcPoint * nftTokenIds.length;
+        uint256 nftCount = getNFTCount(nftTokenIdBalances);
+        calcPoint = calcPoint * nftCount;
 
         uint256 startAtTimestamp = block.timestamp;
         uint256 stakeEndAt = 0;
@@ -266,10 +302,6 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
             }
         }
 
-        for (uint256 i = 0; i < nftTokenIds.length; i++) {
-            nftToken.transferFrom(stakeholder, address(this), nftTokenIds[i]);
-        }
-
         uint256 currentTime = block.timestamp;
         uint8 gpuCount = 1;
         totalGpuCount += gpuCount;
@@ -278,6 +310,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
             lastUpdateTime = currentTime;
         }
 
+        nftToken.safeBatchTransferFrom(stakeholder, address(this), nftTokenIds, nftTokenIdBalances, "transfer");
         machineId2StakeInfos[machineId] = StakeInfo({
             startAtTimestamp: currentTime,
             lastClaimAtTimestamp: currentTime,
@@ -285,6 +318,8 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
             calcPoint: 0,
             reservedAmount: 0,
             nftTokenIds: nftTokenIds,
+            tokenIdBalances: nftTokenIdBalances,
+            nftCount: nftCount,
             holder: stakeholder,
             claimedAmount: 0,
             userRewardDebt: 0,
@@ -327,7 +362,6 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         returns (uint256 newRewardAmount, uint256 canClaimAmount, uint256 lockedAmount, uint256 claimedAmount)
     {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-        require(stakeInfo.holder == msg.sender, "not stakeholder");
 
         uint256 currentRewardPerUnit = getCurrentRewardRate(getRewardEndAtTimestamp(stakeInfo.endAtTimestamp));
         uint256 totalRewardAmount = calculateRewards(machineId, currentRewardPerUnit);
@@ -341,6 +375,14 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
             _lockedAmount + lockedAmountBefore,
             stakeInfo.claimedAmount
         );
+    }
+
+    function getNFTCount(uint256[] calldata nftTokenIdBalances) internal pure returns (uint256 nftCount) {
+        for (uint256 i = 0; i < nftTokenIdBalances.length; i++) {
+            nftCount += nftTokenIdBalances[i];
+        }
+
+        return nftCount;
     }
 
     function _claim(string memory machineId) internal {
@@ -360,10 +402,10 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         canClaimAmount += _dailyReleaseAmount;
 
         ApprovedReportInfo[] storage approvedReportInfos = pendingSlashedMachineId2Renter[machineId];
-        bool slashed = approvedReportInfos.length >0;
+        bool slashed = approvedReportInfos.length > 0;
         uint256 moveToReserveAmount = 0;
         if (canClaimAmount > 0 && (_isStaking || slashed)) {
-            if (stakeInfo.reservedAmount < BASE_RESERVE_AMOUNT ) {
+            if (stakeInfo.reservedAmount < BASE_RESERVE_AMOUNT) {
                 (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
                     tryMoveReserve(machineId, canClaimAmount, stakeInfo);
                 canClaimAmount = leftAmountCanClaim;
@@ -513,9 +555,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
 
     function unStake(string calldata machineId) public nonReentrant {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-        require(
-            dlcClientWalletAddress[msg.sender] || msg.sender == stakeInfo.holder, "not dlc client wallet or owner"
-        );
+        require(dlcClientWalletAddress[msg.sender] || msg.sender == stakeInfo.holder, "not dlc client wallet or owner");
         require(stakeInfo.startAtTimestamp > 0, "staking not found");
         require(block.timestamp >= stakeInfo.endAtTimestamp, "staking not ended");
         _unStake(machineId, stakeInfo.holder);
@@ -533,11 +573,12 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         }
 
         stakeInfo.endAtTimestamp = block.timestamp;
-
-        for (uint256 i = 0; i < stakeInfo.nftTokenIds.length; i++) {
-            nftToken.transferFrom(address(this), stakeholder, stakeInfo.nftTokenIds[i]);
-        }
+        nftToken.safeBatchTransferFrom(
+            address(this), stakeholder, stakeInfo.nftTokenIds, stakeInfo.tokenIdBalances, "transfer"
+        );
         stakeInfo.nftTokenIds = new uint256[](0);
+        stakeInfo.tokenIdBalances = new uint256[](0);
+        stakeInfo.nftCount = 0;
         _joinStaking(machineId, 0, 0);
         removeStakingMachineFromHolder(stakeholder, machineId);
         emit unStaked(stakeholder, machineId);
@@ -689,7 +730,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
     ) internal {
         rewardToken.transfer(renter, BASE_RESERVE_AMOUNT);
         if (alreadyStaked) {
-            _joinStaking(machineId,stakeInfo.calcPoint, stakeInfo.reservedAmount - BASE_RESERVE_AMOUNT);
+            _joinStaking(machineId, stakeInfo.calcPoint, stakeInfo.reservedAmount - BASE_RESERVE_AMOUNT);
         }
 
         rentContract.paidSlash(stakeInfo.holder, machineId);
@@ -792,7 +833,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         totalCalcPoint = totalCalcPoint - stakeInfo.calcPoint + calcPoint;
 
         stakeInfo.calcPoint = calcPoint;
-        if (reserveAmount > stakeInfo.reservedAmount){
+        if (reserveAmount > stakeInfo.reservedAmount) {
             rewardToken.transferFrom(stakeInfo.holder, address(this), reserveAmount);
         }
         if (reserveAmount != stakeInfo.reservedAmount) {
@@ -830,7 +871,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         uint256 accumulatedReward = (
             (currentRewardPerUnit - stakeInfo.userRewardDebt) * stakeInfo.calcPoint * lnReserveAmount
         ) / toolContract.getDecimals();
-        if (rewardEnd()){
+        if (rewardEnd()) {
             accumulatedReward = 0;
         }
         uint256 rewardAmount = stakeInfo.pendingRewards + accumulatedReward;
@@ -838,7 +879,7 @@ contract NFTStaking is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         return rewardAmount;
     }
 
-    function rewardEnd() public  view returns (bool)  {
+    function rewardEnd() public view returns (bool) {
         if (rewardStartAtTimestamp == 0) {
             return false;
         }

@@ -10,6 +10,7 @@ import "../interface/IRentContract.sol";
 import "../interface/IPrecompileContract.sol";
 import "../interface/IStateContract.sol";
 import "forge-std/console.sol";
+import "../interface/IDBCAIContract.sol";
 
 /// @custom:oz-upgrades-from OldRent
 contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
@@ -21,6 +22,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     IPrecompileContract public precompileContract;
     IStakingContract public stakingContract;
     IStateContract public stateContract;
+    IDBCAIContract public dbcAIContract;
 
     uint256 public lastRentId;
     uint256 public totalBurnedAmount;
@@ -129,9 +131,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _;
     }
 
-
     modifier onlyStakingContract() {
         require(msg.sender == address(stakingContract), "only staking contract");
+        _;
+    }
+
+    modifier onlyDBCAIContract() {
+        require(msg.sender == address(dbcAIContract), "only dbc AI contract");
         _;
     }
 
@@ -145,6 +151,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address _precompileContract,
         address _stakingContract,
         address _stateContract,
+        address _dbcAIContract,
         address _feeToken
     ) public initializer {
         __Ownable_init(_initialOwner);
@@ -153,7 +160,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         precompileContract = IPrecompileContract(_precompileContract);
         stakingContract = IStakingContract(_stakingContract);
         stateContract = IStateContract(_stateContract);
-
+        dbcAIContract = IDBCAIContract(_dbcAIContract);
         voteThreshold = 3;
     }
 
@@ -215,8 +222,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function canRent(string calldata machineId) public view returns (bool) {
-        require(stakingContract.isStaking(machineId), "machine not staked");
-        (,uint256 calcPoint,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
+        if (!stakingContract.isStaking(machineId)) {
+            return false;
+        }
+        (, uint256 calcPoint,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
             stakingContract.getMachineInfo(machineId);
         if (!isOnline || !isRegistered || isRented(machineId) || calcPoint == 0) {
             return false;
@@ -226,11 +235,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             // not reach the start rent block number yet
             return false;
         }
-        if (endAtTimestamp > 0){
+        if (endAtTimestamp > 0) {
             return endAtTimestamp > block.timestamp;
         }
 
-        return  endAtTimestamp == 0;
+        return endAtTimestamp == 0;
     }
 
     function getMachineInfo(string memory machineId)
@@ -538,29 +547,50 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return renter;
     }
 
-    function notify(NotifyType tp, string calldata machineId) external onlyStakingContract returns (bool) {
-        (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) =
-            stakingContract.getMachineInfo(machineId);
+    function notify(NotifyType tp, string calldata machineId) external onlyDBCAIContract returns (bool) {
+        (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
+
+        (, uint256 calcPointInFact,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
         bool isStaking = stakingContract.isStaking(machineId);
+
         if (tp == NotifyType.ContractRegister) {
             registered = true;
         } else if (tp == NotifyType.MachineRegister) {
             if (calcPoint == 0 && isStaking) {
                 // staked before
-                stakingContract.joinStaking(machineId, calcPoint, reservedAmount);
+                stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
             }
-            emit MachineRegister(machineId, calcPoint);
+            emit MachineRegister(machineId, calcPointInFact);
         } else if (tp == NotifyType.MachineUnregister) {
             if (isStaking) {
                 stakingContract.joinStaking(machineId, 0, reservedAmount);
             }
             emit MachineUnregister(machineId, calcPoint);
         } else if (tp == NotifyType.MachineOffline) {
-            address renter = getRenter(machineId);
-            if (isRegistered && renter != address(0)) {
-                SlashInfo memory slashInfo = machineId2SlashInfo[machineId];
-                addSlashInfoAndReport(slashInfo);
+            uint256 rentId = machineId2RentId[machineId];
+            RentInfo memory rentInfo = rentId2RentInfo[rentId];
+            if (isStaking && isRegistered) {
+                if (rentInfo.renter != address(0)) {
+                    SlashInfo memory slashInfo = newSlashInfo(
+                        rentInfo.stakeHolder,
+                        rentInfo.machineId,
+                        SLASH_AMOUNT,
+                        rentInfo.rentStatTime,
+                        rentInfo.rentEndTime,
+                        block.timestamp - rentInfo.rentStatTime,
+                        SlashType.Offline,
+                        rentInfo.renter
+                    );
+                    addSlashInfoAndReport(slashInfo);
+                } else {
+                    stakingContract.joinStaking(machineId, 0, reservedAmount);
+                }
+            }
+        } else if (tp == NotifyType.MachineOnline) {
+            if (calcPoint == 0 && isStaking) {
+                // staked before
+                stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
             }
         }
         return true;
@@ -612,7 +642,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function isInSlashing(string memory machineId) public view returns(bool) {
+    function isInSlashing(string memory machineId) public view returns (bool) {
         return machineId2SlashInfo[machineId].paid == false;
     }
 }

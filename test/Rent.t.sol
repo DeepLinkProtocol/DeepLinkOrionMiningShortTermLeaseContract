@@ -13,7 +13,7 @@ import {ITool} from "../src/interface/ITool.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "../src/Tool.sol";
 import {Token} from "./MockRewardToken.sol";
-import "./MockERC721.t.sol";
+import "./MockERC1155.t.sol";
 
 contract RentTest is Test {
     Rent public rent;
@@ -62,7 +62,12 @@ contract RentTest is Test {
         );
         NFTStakingState(address(proxy2)).initialize(owner, address(rent), address(nftStaking));
         Rent(address(proxy)).initialize(
-            owner, address(precompileContract), address(nftStaking), address(nftStakingState), address(rewardToken)
+            owner,
+            address(precompileContract),
+            address(nftStaking),
+            address(nftStakingState),
+            address(dbcAIContract),
+            address(rewardToken)
         );
         deal(address(rewardToken), address(this), 10000000 * 1e18);
         deal(address(rewardToken), address(nftStaking), 200000000 * 1e18);
@@ -74,14 +79,14 @@ contract RentTest is Test {
 
     function testRentMachine() public {
         string memory machineId = "machineId";
-        stakeByOwner(machineId,0);
+        stakeByOwner(machineId, 0, 2);
 
         uint256 totalCalcPointBeforeRent = nftStaking.totalCalcPoint();
         uint256 totalAdjustUnitBeforeRent = nftStaking.totalAdjustUnit();
 
         uint256 rentSeconds = 1 hours;
         uint256 rentFee = 1000 * 1e18;
-        rentMachine(machineId,address(this),rentSeconds,rentFee,owner);
+        rentMachine(machineId, address(this), rentSeconds, rentFee);
 
         // Assert
         assertEq(rent.getRenter(machineId), address(this));
@@ -95,7 +100,6 @@ contract RentTest is Test {
 
         address[] memory admins = new address[](1);
         admins[0] = owner;
-
 
         uint256 totalCalcPointInRent = nftStaking.totalCalcPoint();
         uint256 totalAdjustUnitInRent = nftStaking.totalAdjustUnit();
@@ -132,13 +136,13 @@ contract RentTest is Test {
     function testApproveMachineFaultReporting() public {
         // Arrange
         string memory machineId = "machineId";
-        stakeByOwner(machineId,0);
+        stakeByOwner(machineId, 0, 2);
 
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
         uint256 rentFee = 1000 * 1e18;
-        rentMachine(machineId, renter,rentSeconds,rentFee,address(0));
+        rentMachine(machineId, renter, rentSeconds, rentFee);
 
         uint256 balanceBeforeReport = rewardToken.balanceOf(address(this));
 
@@ -159,12 +163,12 @@ contract RentTest is Test {
 
     function testRejectMachineFaultReporting() public {
         string memory machineId = "machineId";
-        stakeByOwner(machineId,0);
+        stakeByOwner(machineId, 0, 2);
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
         uint256 rentFee = 1000 * 1e18;
-        rentMachine(machineId, renter,rentSeconds,rentFee,address(0));
+        rentMachine(machineId, renter, rentSeconds, rentFee);
 
         uint256 balanceBeforeReport = rewardToken.balanceOf(address(this));
 
@@ -184,21 +188,20 @@ contract RentTest is Test {
 
     function testSlashForStakeHolderWithStakeTokenAfterReportApprove() public {
         string memory machineId = "machineId";
-        uint256 stakeTokenAmount = 2000*1e18;
-        stakeByOwner(machineId,stakeTokenAmount);
+        uint256 stakeTokenAmount = 2000 * 1e18;
+        stakeByOwner(machineId, stakeTokenAmount, 2);
 
+        //        vm.startPrank(owner);
+        //        nftStaking.claim(machineId);
+        //        vm.stopPrank();
 
-//        vm.startPrank(owner);
-//        nftStaking.claim(machineId);
-//        vm.stopPrank();
-
-        assertEq(nftToken.ownerOf(1),address(nftStaking));
+        assertEq(nftToken.balanceOf(address(nftStaking), 1), 1);
 
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
         uint256 rentFee = 1000 * 1e18;
-        rentMachine(machineId, renter,rentSeconds,rentFee,address(0));
+        rentMachine(machineId, renter, rentSeconds, rentFee);
         assertEq(nftStaking.totalReservedAmount(), stakeTokenAmount);
         uint256 ownerBalanceBeforeSlash = rewardToken.balanceOf(owner);
         reportMachineFault(machineId, renter);
@@ -207,45 +210,48 @@ contract RentTest is Test {
         uint256 renterBalanceAfterApprove = rewardToken.balanceOf(renter);
         uint256 ownerBalanceAfterSlash = rewardToken.balanceOf(owner);
         assertEq(ownerBalanceAfterSlash, ownerBalanceBeforeSlash + stakeTokenAmount - nftStaking.BASE_RESERVE_AMOUNT());
-        assertEq(nftToken.ownerOf(1),owner);
-        assertEq(renterBalanceAfterApprove, renterBalanceBeforeApprove + nftStaking.BASE_RESERVE_AMOUNT()+ rent.REPORT_RESERVE_AMOUNT());
-        assertEq(nftStaking.totalReservedAmount(),0);
-        (,,,uint256 endAt,,uint256 _stakeTokenAmount,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
-        assertEq(_stakeTokenAmount,0);
-        assertEq(endAt,block.timestamp);
-        assertEq(nftStaking.isStaking(machineId),false);
+        assertEq(nftToken.balanceOf(address(owner), 1), 1);
+
+        assertEq(
+            renterBalanceAfterApprove,
+            renterBalanceBeforeApprove + nftStaking.BASE_RESERVE_AMOUNT() + rent.REPORT_RESERVE_AMOUNT()
+        );
+        assertEq(nftStaking.totalReservedAmount(), 0);
+        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        assertEq(_stakeTokenAmount, 0);
+        assertEq(endAt, block.timestamp);
+        assertEq(nftStaking.isStaking(machineId), false);
 
         passHours(24);
-//        uint256 balance1OfOwner = rewardToken.balanceOf(owner);
-//        vm.startPrank(owner);
-//        nftStaking.claim(machineId);
-//
-//        uint256 balance2OfOwner = rewardToken.balanceOf(owner);
-//        vm.stopPrank();
-//        assertGt(balance2OfOwner,balance1OfOwner);
-//
-//        (uint256 amount,uint256 unlockTime) = nftStaking.machineId2LockedRewardDetails(machineId,0);
-//        assertGt(amount,0);
-//        assertEq(unlockTime,block.timestamp + 180 days);
+        //        uint256 balance1OfOwner = rewardToken.balanceOf(owner);
+        //        vm.startPrank(owner);
+        //        nftStaking.claim(machineId);
+        //
+        //        uint256 balance2OfOwner = rewardToken.balanceOf(owner);
+        //        vm.stopPrank();
+        //        assertGt(balance2OfOwner,balance1OfOwner);
+        //
+        //        (uint256 amount,uint256 unlockTime) = nftStaking.machineId2LockedRewardDetails(machineId,0);
+        //        assertGt(amount,0);
+        //        assertEq(unlockTime,block.timestamp + 180 days);
 
-
-        stakeByOwner(machineId,0);
+        stakeByOwner(machineId, 0, 2);
     }
 
     function testSlashForStakeHolderWithoutStakeTokenAfterReportApprove() public {
         string memory machineId = "machineId";
         uint256 stakeTokenAmount = 0;
-        stakeByOwner(machineId,stakeTokenAmount);
+        stakeByOwner(machineId, stakeTokenAmount, 2);
         assertEq(nftStaking.totalReservedAmount(), stakeTokenAmount);
 
-        assertEq(nftToken.ownerOf(1),address(nftStaking));
+        assertEq(nftToken.balanceOf(address(nftStaking), 1), 1);
 
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
         uint256 rentFee = 1000 * 1e18;
 
-        rentMachine(machineId, renter,rentSeconds,rentFee,address(0));
+        rentMachine(machineId, renter, rentSeconds, rentFee);
         assertEq(nftStaking.totalReservedAmount(), stakeTokenAmount);
         uint256 ownerBalanceBeforeSlash = rewardToken.balanceOf(owner);
 
@@ -255,37 +261,135 @@ contract RentTest is Test {
         uint256 renterBalanceAfterApprove = rewardToken.balanceOf(renter);
         uint256 ownerBalanceAfterSlash = rewardToken.balanceOf(owner);
 
-
         assertGt(ownerBalanceAfterSlash, ownerBalanceBeforeSlash + stakeTokenAmount - nftStaking.BASE_RESERVE_AMOUNT());
 
-        assertEq(nftToken.ownerOf(1),owner);
+        assertEq(nftToken.balanceOf(address(owner), 1), 1);
 
         assertEq(renterBalanceAfterApprove, renterBalanceBeforeApprove + rent.REPORT_RESERVE_AMOUNT());
 
-        assertEq(nftStaking.totalReservedAmount(),0);
-        (,,,uint256 endAt,,uint256 _stakeTokenAmount,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
-        assertEq(_stakeTokenAmount,0);
-        assertEq(endAt,block.timestamp);
-        assertEq(nftStaking.isStaking(machineId),false);
+        assertEq(nftStaking.totalReservedAmount(), 0);
+        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        assertEq(_stakeTokenAmount, 0);
+        assertEq(endAt, block.timestamp);
+        assertEq(nftStaking.isStaking(machineId), false);
 
-//        (uint256 amount,uint256 unlockTime) = nftStaking.machineId2LockedRewardDetails(machineId,0);
-//        assertGt(amount,0);
-//        assertEq(unlockTime,block.timestamp + 180 days);
+        //        (uint256 amount,uint256 unlockTime) = nftStaking.machineId2LockedRewardDetails(machineId,0);
+        //        assertGt(amount,0);
+        //        assertEq(unlockTime,block.timestamp + 180 days);
 
         passHours(24);
-//        uint256 balance1OfOwner = rewardToken.balanceOf(owner);
-//        vm.startPrank(owner);
-//        nftStaking.claim(machineId);
-//        uint256 balance2OfOwner = rewardToken.balanceOf(owner);
-//        vm.stopPrank();
-//        assertGt(balance2OfOwner,balance1OfOwner);
+        //        uint256 balance1OfOwner = rewardToken.balanceOf(owner);
+        //        vm.startPrank(owner);
+        //        nftStaking.claim(machineId);
+        //        uint256 balance2OfOwner = rewardToken.balanceOf(owner);
+        //        vm.stopPrank();
+        //        assertGt(balance2OfOwner,balance1OfOwner);
 
-        stakeByOwner(machineId,nftStaking.BASE_RESERVE_AMOUNT());
+        stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 2);
 
-        (,,,,,uint256 _stakeTokenAmount1,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
-        assertEq(_stakeTokenAmount1,0);
+        (,,,,, uint256 _stakeTokenAmount1,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        assertEq(_stakeTokenAmount1, 0);
+    }
 
+    function testNotifyUnregister() public {
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(nftStaking.dbcAIContract().getMachineState.selector),
+            abi.encode(true, true)
+        );
+        // Arrange
+        string memory machineId = "machineId";
+        stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 96);
+        assertEq(rent.canRent(machineId), true);
 
+        assertEq(nftStaking.totalReservedAmount(), nftStaking.BASE_RESERVE_AMOUNT());
+        assertEq(nftStaking.totalCalcPoint(), 100);
+
+        vm.prank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineUnregister, machineId);
+        assertEq(nftStaking.totalReservedAmount(), nftStaking.BASE_RESERVE_AMOUNT());
+        assertEq(nftStaking.totalCalcPoint(), 0);
+
+        assertEq(nftStaking.isStaking(machineId), true);
+        claimAfter(machineId, owner, 24, false);
+
+        assertEq(rent.canRent(machineId), false);
+
+        // register back
+        vm.prank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineRegister, machineId);
+        assertEq(nftStaking.totalCalcPoint(), 100);
+        assertEq(rent.canRent(machineId), true);
+
+        claimAfter(machineId, owner, 24, true);
+    }
+
+    function testNotifyOfflineOnNoRent() public {
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(nftStaking.dbcAIContract().getMachineState.selector),
+            abi.encode(true, true)
+        );
+        // Arrange
+        string memory machineId = "machineId";
+        stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 48);
+        assertEq(rent.canRent(machineId), true);
+
+        assertEq(nftStaking.totalReservedAmount(), nftStaking.BASE_RESERVE_AMOUNT());
+        assertEq(nftStaking.totalCalcPoint(), 100);
+        assertEq(nftStaking.isStaking(machineId), true);
+
+        vm.prank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
+        assertEq(nftStaking.totalReservedAmount(), nftStaking.BASE_RESERVE_AMOUNT());
+        assertEq(nftStaking.totalCalcPoint(), 0);
+        assertEq(rent.canRent(machineId), false);
+        assertEq(nftStaking.isStaking(machineId), true);
+        claimAfter(machineId, owner, 24, false);
+
+        // re online
+        vm.prank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineOnline, machineId);
+        assertEq(nftStaking.totalCalcPoint(), 100);
+        assertEq(rent.canRent(machineId), true);
+        assertEq(nftStaking.isStaking(machineId), true);
+        claimAfter(machineId, owner, 24, true);
+    }
+
+    function testNotifyOfflineOnRenting() public {
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(nftStaking.dbcAIContract().getMachineState.selector),
+            abi.encode(true, true)
+        );
+        // Arrange
+        string memory machineId = "machineId";
+        stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 48);
+        assertEq(rent.canRent(machineId), true);
+
+        assertEq(nftStaking.totalReservedAmount(), nftStaking.BASE_RESERVE_AMOUNT());
+        assertEq(nftStaking.totalCalcPoint(), 100);
+        assertEq(nftStaking.isStaking(machineId), true);
+
+        uint256 rentFee = 1000 * 1e18;
+        rentMachine(machineId, address(this), 1 hours, rentFee);
+        assertEq(rent.isRented(machineId), true);
+        address renter = rent.getRenter(machineId);
+        assertEq(renter, address(this));
+
+        uint256 balanceOfRenter = rewardToken.balanceOf(address(this));
+
+        vm.prank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
+        assertEq(nftStaking.totalReservedAmount(), 0);
+        assertEq(nftStaking.totalCalcPoint(), 0);
+        assertEq(rent.canRent(machineId), false);
+        assertEq(nftStaking.isStaking(machineId), false);
+        claimAfter(machineId, owner, 24, false);
+
+        uint256 balanceOfRenterAfterMachineOffline = rewardToken.balanceOf(address(this));
+
+        assertEq(balanceOfRenterAfterMachineOffline, balanceOfRenter + nftStaking.BASE_RESERVE_AMOUNT());
     }
 
     function passHours(uint256 n) public {
@@ -296,19 +400,12 @@ contract RentTest is Test {
         vm.roll(vm.getBlockNumber() + blocksToAdvance);
     }
 
-    function rentMachine(string memory machineId, address renter, uint256 rentSeconds, uint256 rentFee,address _owner) public {
-
+    function rentMachine(string memory machineId, address renter, uint256 rentSeconds, uint256 rentFee) public {
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
-            abi.encode(true,true)
+            abi.encode(true, true)
         );
-//
-//        vm.mockCall(
-//            address(nftStaking),
-//            abi.encodeWithSelector(NFTStaking.getMachineInfo.selector),
-//            abi.encode(_owner, 100, 0, 0, 0, 0, true, true)
-//        );
 
         vm.mockCall(
             address(precompileContract),
@@ -381,31 +478,41 @@ contract RentTest is Test {
         assertEq(adminBalanceAfterReject, adminBalanceBeforeReject + rent.REPORT_RESERVE_AMOUNT() / admins.length);
     }
 
-    function stakeByOwner(string memory machineId,uint256 reserveAmount) public {
+    function stakeByOwner(string memory machineId, uint256 reserveAmount, uint256 stakeHours) public {
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineInfo.selector),
             abi.encode(owner, 100, 3500, "", 1, "", 1, machineId)
         );
 
-//        vm.mockCall(
-//            address(nftStaking),
-//            abi.encodeWithSelector(NFTStaking.getMachineInfo.selector),
-//            abi.encode(owner, 100, 0, block.timestamp + 2 hours, 0, reserveAmount, true, true)
-//        );
-
         vm.startPrank(owner);
-        nftToken.safeBatchMint(owner, 1, 1);
-        deal(address(rewardToken),owner,100000*1e18);
+        dealERC1155(address(nftToken), owner, 1, 1, false);
+        assertEq(nftToken.balanceOf(owner, 1), 1, "owner erc1155 failed");
+        deal(address(rewardToken), owner, 100000 * 1e18);
         rewardToken.approve(address(nftStaking), reserveAmount);
-        nftToken.approve(address(nftStaking), 1);
+        nftToken.setApprovalForAll(address(nftStaking), true);
 
         uint256[] memory nftTokens = new uint256[](1);
+        uint256[] memory nftTokensBalance = new uint256[](1);
         nftTokens[0] = 1;
-        nftStaking.stake(machineId, reserveAmount, nftTokens, 2);
+        nftTokensBalance[0] = 1;
+        nftStaking.stake(machineId, reserveAmount, nftTokens, nftTokensBalance, stakeHours);
         vm.stopPrank();
         uint256 totalCalcPointBeforeRent = nftStaking.totalCalcPoint();
 
         assertEq(totalCalcPointBeforeRent, 100);
+    }
+
+    function claimAfter(string memory machineId, address _owner, uint256 hour, bool shouldGetMore) internal {
+        uint256 balance1 = rewardToken.balanceOf(_owner);
+        passHours(hour);
+        vm.prank(_owner);
+        nftStaking.claim(machineId);
+        uint256 balance2 = rewardToken.balanceOf(_owner);
+        if (shouldGetMore) {
+            assertGt(balance2, balance1);
+        } else {
+            assertEq(balance2, balance1);
+        }
     }
 }
