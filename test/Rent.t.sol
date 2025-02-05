@@ -496,7 +496,8 @@ contract RentTest is Test {
         uint256[] memory nftTokensBalance = new uint256[](1);
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
-        nftStaking.stake(machineId, reserveAmount, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.stake(machineId, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
         uint256 totalCalcPointBeforeRent = nftStaking.totalCalcPoint();
 

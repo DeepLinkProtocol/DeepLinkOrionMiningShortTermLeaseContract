@@ -102,7 +102,8 @@ contract RentTest is Test {
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
         uint256 totalCalcPointBefore = nftStaking.totalCalcPoint();
-        nftStaking.stake(machineId, reserveAmount, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.stake(machineId, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
         uint256 totalCalcPoint = nftStaking.totalCalcPoint();
 

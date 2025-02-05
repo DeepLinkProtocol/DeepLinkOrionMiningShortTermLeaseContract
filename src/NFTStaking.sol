@@ -98,6 +98,7 @@ contract NFTStaking is
     mapping(string => StakeInfo) public machineId2StakeInfos;
 
     event staked(address indexed stakeholder, string machineId);
+    event reserveDLC(string machineId, uint256 amount);
     event unStaked(address indexed stakeholder, string machineId);
     event claimed(
         address indexed stakeholder,
@@ -249,9 +250,31 @@ contract NFTStaking is
         dbcAIContract = IDBCAIContract(addr);
     }
 
+    function addDLCToStake(string memory machineId, uint256 amount) external nonReentrant {
+        require(isStaking(machineId));
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+
+        ApprovedReportInfo[] memory approvedReportInfos = pendingSlashedMachineId2Renter[machineId];
+
+        if (approvedReportInfos.length > 0) {
+            require(
+                amount >= BASE_RESERVE_AMOUNT * approvedReportInfos.length, "amount must be greater than slash amount"
+            );
+            for (uint8 i = 0; i < approvedReportInfos.length; i++) {
+                // pay slash to renters
+                payToRenterForSlashing(machineId, stakeInfo, approvedReportInfos[i].renter, false);
+                amount -= BASE_RESERVE_AMOUNT;
+            }
+            delete pendingSlashedMachineId2Renter[machineId];
+        }
+
+        _joinStaking(machineId, stakeInfo.calcPoint, amount + stakeInfo.reservedAmount);
+        stateContract.addReserveAmount(machineId, stakeInfo.holder, amount);
+        emit reserveDLC(machineId, amount);
+    }
+
     function stake(
         string calldata machineId,
-        uint256 amount,
         uint256[] calldata nftTokenIds,
         uint256[] calldata nftTokenIdBalances,
         uint256 stakeHours
@@ -267,6 +290,7 @@ contract NFTStaking is
         require(
             (stakeHours >= 2) || stakeHours == 0, "available rent duration must be greater than or equal to 2 hours"
         );
+        require(!rewardEnd(), "staking ended");
 
         address stakeholder = msg.sender;
         require(!isStaking(machineId), "machine already staked");
@@ -278,28 +302,6 @@ contract NFTStaking is
         uint256 stakeEndAt = 0;
         if (stakeHours > 0) {
             stakeEndAt = startAtTimestamp + stakeHours * 1 hours;
-        }
-
-        require(!rewardEnd(), "staking ended");
-
-        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-
-        ApprovedReportInfo[] memory approvedReportInfos = pendingSlashedMachineId2Renter[machineId];
-
-        if (approvedReportInfos.length > 0) {
-            require(
-                amount >= BASE_RESERVE_AMOUNT * approvedReportInfos.length, "amount must be greater than slash amount"
-            );
-            for (uint8 i = 0; i < approvedReportInfos.length; i++) {
-                // pay slash to renters
-                payToRenterForSlashing(machineId, stakeInfo, approvedReportInfos[i].renter, false);
-                amount -= BASE_RESERVE_AMOUNT;
-            }
-            delete pendingSlashedMachineId2Renter[machineId];
-        } else {
-            if (stakeInfo.endAtTimestamp == 0) {
-                require(stakeInfo.startAtTimestamp == 0, "machine already staked");
-            }
         }
 
         uint256 currentTime = block.timestamp;
@@ -329,9 +331,9 @@ contract NFTStaking is
             nextRenterCanRentAt: startAtTimestamp
         });
 
-        _joinStaking(machineId, calcPoint, amount);
+        _joinStaking(machineId, calcPoint, 0);
 
-        stateContract.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, amount, gpuCount, true);
+        stateContract.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
         holder2MachineIds[stakeholder].push(machineId);
 
         emit staked(stakeholder, machineId);
@@ -642,9 +644,7 @@ contract NFTStaking is
 
         uint256 newCalcPoint = (stakeInfo.calcPoint * 13) / 10;
         _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
-        stateContract.addOrUpdateStakeHolder(
-            stakeInfo.holder, machineId, newCalcPoint, stakeInfo.reservedAmount, 0, false
-        );
+        stateContract.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
         emit RentMachine(machineId);
     }
 
@@ -658,9 +658,7 @@ contract NFTStaking is
 
         uint256 newCalcPoint = (stakeInfo.calcPoint * 10) / 13;
         _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
-        stateContract.addOrUpdateStakeHolder(
-            stakeInfo.holder, machineId, newCalcPoint, stakeInfo.reservedAmount, 0, false
-        );
+        stateContract.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
 
         stateContract.subRentedGPUCount(stakeInfo.holder, machineId);
 

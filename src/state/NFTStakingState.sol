@@ -220,7 +220,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address _holder,
         string memory _machineId,
         uint256 _calcPoint,
-        uint256 _reservedAmount,
         uint8 _gpuCount,
         bool isAdd
     ) external onlyNftStakingAddress {
@@ -240,9 +239,6 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
             stakeHolderInfo.totalGPUCount += _gpuCount;
             stakeHolderInfo.machineId2Info[_machineId].gpuCount = _gpuCount;
-
-            stakeHolderInfo.totalReservedAmount += _reservedAmount;
-            stakeHolderInfo.machineId2Info[_machineId].reserveAmount = _reservedAmount;
         }
 
         MachineInfo memory previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];

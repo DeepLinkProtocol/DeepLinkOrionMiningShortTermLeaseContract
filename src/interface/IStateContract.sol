@@ -3,12 +3,11 @@ pragma solidity ^0.8.20;
 
 interface IStateContract {
     function getMachinesInStaking(uint256 page, uint256 pageSize) external view returns (string[] memory, uint256);
-
+    function addReserveAmount(string memory _machineId, address _holder, uint256 _reservedAmount) external;
     function addOrUpdateStakeHolder(
         address _holder,
         string memory _machineId,
         uint256 _calcPoint,
-        uint256 _reservedAmount,
         uint8 _gpuCount,
         bool isAdd
     ) external;
