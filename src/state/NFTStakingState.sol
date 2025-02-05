@@ -155,7 +155,7 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function addReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount)
+    function addReserveAmount(string memory _machineId, address _holder,uint256 _reserveAmount)
         external
         onlyNftStakingAddress
     {

@@ -15,8 +15,8 @@ import "../interface/IDBCAIContract.sol";
 /// @custom:oz-upgrades-from OldRent
 contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
-    uint256 public constant REPORT_RESERVE_AMOUNT = 1000 * 1e18;
-    uint256 public constant SLASH_AMOUNT = 1000 * 1e18;
+    uint256 public constant REPORT_RESERVE_AMOUNT = 10000 * 1e18;
+    uint256 public constant SLASH_AMOUNT = 10000 * 1e18;
 
     IRewardToken public feeToken;
     IPrecompileContract public precompileContract;

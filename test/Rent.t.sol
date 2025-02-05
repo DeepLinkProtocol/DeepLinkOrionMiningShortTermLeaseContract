@@ -188,7 +188,7 @@ contract RentTest is Test {
 
     function testSlashForStakeHolderWithStakeTokenAfterReportApprove() public {
         string memory machineId = "machineId";
-        uint256 stakeTokenAmount = 2000 * 1e18;
+        uint256 stakeTokenAmount = 20000 * 1e18;
         stakeByOwner(machineId, stakeTokenAmount, 2);
 
         //        vm.startPrank(owner);

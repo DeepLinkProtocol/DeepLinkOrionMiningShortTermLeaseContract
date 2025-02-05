@@ -25,7 +25,7 @@ contract NFTStaking is
 {
     string public constant PROJECT_NAME = "DeepLink";
     uint8 public constant SECONDS_PER_BLOCK = 6;
-    uint256 public constant BASE_RESERVE_AMOUNT = 1000 * 1e18;
+    uint256 public constant BASE_RESERVE_AMOUNT = 10000 * 1e18;
     uint256 public constant REWARD_DURATION = 60 days;
     uint8 public constant MAX_NFTS_PER_MACHINE = 50;
     //        uint256 public constant REWARD_DURATION = 0.5 days; //todo: change to 60 days. 0.5 day only for test
@@ -298,13 +298,12 @@ contract NFTStaking is
         uint256 nftCount = getNFTCount(nftTokenIdBalances);
         calcPoint = calcPoint * nftCount;
 
-        uint256 startAtTimestamp = block.timestamp;
+        uint256 currentTime = block.timestamp;
         uint256 stakeEndAt = 0;
         if (stakeHours > 0) {
-            stakeEndAt = startAtTimestamp + stakeHours * 1 hours;
+            stakeEndAt = currentTime + stakeHours * 1 hours;
         }
 
-        uint256 currentTime = block.timestamp;
         uint8 gpuCount = 1;
         totalGpuCount += gpuCount;
         if (totalGpuCount >= rewardStartGPUThreshold) {
@@ -328,7 +327,7 @@ contract NFTStaking is
             pendingRewards: 0,
             isRentedByUser: false,
             gpuCount: gpuCount,
-            nextRenterCanRentAt: startAtTimestamp
+            nextRenterCanRentAt: currentTime
         });
 
         _joinStaking(machineId, calcPoint, 0);
@@ -503,7 +502,7 @@ contract NFTStaking is
         // the amount should be transfer to reserve
         totalReservedAmount += moveToReserveAmount;
         stakeInfo.reservedAmount += moveToReserveAmount;
-        stateContract.addReserveAmount(msg.sender, machineId, moveToReserveAmount);
+        stateContract.addReserveAmount(machineId,msg.sender, moveToReserveAmount);
         return (moveToReserveAmount, canClaimAmount);
     }
 
