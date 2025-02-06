@@ -167,7 +167,6 @@ contract RentTest is Test {
             "machineId2 get reward lt staking.getDailyRewardAmount()/2 failed after staked 1 day"
         );
 
-        console.log("reward2  ", nftStaking.getReward(machineId2));
         assertGt(
             nftStaking.getReward(machineId2),
             nftStaking.getDailyRewardAmount() / 2 - 1 * 1e18,
@@ -175,29 +174,26 @@ contract RentTest is Test {
         );
 
         (, uint256 rewardAmountCanClaim, uint256 lockedRewardAmount,) = nftStaking.getRewardInfo(machineId2);
-        assertEq(rewardAmountCanClaim, (reward2 * 1) / 10);
-        assertEq(lockedRewardAmount, reward2 - (reward2 * 1) / 10);
+        assertEq(rewardAmountCanClaim, reward2 / 10);
+        assertEq(lockedRewardAmount, reward2 - reward2 / 10);
 
         passDays(1);
         uint256 reward4 = nftStaking.getReward(machineId2);
         console.log("reward4  ", reward4);
 
         (, uint256 rewardAmountCanClaim0, uint256 lockedRewardAmount0,) = nftStaking.getRewardInfo(machineId2);
-        assertEq(rewardAmountCanClaim0, (reward4 * 1) / 10);
-        assertEq(lockedRewardAmount0, reward4 - (reward4 * 1) / 10);
+        assertEq(rewardAmountCanClaim0, reward4 / 10);
+        assertEq(lockedRewardAmount0, reward4 - reward4 / 10);
 
         vm.prank(stakeHolder2);
         nftStaking.claim(machineId2);
 
         reward4 = nftStaking.getReward(machineId2);
         assertEq(reward4, 0, "machineId2 get reward  failed after claim");
-        (, uint256 rewardAmountCanClaim1, uint256 lockedRewardAmount1,) = nftStaking.getRewardInfo(machineId2);
-        assertEq(rewardAmountCanClaim1, (lockedRewardAmount0 * nftStaking.DAILY_UNLOCK_RATE()) / 1000, "111");
-        assertEq(
-            lockedRewardAmount1,
-            lockedRewardAmount0 - (lockedRewardAmount0 * nftStaking.DAILY_UNLOCK_RATE()) / 1000,
-            "222"
-        );
+
+        passDays(1);
+        (uint256 release, uint256 locked) = nftStaking.calculateReleaseReward(machineId2, true);
+        assertEq(release, ((locked + release) * 1 days / nftStaking.LOCK_PERIOD()), "111");
         vm.stopPrank();
         uint256[] memory tokenIds3 = new uint256[](1);
         tokenIds3[0] = 10;

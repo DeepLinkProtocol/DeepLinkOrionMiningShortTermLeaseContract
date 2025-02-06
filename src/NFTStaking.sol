@@ -30,7 +30,6 @@ contract NFTStaking is
     uint8 public constant MAX_NFTS_PER_MACHINE = 50;
     //        uint256 public constant REWARD_DURATION = 0.5 days; //todo: change to 60 days. 0.5 day only for test
     uint256 public constant LOCK_PERIOD = 180 days;
-    uint8 public constant DAILY_UNLOCK_RATE = 5; // 0.5% = 5/1000
     StakingType public constant STAKING_TYPE = StakingType.ShortTerm;
 
     IStateContract public stateContract;
@@ -61,8 +60,10 @@ contract NFTStaking is
     }
 
     struct LockedRewardDetail {
-        uint256 amount;
+        uint256 totalAmount;
+        uint256 lockTime;
         uint256 unlockTime;
+        uint256 claimedAmount;
     }
 
     struct ApprovedReportInfo {
@@ -366,13 +367,12 @@ contract NFTStaking is
 
         uint256 currentRewardPerUnit = getCurrentRewardRate(getRewardEndAtTimestamp(stakeInfo.endAtTimestamp));
         uint256 totalRewardAmount = calculateRewards(machineId, currentRewardPerUnit);
-
         (uint256 _canClaimAmount, uint256 _lockedAmount) = _getRewardDetail(totalRewardAmount);
-        (uint256 dailyReleaseAmount, uint256 lockedAmountBefore) = _calculateDailyReleaseReward(machineId, true);
+        (uint256 releaseAmount, uint256 lockedAmountBefore) = calculateReleaseReward(machineId, true);
 
         return (
             totalRewardAmount,
-            _canClaimAmount + dailyReleaseAmount,
+            _canClaimAmount + releaseAmount,
             _lockedAmount + lockedAmountBefore,
             stakeInfo.claimedAmount
         );
@@ -399,7 +399,7 @@ contract NFTStaking is
         rewardAmount = getRewardsAndUpdateGlobalRewardRate(machineId);
         (canClaimAmount, lockedAmount) = _getRewardDetail(rewardAmount);
 
-        (uint256 _dailyReleaseAmount,) = _calculateDailyReleaseReward(machineId, false);
+        (uint256 _dailyReleaseAmount,) = calculateReleaseReward(machineId, false);
         canClaimAmount += _dailyReleaseAmount;
 
         ApprovedReportInfo[] storage approvedReportInfos = pendingSlashedMachineId2Renter[machineId];
@@ -440,7 +440,12 @@ contract NFTStaking is
 
         if (lockedAmount > 0) {
             machineId2LockedRewardDetails[machineId].push(
-                LockedRewardDetail({amount: lockedAmount, unlockTime: currentTimestamp + LOCK_PERIOD})
+                LockedRewardDetail({
+                    totalAmount: lockedAmount,
+                    lockTime: currentTimestamp,
+                    unlockTime: currentTimestamp + LOCK_PERIOD,
+                    claimedAmount: 0
+                })
             );
         }
 
@@ -506,34 +511,38 @@ contract NFTStaking is
         return (moveToReserveAmount, canClaimAmount);
     }
 
-    function _calculateDailyReleaseReward(string memory machineId, bool onlyRead)
-        internal
+    function calculateReleaseReward(string memory machineId, bool onlyRead)
+        public
         returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
     {
         LockedRewardDetail[] storage lockedRewardDetails = machineId2LockedRewardDetails[machineId];
-        uint256 _dailyReleaseAmount = 0;
-        uint256 _lockedAmount = 0;
+        uint256 releaseAmount = 0;
+        uint256 totalLockedAmount = 0;
         for (uint256 i = 0; i < lockedRewardDetails.length; i++) {
-            uint256 locked = lockedRewardDetails[i].amount;
-            if (locked == 0) {
+            uint256 total = lockedRewardDetails[i].totalAmount;
+            uint256 claimedAmount = lockedRewardDetails[i].claimedAmount;
+
+            if (total == claimedAmount) {
                 continue;
             }
 
-            if (block.timestamp >= lockedRewardDetails[i].unlockTime) {
-                _dailyReleaseAmount += lockedRewardDetails[i].amount;
+            uint256 currentTimestamp = block.timestamp;
+            if (currentTimestamp >= lockedRewardDetails[i].unlockTime) {
+                releaseAmount += total - claimedAmount;
                 if (!onlyRead) {
-                    lockedRewardDetails[i].amount = 0;
+                    lockedRewardDetails[i].claimedAmount = lockedRewardDetails[i].totalAmount;
                 }
             } else {
-                uint256 dailyUnlockAmount = (lockedRewardDetails[i].amount * DAILY_UNLOCK_RATE) / 1000;
-                _dailyReleaseAmount += dailyUnlockAmount;
+                uint256 totalUnlocked = (currentTimestamp - lockedRewardDetails[i].lockTime) * total / LOCK_PERIOD;
+                uint256 newUnlocked = totalUnlocked - claimedAmount;
+                releaseAmount += newUnlocked;
                 if (!onlyRead) {
-                    lockedRewardDetails[i].amount -= dailyUnlockAmount;
+                    lockedRewardDetails[i].claimedAmount += newUnlocked;
                 }
             }
-            _lockedAmount += locked;
+            totalLockedAmount += total;
         }
-        return (_dailyReleaseAmount, _lockedAmount - _dailyReleaseAmount);
+        return (releaseAmount, totalLockedAmount - releaseAmount);
     }
 
     //    function unStakeAndClaim(string calldata machineId) public nonReentrant {
