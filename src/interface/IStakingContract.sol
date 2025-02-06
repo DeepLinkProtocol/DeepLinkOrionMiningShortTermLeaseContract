@@ -1,16 +1,6 @@
 pragma solidity ^0.8.20;
 
 interface IStakingContract {
-    enum NotifyType {
-        ContractRegister,
-        MachineRegister,
-        MachineUnregister,
-        MachineOnline,
-        MachineOffline
-    }
-
-    function notify(NotifyType tp, string calldata machineId) external returns (bool);
-
     function isStaking(string calldata machineId) external view returns (bool);
     function rentMachine(string calldata machineId) external;
     function endRentMachine(string calldata machineId) external;

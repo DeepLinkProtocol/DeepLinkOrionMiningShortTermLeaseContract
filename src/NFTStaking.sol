@@ -773,10 +773,6 @@ contract NFTStaking is
     //
     //        return true;
     //    }
-    function notify(IRentContract.NotifyType tp, string calldata machineId) external returns (bool) {
-        return rentContract.notify(tp, machineId);
-    }
-
     function _getRewardDetail(uint256 totalRewardAmount)
         internal
         pure
