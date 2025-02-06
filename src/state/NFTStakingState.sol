@@ -155,7 +155,7 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function addReserveAmount(string memory _machineId, address _holder,uint256 _reserveAmount)
+    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount)
         external
         onlyNftStakingAddress
     {
@@ -426,7 +426,7 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function getStateSummary() public view returns (StateSummary memory) {
         uint256 totalGPUCount = stakingContract.getTotalGPUCountInStaking();
         uint256 _leftGPUCountBeforeRewardStart = stakingContract.getLeftGPUCountToStartReward();
-        (uint256 totalCalcPoint, uint256 totalReservedAmount) = stakingContract.getTotalCalcPointAndReservedAmount();
+        (uint256 totalCalcPoint, uint256 totalReservedAmount,) = stakingContract.getGlobalState();
 
         return StateSummary({
             totalCalcPoint: totalCalcPoint,

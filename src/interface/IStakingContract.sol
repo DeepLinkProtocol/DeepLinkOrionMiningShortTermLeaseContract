@@ -30,6 +30,6 @@ interface IStakingContract {
         );
     function getTotalGPUCountInStaking() external view returns (uint256);
     function getLeftGPUCountToStartReward() external view returns (uint256);
-    function getTotalCalcPointAndReservedAmount() external view returns (uint256, uint256);
+    function getGlobalState() external view returns (uint256, uint256, uint256);
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external;
 }

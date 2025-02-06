@@ -502,7 +502,7 @@ contract NFTStaking is
         // the amount should be transfer to reserve
         totalReservedAmount += moveToReserveAmount;
         stakeInfo.reservedAmount += moveToReserveAmount;
-        stateContract.addReserveAmount(machineId,msg.sender, moveToReserveAmount);
+        stateContract.addReserveAmount(machineId, msg.sender, moveToReserveAmount);
         return (moveToReserveAmount, canClaimAmount);
     }
 
@@ -734,8 +734,8 @@ contract NFTStaking is
         emit PaySlash(machineId, renter, BASE_RESERVE_AMOUNT);
     }
 
-    function getTotalCalcPointAndReservedAmount() external view returns (uint256, uint256) {
-        return (totalCalcPoint, totalReservedAmount);
+    function getGlobalState() external view returns (uint256, uint256, uint256) {
+        return (totalCalcPoint, totalReservedAmount, rewardStartAtTimestamp + REWARD_DURATION);
     }
 
     //    function notify(NotifyType tp, string calldata machineId) external returns (bool) {

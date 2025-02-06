@@ -7,7 +7,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import "../interface/IRentContract.sol";
 import "../interface/IStakingContract.sol";
 
-/// @custom:oz-upgrades-from OldNFTStakingState
 contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     IRentContract public rentContract;
     IStakingContract public stakingContract;
@@ -129,7 +128,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         stakeHolderInfo.burnedRentFee += fee;
     }
 
-    function addRentedGPUCount(address _holder, string memory _machineId) external onlyNftStakingAddress {
+    function addRentedGPUCount(address _holder, string memory _machineId) external onlyRentAddress {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -155,7 +154,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         }
     }
 
-    function addReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount)
+    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount)
         external
         onlyNftStakingAddress
     {
@@ -220,7 +219,6 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         address _holder,
         string memory _machineId,
         uint256 _calcPoint,
-        uint256 _reservedAmount,
         uint8 _gpuCount,
         bool isAdd
     ) external onlyNftStakingAddress {
@@ -240,9 +238,6 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
 
             stakeHolderInfo.totalGPUCount += _gpuCount;
             stakeHolderInfo.machineId2Info[_machineId].gpuCount = _gpuCount;
-
-            stakeHolderInfo.totalReservedAmount += _reservedAmount;
-            stakeHolderInfo.machineId2Info[_machineId].reserveAmount = _reservedAmount;
         }
 
         MachineInfo memory previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
@@ -430,7 +425,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
     function getStateSummary() public view returns (StateSummary memory) {
         uint256 totalGPUCount = stakingContract.getTotalGPUCountInStaking();
         uint256 _leftGPUCountBeforeRewardStart = stakingContract.getLeftGPUCountToStartReward();
-        (uint256 totalCalcPoint, uint256 totalReservedAmount) = stakingContract.getTotalCalcPointAndReservedAmount();
+        (uint256 totalCalcPoint, uint256 totalReservedAmount,) = stakingContract.getGlobalState();
 
         return StateSummary({
             totalCalcPoint: totalCalcPoint,

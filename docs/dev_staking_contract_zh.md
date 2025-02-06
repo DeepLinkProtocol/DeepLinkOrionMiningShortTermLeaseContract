@@ -5,8 +5,8 @@ NFTStaking 合约接口文档
 NFTStaking 合约是用于管理 NFT 质押的智能合约。它提供了多种功能，包括质押、解质押、领取奖励等。
 
 ## 函数接口
-### `stake(string calldata machineId, uint256 amount, uint256[] calldata nftTokenIds,uint256[] calldata nftTokenIdBalances, uint256 stakeHours) public nonReentrant`
-- 描述：质押 只能被质押人或者管理员钱包调用
+### `stake(string calldata machineId, uint256[] calldata nftTokenIds,uint256[] calldata nftTokenIdBalances, uint256 stakeHours) public nonReentrant`
+- 描述：质押nft 只能被质押人或者管理员钱包调用
 = 参数：
     - `machineId`: 机器 ID
     - `nftTokenIds`: NFT Token ID 数组
@@ -17,7 +17,7 @@ NFTStaking 合约是用于管理 NFT 质押的智能合约。它提供了多种�
     - `staked`: 质押NFT成功事件
 
 ### `addReserveAmount(string calldata machineId, uint256 amount) public nonReentrant`
-- 描述：质押 只能被质押人或者管理员钱包调用
+- 描述：质押dlc 只能被质押人或者管理员钱包调用
   = 参数：
   - `machineId`: 机器 ID
   - `amount`: 质押金额 可以为0

@@ -11,6 +11,7 @@ import "../interface/IPrecompileContract.sol";
 import "../interface/IStateContract.sol";
 import "forge-std/console.sol";
 import "../interface/IDBCAIContract.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @custom:oz-upgrades-from OldRent
 contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
@@ -272,6 +273,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(rentSeconds >= 10 minutes, "rent duration should be greater than 10 minutes");
         require(rentSeconds <= 2 hours, "rent duration should be less than 2 hours");
 
+        (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
+
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt), 60 days);
+        require(rentSeconds <= maxRentDuration, "rent duration should be less than max rent duration");
+
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
         if (lastRentEndBlock != 0) {
             require(block.number > lastRentEndBlock + 100, "machine can not rent too frequently");
@@ -280,12 +287,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 rentFeeInFact = getMachinePrice(machineId, rentSeconds);
         require(rentFee >= rentFeeInFact, "rent fee not enough");
 
-        (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
         uint256 _now = block.timestamp;
-        if ((_now < endAtTimestamp && endAtTimestamp - _now > 1 hours)) {
-            uint256 maxRentDuration = endAtTimestamp - _now;
-            require(maxRentDuration >= rentSeconds);
-        }
 
         // save rent info
         lastRentId = getNextRentId();
