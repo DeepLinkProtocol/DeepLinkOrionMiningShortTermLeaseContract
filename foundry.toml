@@ -9,6 +9,7 @@ ffi = true
 viaIR = true
 fs_permissions = [{ access = "read", path = "./broadcast" },{ access = "read", path = "./out" }]
 optimizer_runs = 200
+eth_rpc_timeout = 300
 
 
 [etherscan]

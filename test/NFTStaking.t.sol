@@ -71,8 +71,10 @@ contract RentTest is Test {
             address(dbcAIContract),
             address(rewardToken)
         );
-        deal(address(rewardToken), address(this), 10000000 * 1e18);
-        deal(address(rewardToken), address(nftStaking), 200000000 * 1e18);
+        deal(address(rewardToken), address(this), 100000000000 * 1e18);
+        deal(address(rewardToken), owner, 180000000 * 1e18);
+        rewardToken.approve(address(nftStaking), 180000000 * 1e18);
+        nftStaking.depositReward(180000000 * 1e18);
 
         nftStaking.setRewardStartAt(block.timestamp);
 
@@ -103,6 +105,7 @@ contract RentTest is Test {
         nftTokensBalance[0] = 1;
         uint256 totalCalcPointBefore = nftStaking.totalCalcPoint();
         nftStaking.stake(machineId, nftTokens, nftTokensBalance, stakeHours);
+        assertEq(nftToken.balanceOf(_owner, 1), 0, "owner erc1155 failed");
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
         uint256 totalCalcPoint = nftStaking.totalCalcPoint();
@@ -192,7 +195,7 @@ contract RentTest is Test {
         assertEq(reward4, 0, "machineId2 get reward  failed after claim");
 
         passDays(1);
-        (uint256 release, uint256 locked) = nftStaking.calculateReleaseReward(machineId2, true);
+        (uint256 release, uint256 locked) = nftStaking.calculateReleaseReward(machineId2);
         assertEq(release, ((locked + release) * 1 days / nftStaking.LOCK_PERIOD()), "111");
         vm.stopPrank();
         uint256[] memory tokenIds3 = new uint256[](1);
@@ -216,6 +219,24 @@ contract RentTest is Test {
 
         assertEq(totalReservedAmount, 10 * 1e18);
         vm.stopPrank();
+    }
+
+    function testUnStake() public {
+        address stakeHolder = owner;
+        string memory machineId = "machineId";
+        stakeByOwner(machineId, 100000, 480, stakeHolder);
+
+        passHours(480);
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
+            abi.encode(true, false)
+        );
+
+        vm.startPrank(stakeHolder);
+        nftStaking.unStake(machineId);
+        vm.stopPrank();
+        assertEq(nftToken.balanceOf(stakeHolder, 1), 1, "owner erc1155 failed");
     }
 
     function claimAfter(string memory machineId, address _owner, uint256 hour, bool shouldGetMore) internal {

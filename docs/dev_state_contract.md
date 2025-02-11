@@ -1,6 +1,6 @@
 ### Contract:
     State:
-      -- Address:0x5f8bf45dd6d87494814bcd8f3c321bd1ce4d0391
+      -- Address:0xc42C92Eb57cC2bDc12E105D4d2e4a332AB83Fe3B
 ### Network : DeepBrainChain Testnet
     Explorer: https://test.dbcscan.io/
 #### State Contract Methods:

@@ -105,6 +105,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     mapping(address => RentGPUInfo) public stakeHolder2RentGPUInfo;
     mapping(string => uint256) public machineId2LastRentEndBlock;
+    address public canUpgradeAddress;
 
     event RentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter);
     event RenewRent(uint256 rentId, uint256 additionalRentSeconds, uint256 additionalRentFee, address renter);
@@ -163,9 +164,21 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         stateContract = IStateContract(_stateContract);
         dbcAIContract = IDBCAIContract(_dbcAIContract);
         voteThreshold = 3;
+        canUpgradeAddress = msg.sender;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
+        require(newImplementation != address(0), "new implementation is the zero address");
+        require(msg.sender == canUpgradeAddress, "only canUpgradeAddress can authorize upgrade");
+    }
+
+    function setDBCAIContract(address addr) external onlyOwner {
+        dbcAIContract = IDBCAIContract(addr);
+    }
+
+    function setStateContract(address _rentContract) external onlyOwner {
+        stateContract = IStateContract(_rentContract);
+    }
 
     function setAdminsToApproveMachineFaultReporting(address[] calldata admins) external onlyOwner {
         require(admins.length == 5, "admins length should be 5");
@@ -511,7 +524,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function version() external pure returns (uint256) {
-        return 1;
+        return 0;
     }
 
     function getBurnedRentFeeByStakeHolder(address stakeHolder) public view returns (uint256) {
