@@ -94,11 +94,16 @@ contract NFTStaking is
 
     mapping(address => string[]) public holder2MachineIds;
 
+    // todo delete
     mapping(string => LockedRewardDetail[]) public machineId2LockedRewardDetails;
 
     mapping(string => ApprovedReportInfo[]) private pendingSlashedMachineId2Renter;
 
     mapping(string => StakeInfo) public machineId2StakeInfos;
+
+    mapping(string => LockedRewardDetail) public machineId2LockedRewardDetail;
+    mapping(string => bool) public machineId2Rented;
+
 
     event staked(address indexed stakeholder, string machineId);
     event reserveDLC(string machineId, uint256 amount);
@@ -156,6 +161,11 @@ contract NFTStaking is
 
     modifier onlyRentContract() {
         require(msg.sender == address(rentContract), "only rent contract can call this function");
+        _;
+    }
+
+    modifier onlyDLCClientWallet() {
+        require(dlcClientWalletAddress[msg.sender], "only dlc client wallet can call this function");
         _;
     }
 
@@ -263,10 +273,10 @@ contract NFTStaking is
         emit DepositReward(rewardAmount);
     }
 
-    function addDLCToStake(string memory machineId, uint256 amount) external nonReentrant {
-        require(isStaking(machineId),"machine not staked");
-        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+    function addDLCToStake(string memory machineId, uint256 amount) external onlyDLCClientWallet nonReentrant {
+        require(isStaking(machineId), "machine not staked");
 
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         ApprovedReportInfo[] memory approvedReportInfos = pendingSlashedMachineId2Renter[machineId];
 
         if (approvedReportInfos.length > 0) {
@@ -287,27 +297,24 @@ contract NFTStaking is
     }
 
     function stake(
+        address stakeholder,
         string calldata machineId,
         uint256[] calldata nftTokenIds,
         uint256[] calldata nftTokenIdBalances,
         uint256 stakeHours
-    ) external nonReentrant {
+    ) external onlyDLCClientWallet nonReentrant {
         require(depositedReward, "reward not deposited");
         require(dbcAIContract.freeGpuAmount(machineId)>=1, "machine not stake dbc");
         require(nftTokenIds.length == nftTokenIdBalances.length, "nft token ids and balances length not match");
         (address machineOwner, uint256 calcPoint, uint256 cpuRate,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
-
+        require(machineOwner == stakeholder, "machine owner not match");
         require(cpuRate >= 3500, "cpu rate must be greater than or equal to 3500");
-        require(
-            msg.sender == machineOwner || dlcClientWalletAddress[msg.sender], "sender must be machine owner or admin"
-        );
         require(calcPoint > 0, "machine calc point not found");
         require(
             (stakeHours >= 2) || stakeHours == 0, "available rent duration must be greater than or equal to 2 hours"
         );
         require(!rewardEnd(), "staking ended");
 
-        address stakeholder = msg.sender;
         require(!isStaking(machineId), "machine already staked");
         require(nftTokenIds.length > 0, "nft token ids is empty");
         uint256 nftCount = getNFTCount(nftTokenIdBalances);
@@ -347,6 +354,14 @@ contract NFTStaking is
         });
 
         _joinStaking(machineId, calcPoint, 0);
+        if (machineId2LockedRewardDetail[machineId].lockTime == 0){
+            machineId2LockedRewardDetail[machineId] = LockedRewardDetail({
+                totalAmount: 0,
+                lockTime: currentTime,
+                unlockTime: currentTime + LOCK_PERIOD,
+                claimedAmount: 0
+            });
+        }
 
         stateContract.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
         holder2MachineIds[stakeholder].push(machineId);
@@ -456,14 +471,7 @@ contract NFTStaking is
         stateContract.addClaimedRewardAmount(msg.sender, machineId, rewardAmount + _dailyReleaseAmount, canClaimAmount);
 
         if (lockedAmount > 0) {
-            machineId2LockedRewardDetails[machineId].push(
-                LockedRewardDetail({
-                    totalAmount: lockedAmount,
-                    lockTime: currentTimestamp,
-                    unlockTime: currentTimestamp + LOCK_PERIOD,
-                    claimedAmount: 0
-                })
-            );
+            machineId2LockedRewardDetail[machineId].totalAmount += lockedAmount;
         }
 
         emit claimed(stakeholder, machineId, canClaimAmount, moveToReserveAmount, paidSlash);
@@ -531,60 +539,43 @@ contract NFTStaking is
 
     function calculateReleaseRewardAndUpdate(string memory machineId)
         internal
-        returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
+        returns (uint256 releaseAmount, uint256 lockedAmount)
     {
-        LockedRewardDetail[] storage lockedRewardDetails = machineId2LockedRewardDetails[machineId];
-        uint256 releaseAmount = 0;
-        uint256 totalLockedAmount = 0;
-        for (uint256 i = 0; i < lockedRewardDetails.length; i++) {
-            uint256 total = lockedRewardDetails[i].totalAmount;
-            uint256 claimedAmount = lockedRewardDetails[i].claimedAmount;
-            if (total == claimedAmount) {
-                continue;
-            }
-
-            uint256 currentTimestamp = block.timestamp;
-            if (currentTimestamp >= lockedRewardDetails[i].unlockTime) {
-                releaseAmount += total - claimedAmount;
-                lockedRewardDetails[i].claimedAmount = lockedRewardDetails[i].totalAmount;
-            } else {
-                uint256 totalUnlocked = (currentTimestamp - lockedRewardDetails[i].lockTime) * total / LOCK_PERIOD;
-                uint256 newUnlocked = totalUnlocked - claimedAmount;
-                releaseAmount += newUnlocked;
-                lockedRewardDetails[i].claimedAmount += newUnlocked;
-            }
-            totalLockedAmount += total;
+        LockedRewardDetail storage lockedRewardDetail = machineId2LockedRewardDetail[machineId];
+        if (lockedRewardDetail.totalAmount == lockedRewardDetail.claimedAmount) {
+            return (0, 0);
         }
-        return (releaseAmount, totalLockedAmount - releaseAmount);
+
+        if (block.timestamp > lockedRewardDetail.unlockTime){
+            releaseAmount = lockedRewardDetail.totalAmount - lockedRewardDetail.claimedAmount;
+            lockedRewardDetail.claimedAmount = lockedRewardDetail.totalAmount;
+            return (releaseAmount, 0);
+        }
+
+        uint256 totalUnlocked = (block.timestamp  - lockedRewardDetail.lockTime) * lockedRewardDetail.totalAmount / LOCK_PERIOD;
+        releaseAmount = totalUnlocked - lockedRewardDetail.claimedAmount;
+        lockedRewardDetail.claimedAmount += releaseAmount;
+        return (releaseAmount,lockedRewardDetail.totalAmount - releaseAmount);
     }
 
     function calculateReleaseReward(string memory machineId)
         public
         view
-        returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
+        returns (uint256 releaseAmount, uint256 lockedAmount)
     {
-        LockedRewardDetail[] storage lockedRewardDetails = machineId2LockedRewardDetails[machineId];
-        uint256 releaseAmount = 0;
-        uint256 totalLockedAmount = 0;
-        for (uint256 i = 0; i < lockedRewardDetails.length; i++) {
-            uint256 total = lockedRewardDetails[i].totalAmount;
-            uint256 claimedAmount = lockedRewardDetails[i].claimedAmount;
-
-            if (total == claimedAmount) {
-                continue;
-            }
-
-            uint256 currentTimestamp = block.timestamp;
-            if (currentTimestamp >= lockedRewardDetails[i].unlockTime) {
-                releaseAmount += total - claimedAmount;
-            } else {
-                uint256 totalUnlocked = (currentTimestamp - lockedRewardDetails[i].lockTime) * total / LOCK_PERIOD;
-                uint256 newUnlocked = totalUnlocked - claimedAmount;
-                releaseAmount += newUnlocked;
-            }
-            totalLockedAmount += total;
+        LockedRewardDetail storage lockedRewardDetail = machineId2LockedRewardDetail[machineId];
+        if (lockedRewardDetail.totalAmount == lockedRewardDetail.claimedAmount) {
+            return (0, 0);
         }
-        return (releaseAmount, totalLockedAmount - releaseAmount);
+
+        if (block.timestamp > lockedRewardDetail.unlockTime){
+            releaseAmount = lockedRewardDetail.totalAmount - lockedRewardDetail.claimedAmount;
+            return (releaseAmount, 0);
+        }
+
+        uint256 totalUnlocked = (block.timestamp  - lockedRewardDetail.lockTime) * lockedRewardDetail.totalAmount / LOCK_PERIOD;
+        releaseAmount = totalUnlocked - lockedRewardDetail.claimedAmount;
+        return (releaseAmount,lockedRewardDetail.totalAmount - releaseAmount);
     }
 
     //    function unStakeAndClaim(string calldata machineId) public nonReentrant {
@@ -613,6 +604,19 @@ contract NFTStaking is
         (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
         require(!isRegistered, "machine still registered");
         _claim(machineId);
+        _unStake(machineId, stakeInfo.holder);
+    }
+
+    function unStakeByHolder(string calldata machineId) public nonReentrant {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        require( msg.sender == stakeInfo.holder, "not stake holder");
+        require(stakeInfo.startAtTimestamp > 0, "staking not found");
+        require(stakeInfo.isRentedByUser == false, "machine rented by user");
+        (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
+        require(!isRegistered, "machine still registered");
+        if (machineId2Rented[machineId] || stakeInfo.endAtTimestamp < block.timestamp) {
+            _claim(machineId);
+        }
         _unStake(machineId, stakeInfo.holder);
     }
 
@@ -698,6 +702,9 @@ contract NFTStaking is
 
         uint256 newCalcPoint = (stakeInfo.calcPoint * 13) / 10;
         _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
+        if (!machineId2Rented[machineId]){
+            machineId2Rented[machineId] = true;
+        }
         stateContract.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
         emit RentMachine(machineId);
     }
@@ -942,7 +949,7 @@ contract NFTStaking is
         if (stakeEndAtTimestamp > rewardEndAt) {
             return rewardEndAt;
         } else if (stakeEndAtTimestamp > currentTime && stakeEndAtTimestamp - currentTime <= 1 hours) {
-            return stakeEndAtTimestamp - 1 hours;
+            return stakeEndAtTimestamp > 1 hours ? stakeEndAtTimestamp - 1 hours : 0;
         }
         if (stakeEndAtTimestamp != 0 && stakeEndAtTimestamp < currentTime) {
             return stakeEndAtTimestamp;

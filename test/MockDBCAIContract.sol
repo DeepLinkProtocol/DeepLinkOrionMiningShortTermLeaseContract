@@ -97,7 +97,7 @@ contract DBCStakingContractMock is IDBCAIContract {
         return 1;
     }
 
-    function reportStakingStatus(string calldata, NFTStaking.StakingType , string calldata , uint256 , bool ) external{
+    function reportStakingStatus(string calldata, NFTStaking.StakingType , string calldata , uint256 , bool ) external pure{
         return;
     }
 

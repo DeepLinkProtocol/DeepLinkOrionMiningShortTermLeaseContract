@@ -77,7 +77,9 @@ contract RentTest is Test {
         nftStaking.depositReward(180000000 * 1e18);
 
         nftStaking.setRewardStartAt(block.timestamp);
-
+        address[] memory addrs = new address[](1);
+        addrs[0] = owner;
+        nftStaking.setDLCClientWallets(addrs);
         vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector),abi.encode());
         vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
         vm.stopPrank();
@@ -100,13 +102,15 @@ contract RentTest is Test {
         deal(address(rewardToken), _owner, 100000 * 1e18);
         rewardToken.approve(address(nftStaking), reserveAmount);
         nftToken.setApprovalForAll(address(nftStaking), true);
+        vm.stopPrank();
 
+        vm.startPrank(owner);
         uint256[] memory nftTokens = new uint256[](1);
         uint256[] memory nftTokensBalance = new uint256[](1);
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
         uint256 totalCalcPointBefore = nftStaking.totalCalcPoint();
-        nftStaking.stake(machineId, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.stake(_owner,machineId, nftTokens, nftTokensBalance, stakeHours);
         assertEq(nftToken.balanceOf(_owner, 1), 0, "owner erc1155 failed");
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
@@ -129,13 +133,8 @@ contract RentTest is Test {
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = 1;
         vm.startPrank(stakeHolder);
-        // staking.stake(machineId, 0, tokenIds, 1);
         stakeByOwner(machineId, 0, 480, stakeHolder);
         vm.stopPrank();
-
-        //        (address[] memory topHolders, uint256[] memory topCalcPoints) = state.getTopStakeHolders();
-        //        assertEq(topHolders[0], stakeHolder);
-        //        assertEq(topCalcPoints[0], 100);
 
         (NFTStakingState.StakeHolder[] memory topHolders,) = nftStakingState.getTopStakeHolders(0, 10);
         assertEq(topHolders[0].holder, stakeHolder, "topHolders[0].holder, stakeHolder");
@@ -198,7 +197,7 @@ contract RentTest is Test {
 
         passDays(1);
         (uint256 release, uint256 locked) = nftStaking.calculateReleaseReward(machineId2);
-        assertEq(release, ((locked + release) * 1 days / nftStaking.LOCK_PERIOD()), "111");
+        assertEq(release, ((locked + release) * 3 days / nftStaking.LOCK_PERIOD()), "111");
         vm.stopPrank();
         uint256[] memory tokenIds3 = new uint256[](1);
         tokenIds3[0] = 10;

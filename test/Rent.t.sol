@@ -491,6 +491,12 @@ contract RentTest is Test {
         );
 
         vm.startPrank(owner);
+        if (!nftStaking.dlcClientWalletAddress(owner)){
+            address[] memory addrs = new address[](1);
+            addrs[0] = owner;
+            nftStaking.setDLCClientWallets(addrs);
+        }
+
         dealERC1155(address(nftToken), owner, 1, 1, false);
         assertEq(nftToken.balanceOf(owner, 1), 1, "owner erc1155 failed");
         deal(address(rewardToken), owner, 100000 * 1e18);
@@ -501,7 +507,7 @@ contract RentTest is Test {
         uint256[] memory nftTokensBalance = new uint256[](1);
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
-        nftStaking.stake(machineId, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.stake(owner, machineId, nftTokens, nftTokensBalance, stakeHours);
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
         uint256 totalCalcPointBeforeRent = nftStaking.totalCalcPoint();
