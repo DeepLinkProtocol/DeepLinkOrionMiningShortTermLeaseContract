@@ -120,6 +120,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event MachineRegister(string machineId, uint256 calcPoint);
     event MachineUnregister(string machineId, uint256 calcPoint);
     event PaidSlash(address indexed stakeHolder, string machineId);
+    event SlashMachineOnOffline(address indexed stakeHolder,address indexed renter, string machineId, uint256 slashAmount);
+    event RemoveCalcPointOnOffline(string machineId);
+    event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
 
     modifier onlyApproveAdmins() {
         bool found = false;
@@ -563,29 +566,35 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function notify(NotifyType tp, string calldata machineId) external onlyDBCAIContract returns (bool) {
+        if (tp == NotifyType.ContractRegister) {
+            registered = true;
+            return true;
+        }
+
+        bool isStaking = stakingContract.isStaking(machineId);
+        if (!isStaking){
+            return false;
+        }
+
         (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
 
         (, uint256 calcPointInFact,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
-        bool isStaking = stakingContract.isStaking(machineId);
 
-        if (tp == NotifyType.ContractRegister) {
-            registered = true;
-        } else if (tp == NotifyType.MachineRegister) {
-            if (calcPoint == 0 && isStaking) {
+        if (tp == NotifyType.MachineRegister) {
+            if (calcPoint == 0) {
                 // staked before
                 stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
+                emit MachineRegister(machineId, calcPointInFact);
             }
-            emit MachineRegister(machineId, calcPointInFact);
         } else if (tp == NotifyType.MachineUnregister) {
-            if (isStaking) {
-                stakingContract.joinStaking(machineId, 0, reservedAmount);
-            }
+            stakingContract.joinStaking(machineId, 0, reservedAmount);
             emit MachineUnregister(machineId, calcPoint);
+
         } else if (tp == NotifyType.MachineOffline) {
             uint256 rentId = machineId2RentId[machineId];
             RentInfo memory rentInfo = rentId2RentInfo[rentId];
-            if (isStaking && isRegistered) {
+            if (isRegistered) {
                 if (rentInfo.renter != address(0)) {
                     SlashInfo memory slashInfo = newSlashInfo(
                         rentInfo.stakeHolder,
@@ -598,14 +607,17 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                         rentInfo.renter
                     );
                     addSlashInfoAndReport(slashInfo);
+                    emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter,rentInfo.machineId,SLASH_AMOUNT);
                 } else {
                     stakingContract.joinStaking(machineId, 0, reservedAmount);
+                    emit RemoveCalcPointOnOffline(machineId);
                 }
             }
         } else if (tp == NotifyType.MachineOnline) {
-            if (calcPoint == 0 && isStaking) {
+            if (calcPoint == 0) {
                 // staked before
                 stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
+                emit AddBackCalcPointOnOnline(machineId, calcPointInFact);
             }
         }
         return true;

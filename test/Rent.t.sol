@@ -75,7 +75,9 @@ contract RentTest is Test {
         nftStaking.depositReward(180000000 * 1e18);
 
         nftStaking.setRewardStartAt(block.timestamp);
-        nftStaking.setRewardStartAt(block.timestamp);
+
+        vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector),abi.encode());
+        vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
 
         vm.stopPrank();
     }

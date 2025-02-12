@@ -24,12 +24,11 @@ contract NFTStaking is
     UUPSUpgradeable,
     IERC1155Receiver
 {
-    string public constant PROJECT_NAME = "DeepLink";
+    string public constant PROJECT_NAME = "deeplink";
     uint8 public constant SECONDS_PER_BLOCK = 6;
     uint256 public constant BASE_RESERVE_AMOUNT = 10000 * 1e18;
     uint256 public constant REWARD_DURATION = 60 days;
     uint8 public constant MAX_NFTS_PER_MACHINE = 20;
-    //        uint256 public constant REWARD_DURATION = 0.5 days; //todo: change to 60 days. 0.5 day only for test
     uint256 public constant LOCK_PERIOD = 180 days;
     StakingType public constant STAKING_TYPE = StakingType.ShortTerm;
 
@@ -294,6 +293,7 @@ contract NFTStaking is
         uint256 stakeHours
     ) external nonReentrant {
         require(depositedReward, "reward not deposited");
+        require(dbcAIContract.freeGpuAmount(machineId)>=1, "machine not stake dbc");
         require(nftTokenIds.length == nftTokenIdBalances.length, "nft token ids and balances length not match");
         (address machineOwner, uint256 calcPoint, uint256 cpuRate,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
@@ -350,7 +350,7 @@ contract NFTStaking is
 
         stateContract.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
         holder2MachineIds[stakeholder].push(machineId);
-
+        dbcAIContract.reportStakingStatus(PROJECT_NAME,StakingType.ShortTerm,machineId,1,true);
         emit staked(stakeholder, machineId);
     }
 
@@ -636,6 +636,7 @@ contract NFTStaking is
         _joinStaking(machineId, 0, 0);
         removeStakingMachineFromHolder(stakeholder, machineId);
         stateContract.removeMachine(stakeInfo.holder, machineId);
+        dbcAIContract.reportStakingStatus(PROJECT_NAME,StakingType.ShortTerm,machineId,1,false);
         emit unStaked(stakeholder, machineId);
     }
 

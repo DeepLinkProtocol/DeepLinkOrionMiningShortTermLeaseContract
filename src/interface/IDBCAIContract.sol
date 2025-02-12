@@ -21,4 +21,10 @@ interface IDBCAIContract {
             uint256 gpuCount,
             string memory machineId
         );
+
+    function freeGpuAmount(string calldata ) external pure returns (uint256);
+
+    function reportStakingStatus(string calldata projectName, NFTStaking.StakingType stakingType, string calldata id, uint256 gpuNum, bool isStake) external;
+
+
 }
