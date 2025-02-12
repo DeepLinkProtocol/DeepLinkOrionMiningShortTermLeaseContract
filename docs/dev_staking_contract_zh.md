@@ -28,7 +28,7 @@ NFTStaking 合约是用于管理 NFT 质押的智能合约。它提供了多种�
 - 返回值：无
 - 事件：
   - `reseveDLC`: 质押DLC成功事件
-  - 
+  
 ### `addStakeHours(string memory machineId, uint256 additionHours) external`
 - 描述：增加质押时长
   = 参数：
@@ -36,9 +36,16 @@ NFTStaking 合约是用于管理 NFT 质押的智能合约。它提供了多种�
   - `additionHours`: 小时
 - 返回值：无
 
-  - `reseveDLC`: 质押DLC成功事件
+### `function unStakeByHolder(string calldata machineId) public nonReentrant
+- 描述：解质押 只能被质押人调用
+- 参数：
+  - `machineId`: 机器 ID
+- 返回值：无
+- 事件：
+  - `unStaked`: 解质押成功事件
+
 ### `unStake(string calldata machineId) public nonReentrant`
-- 描述：解质押 只能被质押人或者管理员钱包调用
+- 描述：解质押 只能被管理员钱包调用
 - 参数：
     - `machineId`: 机器 ID
 - 返回值：无
