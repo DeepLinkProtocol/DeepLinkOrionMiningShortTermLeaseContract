@@ -18,11 +18,11 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 /// @custom:oz-upgrades-from OldNFTStaking
 contract OldNFTStaking is
-Initializable,
-ReentrancyGuardUpgradeable,
-OwnableUpgradeable,
-UUPSUpgradeable,
-IERC1155Receiver
+    Initializable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
+    UUPSUpgradeable,
+    IERC1155Receiver
 {
     string public constant PROJECT_NAME = "DeepLink";
     uint8 public constant SECONDS_PER_BLOCK = 6;
@@ -375,9 +375,9 @@ IERC1155Receiver
     }
 
     function getRewardInfo(string memory machineId)
-    public
-    view
-    returns (uint256 newRewardAmount, uint256 canClaimAmount, uint256 lockedAmount, uint256 claimedAmount)
+        public
+        view
+        returns (uint256 newRewardAmount, uint256 canClaimAmount, uint256 lockedAmount, uint256 claimedAmount)
     {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
 
@@ -424,7 +424,7 @@ IERC1155Receiver
         if (canClaimAmount > 0 && (_isStaking || slashed)) {
             if (stakeInfo.reservedAmount < BASE_RESERVE_AMOUNT) {
                 (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
-                                tryMoveReserve(machineId, canClaimAmount, stakeInfo);
+                    tryMoveReserve(machineId, canClaimAmount, stakeInfo);
                 canClaimAmount = leftAmountCanClaim;
                 moveToReserveAmount = _moveToReserveAmount;
             }
@@ -441,7 +441,7 @@ IERC1155Receiver
 
         if (stakeInfo.reservedAmount < BASE_RESERVE_AMOUNT) {
             (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
-                            tryMoveReserve(machineId, canClaimAmount, stakeInfo);
+                tryMoveReserve(machineId, canClaimAmount, stakeInfo);
             canClaimAmount = leftAmountCanClaim;
             moveToReserveAmount = _moveToReserveAmount;
         }
@@ -474,14 +474,14 @@ IERC1155Receiver
     }
 
     function getAllRewardInfo()
-    external
-    view
-    returns (uint256 availableRewardAmount, uint256 canClaimAmount, uint256 lockedAmount, uint256 claimedAmount)
+        external
+        view
+        returns (uint256 availableRewardAmount, uint256 canClaimAmount, uint256 lockedAmount, uint256 claimedAmount)
     {
         string[] memory machineIds = holder2MachineIds[msg.sender];
         for (uint256 i = 0; i < machineIds.length; i++) {
             (uint256 _availableRewardAmount, uint256 _canClaimAmount, uint256 _lockedAmount, uint256 _claimedAmount) =
-                            getRewardInfo(machineIds[i]);
+                getRewardInfo(machineIds[i]);
             availableRewardAmount += _availableRewardAmount;
             canClaimAmount += _canClaimAmount;
             lockedAmount += _lockedAmount;
@@ -510,8 +510,8 @@ IERC1155Receiver
     }
 
     function tryMoveReserve(string memory machineId, uint256 canClaimAmount, StakeInfo storage stakeInfo)
-    internal
-    returns (uint256 moveToReserveAmount, uint256 leftAmountCanClaim)
+        internal
+        returns (uint256 moveToReserveAmount, uint256 leftAmountCanClaim)
     {
         uint256 leftAmountShouldReserve = BASE_RESERVE_AMOUNT - stakeInfo.reservedAmount;
         if (canClaimAmount >= leftAmountShouldReserve) {
@@ -530,8 +530,8 @@ IERC1155Receiver
     }
 
     function calculateReleaseRewardAndUpdate(string memory machineId)
-    internal
-    returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
+        internal
+        returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
     {
         LockedRewardDetail[] storage lockedRewardDetails = machineId2LockedRewardDetails[machineId];
         uint256 releaseAmount = 0;
@@ -559,9 +559,9 @@ IERC1155Receiver
     }
 
     function calculateReleaseReward(string memory machineId)
-    public
-    view
-    returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
+        public
+        view
+        returns (uint256 dailyReleaseAmount, uint256 lockedAmount)
     {
         LockedRewardDetail[] storage lockedRewardDetails = machineId2LockedRewardDetails[machineId];
         uint256 releaseAmount = 0;
@@ -605,16 +605,16 @@ IERC1155Receiver
     //        stateContract.removeMachine(stakeholder, machineId);
     //    }
 
-//    function unStake(string calldata machineId) public nonReentrant {
-//        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-//        require(dlcClientWalletAddress[msg.sender] || msg.sender == stakeInfo.holder, "not dlc client wallet or owner");
-//        require(stakeInfo.startAtTimestamp > 0, "staking not found");
-//        require(block.timestamp >= stakeInfo.endAtTimestamp, "staking not ended");
-//        (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
-//        require(!isRegistered, "machine still registered");
-//        _claim(machineId);
-//        _unStake(machineId, stakeInfo.holder);
-//    }
+    //    function unStake(string calldata machineId) public nonReentrant {
+    //        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+    //        require(dlcClientWalletAddress[msg.sender] || msg.sender == stakeInfo.holder, "not dlc client wallet or owner");
+    //        require(stakeInfo.startAtTimestamp > 0, "staking not found");
+    //        require(block.timestamp >= stakeInfo.endAtTimestamp, "staking not ended");
+    //        (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
+    //        require(!isRegistered, "machine still registered");
+    //        _claim(machineId);
+    //        _unStake(machineId, stakeInfo.holder);
+    //    }
 
     function _unStake(string calldata machineId, address stakeholder) internal {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
@@ -701,22 +701,22 @@ IERC1155Receiver
         emit RentMachine(machineId);
     }
 
-//    function endRentMachine(string calldata machineId) external onlyRentContract {
-//        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-//        require(stakeInfo.isRentedByUser, "not rented by user");
-//        stakeInfo.isRentedByUser = false;
-//
-//        // 100 blocks
-//        stakeInfo.nextRenterCanRentAt = 600 + block.timestamp;
-//
-//        uint256 newCalcPoint = (stakeInfo.calcPoint * 10) / 13;
-//        _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
-//        stateContract.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
-//
-//        stateContract.subRentedGPUCount(stakeInfo.holder, machineId);
-//
-//        emit EndRentMachine(machineId);
-//    }
+    //    function endRentMachine(string calldata machineId) external onlyRentContract {
+    //        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+    //        require(stakeInfo.isRentedByUser, "not rented by user");
+    //        stakeInfo.isRentedByUser = false;
+    //
+    //        // 100 blocks
+    //        stakeInfo.nextRenterCanRentAt = 600 + block.timestamp;
+    //
+    //        uint256 newCalcPoint = (stakeInfo.calcPoint * 10) / 13;
+    //        _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
+    //        stateContract.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
+    //
+    //        stateContract.subRentedGPUCount(stakeInfo.holder, machineId);
+    //
+    //        emit EndRentMachine(machineId);
+    //    }
 
     function reportMachineFault(string calldata machineId, address renter) public onlyRentContractOrThis {
         if (!rewardStart()) {
@@ -744,33 +744,33 @@ IERC1155Receiver
         }
     }
 
-//    function getMachineInfo(string memory machineId)
-//    external
-//    view
-//    returns (
-//        address holder,
-//        uint256 calcPoint,
-//        uint256 startAtTimestamp,
-//        uint256 endAtTimestamp,
-//        uint256 nextRenterCanRentAt,
-//        uint256 reservedAmount,
-//        bool isOnline,
-//        bool isRegistered
-//    )
-//    {
-//        StakeInfo memory info = machineId2StakeInfos[machineId];
-//        (bool _isOnline, bool _isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
-//        return (
-//            info.holder,
-//            info.calcPoint,
-//            info.startAtTimestamp,
-//            info.endAtTimestamp,
-//            info.nextRenterCanRentAt,
-//            info.reservedAmount,
-//            _isOnline,
-//            _isRegistered
-//        );
-//    }
+    //    function getMachineInfo(string memory machineId)
+    //    external
+    //    view
+    //    returns (
+    //        address holder,
+    //        uint256 calcPoint,
+    //        uint256 startAtTimestamp,
+    //        uint256 endAtTimestamp,
+    //        uint256 nextRenterCanRentAt,
+    //        uint256 reservedAmount,
+    //        bool isOnline,
+    //        bool isRegistered
+    //    )
+    //    {
+    //        StakeInfo memory info = machineId2StakeInfos[machineId];
+    //        (bool _isOnline, bool _isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
+    //        return (
+    //            info.holder,
+    //            info.calcPoint,
+    //            info.startAtTimestamp,
+    //            info.endAtTimestamp,
+    //            info.nextRenterCanRentAt,
+    //            info.reservedAmount,
+    //            _isOnline,
+    //            _isRegistered
+    //        );
+    //    }
 
     function payToRenterForSlashing(
         string memory machineId,
@@ -818,9 +818,9 @@ IERC1155Receiver
     //        return true;
     //    }
     function _getRewardDetail(uint256 totalRewardAmount)
-    internal
-    pure
-    returns (uint256 canClaimAmount, uint256 lockedAmount)
+        internal
+        pure
+        returns (uint256 canClaimAmount, uint256 lockedAmount)
     {
         uint256 releaseImmediateAmount = totalRewardAmount / 10;
         uint256 releaseLinearLockedAmount = totalRewardAmount - releaseImmediateAmount;
@@ -875,7 +875,7 @@ IERC1155Receiver
         );
 
         uint256 newLnReserved =
-                            toolContract.LnUint256(reserveAmount > BASE_RESERVE_AMOUNT ? reserveAmount : BASE_RESERVE_AMOUNT);
+            toolContract.LnUint256(reserveAmount > BASE_RESERVE_AMOUNT ? reserveAmount : BASE_RESERVE_AMOUNT);
 
         totalAdjustUnit -= stakeInfo.calcPoint * oldLnReserved;
         totalAdjustUnit += calcPoint * newLnReserved;

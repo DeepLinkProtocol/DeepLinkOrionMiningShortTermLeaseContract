@@ -93,12 +93,14 @@ contract DBCStakingContractMock is IDBCAIContract {
         return (true, true);
     }
 
-    function freeGpuAmount(string calldata ) external pure returns (uint256){
+    function freeGpuAmount(string calldata) external pure returns (uint256) {
         return 1;
     }
 
-    function reportStakingStatus(string calldata, NFTStaking.StakingType , string calldata , uint256 , bool ) external pure{
+    function reportStakingStatus(string calldata, NFTStaking.StakingType, string calldata, uint256, bool)
+        external
+        pure
+    {
         return;
     }
-
 }

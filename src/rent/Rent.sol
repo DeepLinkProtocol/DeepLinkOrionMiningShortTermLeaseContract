@@ -120,7 +120,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event MachineRegister(string machineId, uint256 calcPoint);
     event MachineUnregister(string machineId, uint256 calcPoint);
     event PaidSlash(address indexed stakeHolder, string machineId);
-    event SlashMachineOnOffline(address indexed stakeHolder,address indexed renter, string machineId, uint256 slashAmount);
+    event SlashMachineOnOffline(
+        address indexed stakeHolder, address indexed renter, string machineId, uint256 slashAmount
+    );
     event RemoveCalcPointOnOffline(string machineId);
     event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
 
@@ -572,14 +574,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         bool isStaking = stakingContract.isStaking(machineId);
-        if (!isStaking){
+        if (!isStaking) {
             return false;
         }
 
         (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
 
         (, uint256 calcPointInFact,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
-
 
         if (tp == NotifyType.MachineRegister) {
             if (calcPoint == 0) {
@@ -590,7 +591,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         } else if (tp == NotifyType.MachineUnregister) {
             stakingContract.joinStaking(machineId, 0, reservedAmount);
             emit MachineUnregister(machineId, calcPoint);
-
         } else if (tp == NotifyType.MachineOffline) {
             uint256 rentId = machineId2RentId[machineId];
             RentInfo memory rentInfo = rentId2RentInfo[rentId];
@@ -607,7 +607,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                         rentInfo.renter
                     );
                     addSlashInfoAndReport(slashInfo);
-                    emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter,rentInfo.machineId,SLASH_AMOUNT);
+                    emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter, rentInfo.machineId, SLASH_AMOUNT);
                 } else {
                     stakingContract.joinStaking(machineId, 0, reservedAmount);
                     emit RemoveCalcPointOnOffline(machineId);

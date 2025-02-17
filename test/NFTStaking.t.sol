@@ -80,8 +80,10 @@ contract RentTest is Test {
         address[] memory addrs = new address[](1);
         addrs[0] = owner;
         nftStaking.setDLCClientWallets(addrs);
-        vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector),abi.encode());
-        vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
+        vm.mockCall(
+            address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector), abi.encode()
+        );
+        vm.mockCall(address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
         vm.stopPrank();
     }
 
@@ -110,7 +112,7 @@ contract RentTest is Test {
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
         uint256 totalCalcPointBefore = nftStaking.totalCalcPoint();
-        nftStaking.stake(_owner,machineId, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.stake(_owner, machineId, nftTokens, nftTokensBalance, stakeHours);
         assertEq(nftToken.balanceOf(_owner, 1), 0, "owner erc1155 failed");
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
@@ -238,6 +240,17 @@ contract RentTest is Test {
         nftStaking.unStake(machineId);
         vm.stopPrank();
         assertEq(nftToken.balanceOf(stakeHolder, 1), 1, "owner erc1155 failed");
+
+
+        uint256 balance1 = rewardToken.balanceOf(stakeHolder);
+
+        passHours(24);
+        vm.startPrank(stakeHolder);
+        nftStaking.claim(machineId);
+        vm.stopPrank();
+        uint256 balance2 = rewardToken.balanceOf(stakeHolder);
+
+        assertGt(balance2, balance1, "claim failed");
     }
 
     function claimAfter(string memory machineId, address _owner, uint256 hour, bool shouldGetMore) internal {

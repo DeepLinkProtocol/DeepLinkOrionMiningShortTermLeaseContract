@@ -76,8 +76,10 @@ contract RentTest is Test {
 
         nftStaking.setRewardStartAt(block.timestamp);
 
-        vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector),abi.encode());
-        vm.mockCall(address(dbcAIContract),abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
+        vm.mockCall(
+            address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector), abi.encode()
+        );
+        vm.mockCall(address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
 
         vm.stopPrank();
     }
@@ -491,7 +493,7 @@ contract RentTest is Test {
         );
 
         vm.startPrank(owner);
-        if (!nftStaking.dlcClientWalletAddress(owner)){
+        if (!nftStaking.dlcClientWalletAddress(owner)) {
             address[] memory addrs = new address[](1);
             addrs[0] = owner;
             nftStaking.setDLCClientWallets(addrs);
