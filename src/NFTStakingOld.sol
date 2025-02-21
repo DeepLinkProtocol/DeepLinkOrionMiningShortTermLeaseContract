@@ -295,7 +295,7 @@ contract OldNFTStaking is
     ) external nonReentrant {
         require(depositedReward, "reward not deposited");
         require(nftTokenIds.length == nftTokenIdBalances.length, "nft token ids and balances length not match");
-        (address machineOwner, uint256 calcPoint, uint256 cpuRate,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+        (address machineOwner, uint256 calcPoint, uint256 cpuRate,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
         require(cpuRate >= 3500, "cpu rate must be greater than or equal to 3500");
         require(

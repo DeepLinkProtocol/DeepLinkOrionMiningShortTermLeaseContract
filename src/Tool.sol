@@ -47,59 +47,46 @@ contract Tool is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return DECIMALS;
     }
 
-    function _getRewardDetail(uint256 totalRewardAmount)
-        internal
-        pure
-        returns (uint256 canClaimAmount, uint256 lockedAmount)
-    {
-        uint256 releaseImmediateAmount = totalRewardAmount / 10;
-        uint256 releaseLinearLockedAmount = totalRewardAmount - releaseImmediateAmount;
-        return (releaseImmediateAmount, releaseLinearLockedAmount);
+    function contains(bytes memory str, bytes memory substr) internal pure returns (bool) {
+        if (str.length < substr.length) {
+            return false;
+        }
+        for (uint256 i = 0; i <= str.length - substr.length; i++) {
+            bool find = true;
+            for (uint256 j = 0; j < substr.length; j++) {
+                if (bytes1(str[i + j]) != bytes1(substr[j])) {
+                    find = false;
+                    break;
+                }
+            }
+            if (find) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    function getRewardStartTime(uint256 rewardStartAtBlockNumber) public view returns (uint256) {
-        if (rewardStartAtBlockNumber == 0) {
-            return 0;
+    function hasNumberGreaterThan20(string memory str) internal pure returns (bool) {
+        bytes memory strBytes = bytes(str);
+        uint256 num = 0;
+        for (uint256 i = 0; i < strBytes.length; i++) {
+            if (strBytes[i] >= "0" && strBytes[i] <= "9") {
+                num = num * 10 + (uint8(strBytes[i]) - uint8(bytes1("0")));
+            } else if (num != 0) {
+                if (num >= 20) {
+                    return true;
+                }
+                num = 0;
+            }
         }
-        if (block.number > rewardStartAtBlockNumber) {
-            uint256 timeDuration = (block.number - rewardStartAtBlockNumber) * SECONDS_PER_BLOCK;
-            return block.timestamp - timeDuration;
-        }
-
-        return block.timestamp + (rewardStartAtBlockNumber - block.number) * SECONDS_PER_BLOCK;
+        return num > 20;
     }
 
-    function getCurrentRewardRate(
-        uint256 rewardStartAtBlockNumber,
-        uint256 lastUpdateTime,
-        uint256 totalAdjustUnit,
-        uint256 rewardPerUnit,
-        uint256 dailyRewardAmount
-    ) internal view returns (uint256) {
-        uint256 tempRewardPerUnit = rewardPerUnit;
+    function checkString(string memory text) public pure returns (bool) {
+        bool hasNvidia = contains(bytes(text), bytes("NVIDIA"));
 
-        uint256 rewardStartTime = getRewardStartTime(rewardStartAtBlockNumber);
+        bool has = hasNumberGreaterThan20(text);
 
-        uint256 _lastUpdateTime = rewardStartTime < lastUpdateTime ? lastUpdateTime : rewardStartTime;
-        uint256 timeDelta = block.timestamp - _lastUpdateTime;
-
-        if (totalAdjustUnit > 0) {
-            uint256 periodReward =
-                (getDailyRewardAmount(rewardStartAtBlockNumber, dailyRewardAmount) * timeDelta) / 1 days;
-            tempRewardPerUnit += safeDiv(periodReward, totalAdjustUnit);
-        }
-
-        return tempRewardPerUnit;
-    }
-
-    function getDailyRewardAmount(uint256 rewardStartAtBlockNumber, uint256 dailyRewardAmount)
-        public
-        pure
-        returns (uint256)
-    {
-        if (rewardStartAtBlockNumber > 0) {
-            return dailyRewardAmount;
-        }
-        return 0;
+        return hasNvidia && has;
     }
 }

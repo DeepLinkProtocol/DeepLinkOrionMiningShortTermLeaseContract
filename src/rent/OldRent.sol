@@ -552,7 +552,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function notify(NotifyType tp, string calldata machineId) external onlyDBCAIContract returns (bool) {
         (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
 
-        (, uint256 calcPointInFact,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+        (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
         bool isStaking = stakingContract.isStaking(machineId);
 

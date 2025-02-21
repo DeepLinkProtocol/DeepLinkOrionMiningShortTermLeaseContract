@@ -16,8 +16,8 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 /// @custom:oz-upgrades-from OldRent
 contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
-    uint256 public constant REPORT_RESERVE_AMOUNT = 10000 * 1e18;
-    uint256 public constant SLASH_AMOUNT = 10000 * 1e18;
+    uint256 public constant REPORT_RESERVE_AMOUNT = 10_000 ether;
+    uint256 public constant SLASH_AMOUNT = 10_000 ether;
 
     IRewardToken public feeToken;
     IPrecompileContract public precompileContract;
@@ -177,6 +177,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(msg.sender == canUpgradeAddress, "only canUpgradeAddress can authorize upgrade");
     }
 
+    function setCanUpgradeAddress(address addr) external  onlyOwner {
+        canUpgradeAddress = addr;
+    }
+
     function setDBCAIContract(address addr) external onlyOwner {
         dbcAIContract = IDBCAIContract(addr);
     }
@@ -294,6 +298,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        require(rewardEndAt > 60 days, "reward not start");
         uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt), 60 days);
         require(rentSeconds <= maxRentDuration, "rent duration should be less than max rent duration");
 
@@ -580,7 +585,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
 
-        (, uint256 calcPointInFact,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+        (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
         if (tp == NotifyType.MachineRegister) {
             if (calcPoint == 0) {

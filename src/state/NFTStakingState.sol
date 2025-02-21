@@ -100,6 +100,10 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(msg.sender == canUpgradeAddress, "only canUpgradeAddress can authorize upgrade");
     }
 
+    function setCanUpgradeAddress(address addr) external onlyOwner {
+        canUpgradeAddress = addr;
+    }
+
     function setStakingContract(address caller) external onlyOwner {
         stakingContract = IStakingContract(caller);
     }
@@ -229,6 +233,7 @@ contract NFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint8 _gpuCount,
         bool isAdd
     ) external onlyNftStakingAddress {
+        require(_holder != address(0), "Invalid holder address");
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {

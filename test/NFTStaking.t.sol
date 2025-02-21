@@ -74,7 +74,7 @@ contract RentTest is Test {
         deal(address(rewardToken), address(this), 100000000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);
         rewardToken.approve(address(nftStaking), 180000000 * 1e18);
-        nftStaking.depositReward(180000000 * 1e18);
+//        nftStaking.depositReward(180000000 * 1e18);
 
         nftStaking.setRewardStartAt(block.timestamp);
         address[] memory addrs = new address[](1);
@@ -251,6 +251,17 @@ contract RentTest is Test {
         uint256 balance2 = rewardToken.balanceOf(stakeHolder);
 
         assertGt(balance2, balance1, "claim failed");
+    }
+
+    function testTool() public view {
+        string memory gpuType1 = "NVIDIA GeForce RTX 4060 Ti";
+        assertEq(tool.checkString(gpuType1),true,"checkString failed1");
+
+        string memory gpuType2 = "Gen Intel(R) Core(TM) i7-13790F";
+        assertEq(tool.checkString(gpuType2),false,"checkString failed2");
+
+        string memory gpuType3 = "NVIDIA GeForce RTX 20 Ti";
+        assertEq(tool.checkString(gpuType3),true,"checkString failed3");
     }
 
     function claimAfter(string memory machineId, address _owner, uint256 hour, bool shouldGetMore) internal {

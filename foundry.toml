@@ -14,10 +14,13 @@ eth_rpc_timeout = 300
 
 [etherscan]
 dbc-testnet = { key = "abc", url = "https://rpc-testnet.dbcwallet.io", chain = "19850818" }
+local-testnet = { key = "abc", url = "http://localhost:7545", chain = "5777" }
 
 
 [rpc_endpoints]
 dbc-testnet = "https://rpc-testnet.dbcwallet.io"
 bsc-testnet = "https://data-seed-prebsc-1-s3.binance.org:8545"
+local-testnet = { key = "abc", url = "http://localhost:7545", chain = "5777" }
+
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

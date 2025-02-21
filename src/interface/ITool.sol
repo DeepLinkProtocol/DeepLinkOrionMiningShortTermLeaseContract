@@ -29,4 +29,6 @@ interface ITool {
      * @return The DECIMALS value used for scaling.
      */
     function getDecimals() external pure returns (uint256);
+
+    function checkString(string memory text) external pure returns (bool);
 }

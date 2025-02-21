@@ -19,7 +19,8 @@ interface IDBCAIContract {
             uint256 gpuMem,
             string memory cpuType,
             uint256 gpuCount,
-            string memory machineId
+            string memory machineId,
+            uint256 memorySize
         );
 
     function freeGpuAmount(string calldata) external pure returns (uint256);

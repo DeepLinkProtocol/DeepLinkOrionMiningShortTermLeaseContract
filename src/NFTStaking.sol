@@ -26,7 +26,7 @@ contract NFTStaking is
 {
     string public constant PROJECT_NAME = "deeplink";
     uint8 public constant SECONDS_PER_BLOCK = 6;
-    uint256 public constant BASE_RESERVE_AMOUNT = 10000 * 1e18;
+    uint256 public constant BASE_RESERVE_AMOUNT = 10_000 ether;
     uint256 public constant REWARD_DURATION = 60 days;
     uint8 public constant MAX_NFTS_PER_MACHINE = 20;
     uint256 public constant LOCK_PERIOD = 180 days;
@@ -168,6 +168,22 @@ contract NFTStaking is
         _;
     }
 
+    modifier canStake(address stakeholder, string memory machineId, uint256 stakeHours, uint256[] memory nftTokenIds, uint256[] memory nftTokenIdBalances) {
+        require(dlcClientWalletAddress[msg.sender], "only dlc client wallet can call this function");
+        require(dbcAIContract.freeGpuAmount(machineId) >= 1, "machine not stake dbc");
+        require(nftTokenIds.length == nftTokenIdBalances.length, "nft token ids and balances length not match");
+        
+        require(
+            (stakeHours >= 2) || stakeHours == 0, "available rent duration must be greater than or equal to 2 hours"
+        );
+        require(!rewardEnd(), "staking reward ended");
+        (bool isOnline, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
+        require(isOnline && isRegistered, "machine not online or not registered");
+        require(!isStaking(machineId), "machine already staked");
+        require(nftTokenIds.length > 0, "nft token ids is empty");
+        _;
+    }
+
     function initialize(
         address _initialOwner,
         address _nftToken,
@@ -190,15 +206,15 @@ contract NFTStaking is
 
         if (phaseLevel == 1) {
             rewardStartGPUThreshold = 500;
-            initRewardAmount = 180000000 * 1e18;
+            initRewardAmount = 180_000_000 ether;
         }
         if (phaseLevel == 2) {
             rewardStartGPUThreshold = 1000;
-            initRewardAmount = 240000000 * 1e18;
+            initRewardAmount = 240_000_000 ether;
         }
         if (phaseLevel == 3) {
-            rewardStartGPUThreshold = 2000;
-            initRewardAmount = 580000000 * 1e18;
+            rewardStartGPUThreshold = 2_000;
+            initRewardAmount = 580_000_000 ether;
         }
 
         dailyRewardAmount = initRewardAmount / 60;
@@ -223,11 +239,6 @@ contract NFTStaking is
 
     function setUpgradeAddress(address addr) external onlyOwner {
         canUpgradeAddress = addr;
-    }
-
-    function requestUpgradeAddress(address addr) external pure returns (bytes memory) {
-        bytes memory data = abi.encodeWithSignature("setUpgradeAddress(address)", addr);
-        return data;
     }
 
     function setStateContract(address _stateContract) external onlyOwner {
@@ -263,14 +274,14 @@ contract NFTStaking is
         dbcAIContract = IDBCAIContract(addr);
     }
 
-    function depositReward(uint256 rewardAmount) external onlyOwner {
-        require(rewardToken.balanceOf(msg.sender) >= rewardAmount, "not enough reward token");
-        require(rewardAmount == initRewardAmount, "reward amount is not correct");
-        require(depositedReward == false, "reward already deposited");
-        rewardToken.transferFrom(msg.sender, address(this), rewardAmount);
-        depositedReward = true;
-        emit DepositReward(rewardAmount);
-    }
+//    function depositReward(uint256 rewardAmount) external onlyOwner {
+//        require(rewardToken.balanceOf(msg.sender) >= rewardAmount, "not enough reward token");
+//        require(rewardAmount == initRewardAmount, "reward amount is not correct");
+//        require(depositedReward == false, "reward already deposited");
+//        rewardToken.transferFrom(msg.sender, address(this), rewardAmount);
+//        depositedReward = true;
+//        emit DepositReward(rewardAmount);
+//    }
 
     function addDLCToStake(string memory machineId, uint256 amount) external onlyDLCClientWallet nonReentrant {
         require(isStaking(machineId), "machine not staked");
@@ -295,27 +306,34 @@ contract NFTStaking is
         emit reserveDLC(machineId, amount);
     }
 
+    function revertIfMachineInfoCanNotStake(uint256 calcPoint,string memory gpuType,uint256 mem) internal view {
+        require(mem >= 16, "memory size must greater than or equal to 16G");
+        require(toolContract.checkString(gpuType), "gpu type not match");
+        require(calcPoint > 0, "machine calc point not found");
+    }
+
+    function _tryInitMachineLockRewardInfo(string memory machineId,uint256 currentTime) internal {
+        if (machineId2LockedRewardDetail[machineId].lockTime == 0) {
+            machineId2LockedRewardDetail[machineId] = LockedRewardDetail({
+                totalAmount: 0,
+                lockTime: currentTime,
+                unlockTime: currentTime + LOCK_PERIOD,
+                claimedAmount: 0
+            });
+        }
+    }
+
     function stake(
         address stakeholder,
         string calldata machineId,
         uint256[] calldata nftTokenIds,
         uint256[] calldata nftTokenIdBalances,
         uint256 stakeHours
-    ) external onlyDLCClientWallet nonReentrant {
-        require(depositedReward, "reward not deposited");
-        require(dbcAIContract.freeGpuAmount(machineId) >= 1, "machine not stake dbc");
-        require(nftTokenIds.length == nftTokenIdBalances.length, "nft token ids and balances length not match");
-        (address machineOwner, uint256 calcPoint, uint256 cpuRate,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+    ) external onlyDLCClientWallet canStake(stakeholder, machineId, stakeHours, nftTokenIds, nftTokenIdBalances) nonReentrant {
+        (address machineOwner, uint256 calcPoint,,string memory gpuType,,,,,uint256 mem) = dbcAIContract.getMachineInfo(machineId, true);
         require(machineOwner == stakeholder, "machine owner not match");
-        require(cpuRate >= 3500, "cpu rate must be greater than or equal to 3500");
-        require(calcPoint > 0, "machine calc point not found");
-        require(
-            (stakeHours >= 2) || stakeHours == 0, "available rent duration must be greater than or equal to 2 hours"
-        );
-        require(!rewardEnd(), "staking ended");
-
-        require(!isStaking(machineId), "machine already staked");
-        require(nftTokenIds.length > 0, "nft token ids is empty");
+        revertIfMachineInfoCanNotStake(calcPoint,gpuType,mem);
+        
         uint256 nftCount = getNFTCount(nftTokenIdBalances);
         require(nftCount <= MAX_NFTS_PER_MACHINE, "nft count must be less than or equal to 20");
         calcPoint = calcPoint * nftCount;
@@ -353,14 +371,7 @@ contract NFTStaking is
         });
 
         _joinStaking(machineId, calcPoint, 0);
-        if (machineId2LockedRewardDetail[machineId].lockTime == 0) {
-            machineId2LockedRewardDetail[machineId] = LockedRewardDetail({
-                totalAmount: 0,
-                lockTime: currentTime,
-                unlockTime: currentTime + LOCK_PERIOD,
-                claimedAmount: 0
-            });
-        }
+        _tryInitMachineLockRewardInfo(machineId,currentTime);
 
         stateContract.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
         holder2MachineIds[stakeholder].push(machineId);
@@ -417,7 +428,10 @@ contract NFTStaking is
     }
 
     function _claim(string memory machineId) internal {
-        require(rewardStart(), "reward not start yet");
+        if (!rewardStart()){
+            return;
+        }
+
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         address stakeholder = stakeInfo.holder;
         uint256 canClaimAmount = 0;

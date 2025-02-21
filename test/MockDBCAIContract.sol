@@ -65,7 +65,8 @@ contract DBCStakingContractMock is IDBCAIContract {
             uint256 gpuMem,
             string memory cpuType,
             uint256 gpuCount,
-            string memory machineId
+            string memory machineId,
+            uint256 memorySize
         )
     {
         isDeepLink = true;
@@ -79,6 +80,7 @@ contract DBCStakingContractMock is IDBCAIContract {
         cpuType = machine.cpuType;
         gpuCount = machine.gpuCount;
         machineId = machine.machineId;
+        memorySize = 32;
     }
 
     function getMachineState(string calldata id, string calldata projectName, NFTStaking.StakingType stakingType)
