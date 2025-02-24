@@ -177,7 +177,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(msg.sender == canUpgradeAddress, "only canUpgradeAddress can authorize upgrade");
     }
 
-    function setCanUpgradeAddress(address addr) external  onlyOwner {
+    function setCanUpgradeAddress(address addr) external onlyOwner {
         canUpgradeAddress = addr;
     }
 
@@ -245,9 +245,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function canRent(string calldata machineId) public view returns (bool) {
+        if (isRented(machineId)) {
+            return false;
+        }
         if (!stakingContract.isStaking(machineId)) {
             return false;
         }
+
         (, uint256 calcPoint,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
             stakingContract.getMachineInfo(machineId);
         if (!isOnline || !isRegistered || isRented(machineId) || calcPoint == 0) {
@@ -259,7 +263,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
         if (endAtTimestamp > 0) {
-            return endAtTimestamp > block.timestamp;
+            return endAtTimestamp > block.timestamp && endAtTimestamp - block.timestamp > 1 hours;
         }
 
         return endAtTimestamp == 0;
@@ -291,7 +295,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function rentMachine(string calldata machineId, uint256 rentSeconds, uint256 rentFee) external {
         require(rentSeconds > 0, "rent duration should be greater than 0");
         require(canRent(machineId), "machine can not rent");
-        require(!isRented(machineId), "machine already rented");
         require(rentSeconds >= 10 minutes, "rent duration should be greater than 10 minutes");
         require(rentSeconds <= 2 hours, "rent duration should be less than 2 hours");
 

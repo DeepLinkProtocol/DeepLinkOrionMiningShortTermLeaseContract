@@ -74,9 +74,10 @@ contract RentTest is Test {
         deal(address(rewardToken), address(this), 100000000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);
         rewardToken.approve(address(nftStaking), 180000000 * 1e18);
-//        nftStaking.depositReward(180000000 * 1e18);
+        deal(address(rewardToken), address(nftStaking), 180000000 * 1e18);
 
         nftStaking.setRewardStartAt(block.timestamp);
+        passHours(1);
         address[] memory addrs = new address[](1);
         addrs[0] = owner;
         nftStaking.setDLCClientWallets(addrs);
@@ -95,7 +96,13 @@ contract RentTest is Test {
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineInfo.selector),
-            abi.encode(_owner, 100, 3500, "", 1, "", 1, machineId)
+            abi.encode(_owner, 100, 3500, "NVIDIA GeForce RTX 4060 Ti", 1, "", 1, machineId, 16)
+        );
+
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
+            abi.encode(true, true)
         );
 
         vm.startPrank(_owner);
@@ -241,7 +248,6 @@ contract RentTest is Test {
         vm.stopPrank();
         assertEq(nftToken.balanceOf(stakeHolder, 1), 1, "owner erc1155 failed");
 
-
         uint256 balance1 = rewardToken.balanceOf(stakeHolder);
 
         passHours(24);
@@ -255,13 +261,13 @@ contract RentTest is Test {
 
     function testTool() public view {
         string memory gpuType1 = "NVIDIA GeForce RTX 4060 Ti";
-        assertEq(tool.checkString(gpuType1),true,"checkString failed1");
+        assertEq(tool.checkString(gpuType1), true, "checkString failed1");
 
         string memory gpuType2 = "Gen Intel(R) Core(TM) i7-13790F";
-        assertEq(tool.checkString(gpuType2),false,"checkString failed2");
+        assertEq(tool.checkString(gpuType2), false, "checkString failed2");
 
         string memory gpuType3 = "NVIDIA GeForce RTX 20 Ti";
-        assertEq(tool.checkString(gpuType3),true,"checkString failed3");
+        assertEq(tool.checkString(gpuType3), true, "checkString failed3");
     }
 
     function claimAfter(string memory machineId, address _owner, uint256 hour, bool shouldGetMore) internal {

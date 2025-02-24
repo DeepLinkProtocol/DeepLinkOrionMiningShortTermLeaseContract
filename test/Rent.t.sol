@@ -72,9 +72,10 @@ contract RentTest is Test {
         deal(address(rewardToken), address(this), 10000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);
         rewardToken.approve(address(nftStaking), 180000000 * 1e18);
-//        nftStaking.depositReward(180000000 * 1e18);
+        deal(address(rewardToken), address(nftStaking), 10000000 * 1e18);
 
         nftStaking.setRewardStartAt(block.timestamp);
+        passHours(1);
 
         vm.mockCall(
             address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector), abi.encode()
@@ -489,7 +490,13 @@ contract RentTest is Test {
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineInfo.selector),
-            abi.encode(owner, 100, 3500, "", 1, "", 1, machineId)
+            abi.encode(owner, 100, 3500, "NVIDIA GeForce RTX 4060 Ti", 1, "", 1, machineId, 16)
+        );
+
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
+            abi.encode(true, true)
         );
 
         vm.startPrank(owner);
