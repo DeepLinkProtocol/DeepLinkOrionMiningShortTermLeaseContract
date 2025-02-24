@@ -15,6 +15,7 @@ import "forge-std/console.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {RewardCalculatorLib} from "./library/RewardCalculatorLib.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 //import {IPrecompileContract} from "./interface/IPrecompileContract.sol";
 
 /// @custom:oz-upgrades-from OldNFTStaking
@@ -109,6 +110,7 @@ contract NFTStaking is
 
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
     RewardCalculatorLib.RewardsPerShare public rewardsPerCalcPoint;
+    uint256 public totalStakingGpuCount;
 
     event staked(address indexed stakeholder, string machineId);
     event reserveDLC(string machineId, uint256 amount);
@@ -356,6 +358,7 @@ contract NFTStaking is
 
         uint8 gpuCount = 1;
         totalGpuCount += gpuCount;
+        totalStakingGpuCount += gpuCount;
         if (totalGpuCount >= rewardStartGPUThreshold) {
             rewardStartAtTimestamp = currentTime;
             rewardsPerCalcPoint.lastUpdated = currentTime;
@@ -537,7 +540,7 @@ contract NFTStaking is
         require(getPendingSlashCount(machineId) == 0, "machine should restake and paid slash before claim");
 
         require(stakeInfo.holder == stakeholder, "not stakeholder");
-        require(block.timestamp - stakeInfo.lastClaimAtTimestamp >= 1 days, "last claim less than 1 day");
+        //        require(block.timestamp - stakeInfo.lastClaimAtTimestamp >= 1 days, "last claim less than 1 day");
 
         _claim(machineId);
     }
@@ -648,6 +651,8 @@ contract NFTStaking is
         stakeInfo.nftCount = 0;
         _joinStaking(machineId, 0, 0);
         removeStakingMachineFromHolder(stakeholder, machineId);
+        totalStakingGpuCount -= Math.min(stakeInfo.gpuCount, 0);
+
         stateContract.removeMachine(stakeInfo.holder, machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
         emit unStaked(stakeholder, machineId);

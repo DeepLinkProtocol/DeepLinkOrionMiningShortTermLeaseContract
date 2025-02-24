@@ -1,11 +1,11 @@
-NFTStaking 合约接口文档
+短租竞赛(短租)质押合约接口文档
 ================
 
 ## 测试网合约地址
 0x2B966d4E021968154CB49e2e38614f77d3bA9D88
 
 ## 描述
-NFTStaking 合约是用于管理 NFT 质押的智能合约。它提供了多种功能，包括质押、解质押、领取奖励等。
+短租(短租)竞赛质押合约是用于管理 NFT 质押的智能合约。它提供了多种功能，包括质押、解质押、领取奖励等。
 
 ## 函数接口
 ### `stake(address stakeholder, string calldata machineId, uint256[] calldata nftTokenIds,uint256[] calldata nftTokenIdBalances, uint256 stakeHours) public nonReentrant`
