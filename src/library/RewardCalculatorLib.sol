@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/console.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 library RewardCalculatorLib {
     uint256 private constant PRECISION_FACTOR = 1 ether;
@@ -17,19 +18,19 @@ library RewardCalculatorLib {
     }
 
     function getUpdateRewardsPerShare(
-        RewardsPerShare memory rewardsPerTokenIn,
+        RewardsPerShare memory rewardsPerShareIn,
         uint256 totalShares,
         uint256 rewardsRate,
         uint256 rewardsStart,
         uint256 rewardsEnd
     ) internal view returns (RewardsPerShare memory) {
         RewardsPerShare memory rewardsPerTokenOut =
-            RewardsPerShare(rewardsPerTokenIn.accumulatedPerShare, rewardsPerTokenIn.lastUpdated);
+            RewardsPerShare(rewardsPerShareIn.accumulatedPerShare, rewardsPerShareIn.lastUpdated);
 
         if (block.timestamp < rewardsStart) return rewardsPerTokenOut;
 
         uint256 updateTime = block.timestamp < rewardsEnd ? block.timestamp : rewardsEnd;
-        uint256 elapsed = updateTime - rewardsPerTokenIn.lastUpdated;
+        uint256 elapsed = updateTime > rewardsPerShareIn.lastUpdated ? updateTime - rewardsPerShareIn.lastUpdated : 0;
 
         if (elapsed == 0) return rewardsPerTokenOut;
         rewardsPerTokenOut.lastUpdated = updateTime;
@@ -37,7 +38,8 @@ library RewardCalculatorLib {
         if (totalShares == 0) return rewardsPerTokenOut;
 
         rewardsPerTokenOut.accumulatedPerShare =
-            rewardsPerTokenIn.accumulatedPerShare + PRECISION_FACTOR * elapsed * rewardsRate / totalShares;
+            rewardsPerShareIn.accumulatedPerShare + PRECISION_FACTOR * elapsed * rewardsRate / totalShares;
+
         return rewardsPerTokenOut;
     }
 
@@ -47,13 +49,13 @@ library RewardCalculatorLib {
         RewardsPerShare memory rewardsPerToken_
     ) internal pure returns (UserRewards memory) {
         if (userRewardsIn.lastAccumulatedPerShare == rewardsPerToken_.lastUpdated) return userRewardsIn;
-
-        userRewardsIn.accumulated += calculatePendingUserRewards(
+        UserRewards memory userRewardsOut = UserRewards(userRewardsIn.accumulated, rewardsPerToken_.accumulatedPerShare);
+        userRewardsOut.accumulated = calculatePendingUserRewards(
             userShares, userRewardsIn.lastAccumulatedPerShare, rewardsPerToken_.accumulatedPerShare
-        );
-        userRewardsIn.lastAccumulatedPerShare = rewardsPerToken_.accumulatedPerShare;
+        ) + userRewardsIn.accumulated;
+        userRewardsOut.lastAccumulatedPerShare = rewardsPerToken_.accumulatedPerShare;
 
-        return userRewardsIn;
+        return userRewardsOut;
     }
 
     function calculatePendingUserRewards(

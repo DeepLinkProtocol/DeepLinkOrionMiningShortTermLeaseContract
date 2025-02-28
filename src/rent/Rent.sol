@@ -107,7 +107,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(string => uint256) public machineId2LastRentEndBlock;
     address public canUpgradeAddress;
 
-    event RentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter);
+    uint256 public constant ONE_CALC_POINT_USD_VALUE_PER_MONTH = 5_080;
+    uint256 public constant FACTOR = 10_000;
+    uint256 public constant USD_DECIMALS = 1_000_000;
+
+    event RentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter, uint256 rentFee);
     event RenewRent(uint256 rentId, uint256 additionalRentSeconds, uint256 additionalRentFee, address renter);
     event EndRentMachine(uint256 rentId, string machineId, uint256 rentEndTime, address renter);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
@@ -276,7 +280,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     {
         (,,, uint256 endAt,, uint256 _reservedAmount,,) = stakingContract.getMachineInfo(machineId);
         uint256 rentFee = getMachinePrice(machineId, 1 hours / SECONDS_PER_BLOCK);
-
         if (isRented(machineId)) {
             return (0, _reservedAmount, rentFee);
         }
@@ -285,14 +288,19 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
-        (, uint256 calcPoint) = getMachineHolderAndCalcPoint(machineId);
-        require(calcPoint > 0, "machine calcPoint is 0 now");
-        uint256 rentBlockNumbers = rentSeconds / SECONDS_PER_BLOCK;
-        uint256 rentFee = precompileContract.getDLCRentFeeByCalcPoint(calcPoint, rentBlockNumbers, 1, 1);
-        return rentFee;
+        (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+        require(calcPointInFact > 0, "machine calcPoint is 0 now");
+
+        // calcPont factor : 10000 ; ONE_CALC_POINT_USD_VALUE_PER_MONTH factor: 10000
+        uint256 totalFactor = FACTOR * FACTOR;
+        // 0.005U
+        uint256 dlcUSDPrice = 5000;
+        uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
+            / 60 / 60 / totalFactor;
+        return 1e18 * rentFeeUSD / dlcUSDPrice;
     }
 
-    function rentMachine(string calldata machineId, uint256 rentSeconds, uint256 rentFee) external {
+    function rentMachine(string calldata machineId, uint256 rentSeconds) external {
         require(rentSeconds > 0, "rent duration should be greater than 0");
         require(canRent(machineId), "machine can not rent");
         require(rentSeconds >= 10 minutes, "rent duration should be greater than 10 minutes");
@@ -311,7 +319,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         uint256 rentFeeInFact = getMachinePrice(machineId, rentSeconds);
-        require(rentFee >= rentFeeInFact, "rent fee not enough");
+        require(feeToken.balanceOf(msg.sender) >= rentFeeInFact, "balance not enough");
 
         uint256 _now = block.timestamp;
 
@@ -358,12 +366,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         stateContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
         stateContract.addRentedGPUCount(machineHolder, machineId);
 
-        emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender);
+        emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender,rentFeeInFact);
     }
 
-    function renewRent(string memory machineId, uint256 additionalRentSeconds, uint256 additionalRentFee) external {
+    function renewRent(string memory machineId, uint256 additionalRentSeconds) external {
         uint256 rentId = machineId2RentId[machineId];
-        require(additionalRentSeconds > 0, "additional rent duration should be greater than 0");
         require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, "rent end");
         require(rentId2RentInfo[rentId].renter == msg.sender, "Only the renter can renew the rent");
         require(isRented(machineId), "Machine is not currently rented");
@@ -371,7 +378,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(additionalRentSeconds <= 2 hours, "Additional rent duration should be less than 2 hours");
 
         uint256 additionalRentFeeInFact = getMachinePrice(rentId2RentInfo[rentId].machineId, additionalRentSeconds);
-        require(additionalRentFee >= additionalRentFeeInFact, "Additional rent fee not enough");
+        require(feeToken.balanceOf(msg.sender) >= additionalRentFeeInFact, "Additional rent fee not enough");
 
         // Update rent end time
         rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
@@ -399,8 +406,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // update total burned amount
         totalBurnedAmount += additionalRentFeeInFact;
 
-        stateContract.setBurnedRentFee(machineHolder, machineId, additionalRentFee);
-        emit RenewRent(rentId, additionalRentSeconds, additionalRentFee, msg.sender);
+        stateContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
+        emit RenewRent(rentId, additionalRentSeconds, additionalRentFeeInFact, msg.sender);
     }
 
     function endRentMachine(string calldata machineId) external {
@@ -422,7 +429,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit EndRentMachine(rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
 
-    function getMachineHolderAndCalcPoint(string memory machineId) internal view returns (address, uint256) {
+    function getMachineHolderAndCalcPoint(string memory machineId) public view returns (address, uint256) {
         (address holder, uint256 calcPoint,,,,,,) = stakingContract.getMachineInfo(machineId);
         return (holder, calcPoint);
     }

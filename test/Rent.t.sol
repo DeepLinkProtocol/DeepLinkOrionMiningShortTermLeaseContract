@@ -85,6 +85,44 @@ contract RentTest is Test {
         vm.stopPrank();
     }
 
+    function testGetMachinePrice() public {
+        string memory machineId = "machineId";
+
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineInfo.selector),
+            abi.encode(owner, 987600, 3500, "NVIDIA GeForce RTX 4060 Ti", 1, "", 1, machineId, 16)
+        );
+
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
+            abi.encode(true, true)
+        );
+
+        vm.startPrank(owner);
+        if (!nftStaking.dlcClientWalletAddress(owner)) {
+            address[] memory addrs = new address[](1);
+            addrs[0] = owner;
+            nftStaking.setDLCClientWallets(addrs);
+        }
+
+        dealERC1155(address(nftToken), owner, 1, 1, false);
+        assertEq(nftToken.balanceOf(owner, 1), 1, "owner erc1155 failed");
+        nftToken.setApprovalForAll(address(nftStaking), true);
+
+        uint256[] memory nftTokens = new uint256[](1);
+        uint256[] memory nftTokensBalance = new uint256[](1);
+        nftTokens[0] = 1;
+        nftTokensBalance[0] = 1;
+        nftStaking.stake(owner, machineId, nftTokens, nftTokensBalance, 2);
+
+        uint256 fee = rent.getMachinePrice(machineId, 3600);
+        console.log("fee: {}", fee);
+        assertGt(fee, 13 * 1e18);
+        assertLt(fee, 14 * 1e18);
+    }
+
     function testRentMachine() public {
         string memory machineId = "machineId";
         stakeByOwner(machineId, 0, 2);
@@ -93,7 +131,7 @@ contract RentTest is Test {
         uint256 totalAdjustUnitBeforeRent = nftStaking.totalAdjustUnit();
 
         uint256 rentSeconds = 1 hours;
-        uint256 rentFee = 1000 * 1e18;
+        uint256 rentFee = rent.getMachinePrice(machineId, rentSeconds);
         rentMachine(machineId, address(this), rentSeconds, rentFee);
 
         // Assert
@@ -149,7 +187,7 @@ contract RentTest is Test {
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
-        uint256 rentFee = 1000 * 1e18;
+        uint256 rentFee = rent.getMachinePrice(machineId, rentSeconds);
         rentMachine(machineId, renter, rentSeconds, rentFee);
 
         uint256 balanceBeforeReport = rewardToken.balanceOf(address(this));
@@ -175,7 +213,7 @@ contract RentTest is Test {
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
-        uint256 rentFee = 1000 * 1e18;
+        uint256 rentFee = rent.getMachinePrice(machineId, rentSeconds);
         rentMachine(machineId, renter, rentSeconds, rentFee);
 
         uint256 balanceBeforeReport = rewardToken.balanceOf(address(this));
@@ -208,7 +246,7 @@ contract RentTest is Test {
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
-        uint256 rentFee = 1000 * 1e18;
+        uint256 rentFee = rent.getMachinePrice(machineId, rentSeconds);
         rentMachine(machineId, renter, rentSeconds, rentFee);
         assertEq(nftStaking.totalReservedAmount(), stakeTokenAmount);
         uint256 ownerBalanceBeforeSlash = rewardToken.balanceOf(owner);
@@ -257,7 +295,7 @@ contract RentTest is Test {
         address renter = address(this);
 
         uint256 rentSeconds = 1 hours;
-        uint256 rentFee = 1000 * 1e18;
+        uint256 rentFee = rent.getMachinePrice(machineId, rentSeconds);
 
         rentMachine(machineId, renter, rentSeconds, rentFee);
         assertEq(nftStaking.totalReservedAmount(), stakeTokenAmount);
@@ -379,7 +417,8 @@ contract RentTest is Test {
         assertEq(nftStaking.totalCalcPoint(), 100);
         assertEq(nftStaking.isStaking(machineId), true);
 
-        uint256 rentFee = 1000 * 1e18;
+        uint256 rentFee = rent.getMachinePrice(machineId, 1 hours);
+
         rentMachine(machineId, address(this), 1 hours, rentFee);
         assertEq(rent.isRented(machineId), true);
         address renter = rent.getRenter(machineId);
@@ -415,15 +454,9 @@ contract RentTest is Test {
             abi.encode(true, true)
         );
 
-        vm.mockCall(
-            address(precompileContract),
-            abi.encodeWithSelector(precompileContract.getDLCRentFeeByCalcPoint.selector),
-            abi.encode(rentFee)
-        );
-
         vm.startPrank(renter);
         rewardToken.approve(address(rent), rentFee);
-        rent.rentMachine(machineId, rentSeconds, rentFee);
+        rent.rentMachine(machineId, rentSeconds);
         vm.stopPrank();
     }
 

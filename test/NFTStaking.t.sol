@@ -248,6 +248,7 @@ contract RentTest is Test {
         vm.stopPrank();
         assertEq(nftToken.balanceOf(stakeHolder, 1), 1, "owner erc1155 failed");
 
+        nftStaking.getRewardInfo(machineId);
         uint256 balance1 = rewardToken.balanceOf(stakeHolder);
 
         passHours(24);
