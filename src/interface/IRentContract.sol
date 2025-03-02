@@ -9,5 +9,5 @@ interface IRentContract {
 
     function getRenter(string calldata machineId) external view returns (address);
 
-    function paidSlash(address holder, string memory machineId) external;
+    function paidSlash(string memory machineId) external;
 }

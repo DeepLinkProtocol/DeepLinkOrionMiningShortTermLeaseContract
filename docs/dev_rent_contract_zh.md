@@ -93,7 +93,7 @@ Rent 合约是一个基于 Solidity 的智能合约，用于管理租赁机器�
 - 返回信息: bool 是否处于触发状态
 
 
-### `getSlashInfosByOwner(address stakeHolder, uint256 pageNumber, uint256 pageSize) public view returns (SlashInfo[] memory, uint256)`
+### `getSlashInfosByMachineId(string memory machineId, uint256 pageNumber, uint256 pageSize) public view returns (SlashInfo[] memory, uint256)`
 - 描述: 获取 stake holder 的 slash 信息
 - 参数:
     - `stakeHolder`: stake holder 地址
