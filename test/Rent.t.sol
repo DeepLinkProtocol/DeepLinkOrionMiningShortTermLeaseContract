@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Rent} from "../src/rent/Rent.sol";
 import {NFTStaking} from "../src/NFTStaking.sol";
-import {NFTStakingState} from "../src/state/NFTStakingState.sol";
 import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
 
@@ -18,7 +17,6 @@ import "./MockERC1155.t.sol";
 contract RentTest is Test {
     Rent public rent;
     NFTStaking public nftStaking;
-    NFTStakingState public nftStakingState;
     IPrecompileContract public precompileContract;
     Token public rewardToken;
     DLCNode public nftToken;
@@ -44,9 +42,6 @@ contract RentTest is Test {
         ERC1967Proxy proxy1 = new ERC1967Proxy(address(new NFTStaking()), "");
         nftStaking = NFTStaking(address(proxy1));
 
-        ERC1967Proxy proxy2 = new ERC1967Proxy(address(new NFTStakingState()), "");
-        nftStakingState = NFTStakingState(address(proxy2));
-
         ERC1967Proxy proxy = new ERC1967Proxy(address(new Rent()), "");
         rent = Rent(address(proxy));
 
@@ -54,18 +49,15 @@ contract RentTest is Test {
             owner,
             address(nftToken),
             address(rewardToken),
-            address(nftStakingState),
             address(rent),
             address(dbcAIContract),
             address(tool),
             1
         );
-        NFTStakingState(address(proxy2)).initialize(owner, address(rent), address(nftStaking));
         Rent(address(proxy)).initialize(
             owner,
             address(precompileContract),
             address(nftStaking),
-            address(nftStakingState),
             address(dbcAIContract),
             address(rewardToken)
         );
@@ -141,8 +133,8 @@ contract RentTest is Test {
         assertEq(rent.totalBurnedAmount(), rentFee);
         assertEq(rent.getBurnedRentFeeByStakeHolder(owner), rentFee);
 
-        assertEq(nftStakingState.getTotalDlcNftStakingBurnedRentFee(), rentFee);
-        assertEq(nftStakingState.getRentedGPUCountInDlcNftStaking(), 1);
+        assertEq(nftStaking.getTotalDlcNftStakingBurnedRentFee(), rentFee);
+        assertEq(nftStaking.getRentedGPUCountInDlcNftStaking(), 1);
 
         address[] memory admins = new address[](1);
         admins[0] = owner;
@@ -168,8 +160,8 @@ contract RentTest is Test {
         assertEq(totalAdjustUnitAfterRent, totalAdjustUnitBeforeRent);
         vm.stopPrank();
 
-        (NFTStakingState.StakeHolder[] memory topStakeHolders, uint256 total) =
-            nftStakingState.getTopStakeHolders(0, 10);
+        (NFTStaking.StakeHolder[] memory topStakeHolders, uint256 total) =
+            nftStaking.getTopStakeHolders(0, 10);
         assertEq(total, 1);
         assertEq(topStakeHolders.length, 1);
         assertEq(topStakeHolders[0].holder, owner);

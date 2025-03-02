@@ -22,7 +22,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     IRewardToken public feeToken;
     IPrecompileContract public precompileContract;
     IStakingContract public stakingContract;
-    IStateContract public stateContract;
     IDBCAIContract public dbcAIContract;
 
     uint256 public lastRentId;
@@ -114,7 +113,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     mapping(string => SlashInfo[]) public machineId2SlashInfos;
 
-    event RentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter, uint256 rentFee);
+    event RentMachine(
+        uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter, uint256 rentFee
+    );
     event RenewRent(uint256 rentId, uint256 additionalRentSeconds, uint256 additionalRentFee, address renter);
     event EndRentMachine(uint256 rentId, string machineId, uint256 rentEndTime, address renter);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
@@ -164,7 +165,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address _initialOwner,
         address _precompileContract,
         address _stakingContract,
-        address _stateContract,
         address _dbcAIContract,
         address _feeToken
     ) public initializer {
@@ -173,7 +173,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         feeToken = IRewardToken(_feeToken);
         precompileContract = IPrecompileContract(_precompileContract);
         stakingContract = IStakingContract(_stakingContract);
-        stateContract = IStateContract(_stateContract);
         dbcAIContract = IDBCAIContract(_dbcAIContract);
         voteThreshold = 3;
         canUpgradeAddress = msg.sender;
@@ -192,9 +191,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         dbcAIContract = IDBCAIContract(addr);
     }
 
-    function setStateContract(address _rentContract) external onlyOwner {
-        stateContract = IStateContract(_rentContract);
-    }
+
 
     function setAdminsToApproveMachineFaultReporting(address[] calldata admins) external onlyOwner {
         require(admins.length == 5, "admins length should be 5");
@@ -366,10 +363,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId);
 
-        stateContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
-        stateContract.addRentedGPUCount(machineHolder, machineId);
+        stakingContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
+        stakingContract.addRentedGPUCount(machineHolder, machineId);
 
-        emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender,rentFeeInFact);
+        emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender, rentFeeInFact);
     }
 
     function renewRent(string memory machineId, uint256 additionalRentSeconds) external {
@@ -409,7 +406,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // update total burned amount
         totalBurnedAmount += additionalRentFeeInFact;
 
-        stateContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
+        stakingContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
         emit RenewRent(rentId, additionalRentSeconds, additionalRentFeeInFact, msg.sender);
     }
 
@@ -642,9 +639,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getSlashInfosByMachineId(string memory machineId, uint256 pageNumber, uint256 pageSize)
-    external
-    view
-    returns (SlashInfo[] memory paginatedSlashInfos, uint256 totalCount)
+        external
+        view
+        returns (SlashInfo[] memory paginatedSlashInfos, uint256 totalCount)
     {
         require(pageNumber > 0, "Page number must be greater than zero");
         require(pageSize > 0, "Page size must be greater than zero");
@@ -673,7 +670,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             paginatedSlashInfos[i] = machineId2SlashInfos[machineId][startIndex + i];
         }
     }
-
 
     function paidSlash(string memory machineId) external onlyStakingContract {
         console.log("paidSlash machineId: ", machineId);

@@ -41,9 +41,6 @@ contract Deploy is Script {
         address rewardTokenContract = vm.envAddress("REWARD_TOKEN_CONTRACT");
         console.log("rewardTokenContract Address:", rewardTokenContract);
 
-        address stateProxy = vm.envAddress("STATE_PROXY");
-        console.log("State Proxy Address:", stateProxy);
-
         address rentProxy = vm.envAddress("RENT_PROXY");
         console.log("Rent Proxy Address:", rentProxy);
 
@@ -64,7 +61,6 @@ contract Deploy is Script {
                     msg.sender,
                     nftContract,
                     rewardTokenContract,
-                    stateProxy,
                     rentProxy,
                     dbcAIProxy,
                     toolContractProxy,
