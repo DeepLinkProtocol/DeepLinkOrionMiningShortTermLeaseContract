@@ -651,7 +651,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // Get the total number of SlashInfo for the given machineOwner
         totalCount = machineId2SlashInfos[machineId].length;
-        require(totalCount > 0, "No data available");
+        if (totalCount == 0){
+            return (new SlashInfo[](0), totalCount);
+        }
 
         // Calculate the start index for the requested page
         uint256 startIndex = (pageNumber - 1) * pageSize;
