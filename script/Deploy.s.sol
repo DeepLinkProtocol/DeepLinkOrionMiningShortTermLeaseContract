@@ -57,15 +57,7 @@ contract Deploy is Script {
             "NFTStaking.sol:NFTStaking",
             abi.encodeCall(
                 NFTStaking.initialize,
-                (
-                    msg.sender,
-                    nftContract,
-                    rewardTokenContract,
-                    rentProxy,
-                    dbcAIProxy,
-                    toolContractProxy,
-                    phase
-                )
+                (msg.sender, nftContract, rewardTokenContract, rentProxy, dbcAIProxy, toolContractProxy, phase)
             )
         );
         return (proxy, logic);

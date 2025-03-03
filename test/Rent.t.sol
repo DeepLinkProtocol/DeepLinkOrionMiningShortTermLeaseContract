@@ -46,20 +46,10 @@ contract RentTest is Test {
         rent = Rent(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
-            owner,
-            address(nftToken),
-            address(rewardToken),
-            address(rent),
-            address(dbcAIContract),
-            address(tool),
-            1
+            owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), address(tool), 1
         );
         Rent(address(proxy)).initialize(
-            owner,
-            address(precompileContract),
-            address(nftStaking),
-            address(dbcAIContract),
-            address(rewardToken)
+            owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 10000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);
@@ -160,8 +150,7 @@ contract RentTest is Test {
         assertEq(totalAdjustUnitAfterRent, totalAdjustUnitBeforeRent);
         vm.stopPrank();
 
-        (NFTStaking.StakeHolder[] memory topStakeHolders, uint256 total) =
-            nftStaking.getTopStakeHolders(0, 10);
+        (NFTStaking.StakeHolder[] memory topStakeHolders, uint256 total) = nftStaking.getTopStakeHolders(0, 10);
         assertEq(total, 1);
         assertEq(topStakeHolders.length, 1);
         assertEq(topStakeHolders[0].holder, owner);
@@ -255,7 +244,7 @@ contract RentTest is Test {
             renterBalanceBeforeApprove + nftStaking.BASE_RESERVE_AMOUNT() + rent.REPORT_RESERVE_AMOUNT()
         );
         assertEq(nftStaking.totalReservedAmount(), 0);
-        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,) = nftStaking.machineId2StakeInfos(machineId);
         assertEq(_stakeTokenAmount, 0);
         assertEq(endAt, block.timestamp);
         assertEq(nftStaking.isStaking(machineId), false);
@@ -306,7 +295,7 @@ contract RentTest is Test {
         assertEq(renterBalanceAfterApprove, renterBalanceBeforeApprove + rent.REPORT_RESERVE_AMOUNT());
 
         assertEq(nftStaking.totalReservedAmount(), 0);
-        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,) = nftStaking.machineId2StakeInfos(machineId);
         assertEq(_stakeTokenAmount, 0);
         assertEq(endAt, block.timestamp);
         assertEq(nftStaking.isStaking(machineId), false);
@@ -325,7 +314,7 @@ contract RentTest is Test {
 
         stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 2);
 
-        (,,,,, uint256 _stakeTokenAmount1,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        (,,,,, uint256 _stakeTokenAmount1,,,,,) = nftStaking.machineId2StakeInfos(machineId);
         assertEq(_stakeTokenAmount1, 0);
     }
 

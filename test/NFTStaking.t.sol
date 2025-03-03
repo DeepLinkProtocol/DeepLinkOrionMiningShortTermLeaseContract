@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Rent} from "../src/rent/Rent.sol";
 import {NFTStaking} from "../src/NFTStaking.sol";
-import {NFTStakingState} from "../src/state/NFTStakingState.sol";
 import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
 
@@ -45,26 +44,14 @@ contract RentTest is Test {
         ERC1967Proxy proxy1 = new ERC1967Proxy(address(new NFTStaking()), "");
         nftStaking = NFTStaking(address(proxy1));
 
-
-
         ERC1967Proxy proxy = new ERC1967Proxy(address(new Rent()), "");
         rent = Rent(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
-            owner,
-            address(nftToken),
-            address(rewardToken),
-            address(rent),
-            address(dbcAIContract),
-            address(tool),
-            1
+            owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), address(tool), 1
         );
         Rent(address(proxy)).initialize(
-            owner,
-            address(precompileContract),
-            address(nftStaking),
-            address(dbcAIContract),
-            address(rewardToken)
+            owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 100000000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);

@@ -8,7 +8,6 @@ import "../interface/IStakingContract.sol";
 import "../interface/IRewardToken.sol";
 import "../interface/IRentContract.sol";
 import "../interface/IPrecompileContract.sol";
-import "../interface/IStateContract.sol";
 import "forge-std/console.sol";
 import "../interface/IDBCAIContract.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
@@ -191,8 +190,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         dbcAIContract = IDBCAIContract(addr);
     }
 
-
-
     function setAdminsToApproveMachineFaultReporting(address[] calldata admins) external onlyOwner {
         require(admins.length == 5, "admins length should be 5");
         adminsToApprove = admins;
@@ -310,7 +307,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
         require(rewardEndAt > 60 days, "reward not start");
-        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt), 60 days);
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
         require(rentSeconds <= maxRentDuration, "rent duration should be less than max rent duration");
 
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
@@ -648,7 +645,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // Get the total number of SlashInfo for the given machineOwner
         totalCount = machineId2SlashInfos[machineId].length;
-        require(totalCount > 0, "No data available");
+        if (totalCount == 0) {
+            return (new SlashInfo[](0), totalCount);
+        }
 
         // Calculate the start index for the requested page
         uint256 startIndex = (pageNumber - 1) * pageSize;
