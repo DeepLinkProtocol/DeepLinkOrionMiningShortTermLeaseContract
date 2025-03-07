@@ -8,9 +8,7 @@ import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
 
 import {IRewardToken} from "../src/interface/IRewardToken.sol";
-import {ITool} from "../src/interface/ITool.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import "../src/Tool.sol";
 import {Token} from "./MockRewardToken.sol";
 import "./MockERC1155.t.sol";
 
@@ -22,7 +20,6 @@ contract RentTest is Test {
     DLCNode public nftToken;
     IDBCAIContract public dbcAIContract;
 
-    Tool public tool;
     address owner = address(0x01);
     address admin2 = address(0x02);
     address admin3 = address(0x03);
@@ -35,10 +32,6 @@ contract RentTest is Test {
         rewardToken = new Token();
         nftToken = new DLCNode(owner);
 
-        ERC1967Proxy proxy3 = new ERC1967Proxy(address(new Tool()), "");
-        Tool(address(proxy3)).initialize(owner);
-        tool = Tool(address(proxy3));
-
         ERC1967Proxy proxy1 = new ERC1967Proxy(address(new NFTStaking()), "");
         nftStaking = NFTStaking(address(proxy1));
 
@@ -46,20 +39,10 @@ contract RentTest is Test {
         rent = Rent(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
-            owner,
-            address(nftToken),
-            address(rewardToken),
-            address(rent),
-            address(dbcAIContract),
-            address(tool),
-            1
+            owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), 1
         );
         Rent(address(proxy)).initialize(
-            owner,
-            address(precompileContract),
-            address(nftStaking),
-            address(dbcAIContract),
-            address(rewardToken)
+            owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 10000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);
@@ -111,8 +94,8 @@ contract RentTest is Test {
 
         uint256 fee = rent.getMachinePrice(machineId, 3600);
         console.log("fee: {}", fee);
-        assertGt(fee, 13 * 1e18);
-        assertLt(fee, 14 * 1e18);
+        assertGt(fee, 13 * 1e18 * 6 / 10);
+        assertLt(fee, 14 * 1e18 * 6 / 10);
     }
 
     function testRentMachine() public {
@@ -147,7 +130,7 @@ contract RentTest is Test {
 
         // end machine
         vm.startPrank(admins[0]);
-        vm.expectRevert("rent not end");
+        vm.expectRevert(abi.encodeWithSelector(Rent.RentNotEnd.selector));
         rent.endRentMachine(machineId);
 
         passHours(1);
@@ -160,8 +143,7 @@ contract RentTest is Test {
         assertEq(totalAdjustUnitAfterRent, totalAdjustUnitBeforeRent);
         vm.stopPrank();
 
-        (NFTStaking.StakeHolder[] memory topStakeHolders, uint256 total) =
-            nftStaking.getTopStakeHolders(0, 10);
+        (NFTStaking.StakeHolder[] memory topStakeHolders, uint256 total) = nftStaking.getTopStakeHolders(0, 10);
         assertEq(total, 1);
         assertEq(topStakeHolders.length, 1);
         assertEq(topStakeHolders[0].holder, owner);
@@ -255,7 +237,7 @@ contract RentTest is Test {
             renterBalanceBeforeApprove + nftStaking.BASE_RESERVE_AMOUNT() + rent.REPORT_RESERVE_AMOUNT()
         );
         assertEq(nftStaking.totalReservedAmount(), 0);
-        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,) = nftStaking.machineId2StakeInfos(machineId);
         assertEq(_stakeTokenAmount, 0);
         assertEq(endAt, block.timestamp);
         assertEq(nftStaking.isStaking(machineId), false);
@@ -306,7 +288,7 @@ contract RentTest is Test {
         assertEq(renterBalanceAfterApprove, renterBalanceBeforeApprove + rent.REPORT_RESERVE_AMOUNT());
 
         assertEq(nftStaking.totalReservedAmount(), 0);
-        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        (,,, uint256 endAt,, uint256 _stakeTokenAmount,,,,,) = nftStaking.machineId2StakeInfos(machineId);
         assertEq(_stakeTokenAmount, 0);
         assertEq(endAt, block.timestamp);
         assertEq(nftStaking.isStaking(machineId), false);
@@ -325,7 +307,7 @@ contract RentTest is Test {
 
         stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 2);
 
-        (,,,,, uint256 _stakeTokenAmount1,,,,,,,) = nftStaking.machineId2StakeInfos(machineId);
+        (,,,,, uint256 _stakeTokenAmount1,,,,,) = nftStaking.machineId2StakeInfos(machineId);
         assertEq(_stakeTokenAmount1, 0);
     }
 

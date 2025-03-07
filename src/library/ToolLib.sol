@@ -1,39 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "forge-std/console.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "abdk-libraries-solidity/ABDKMath64x64.sol";
 import "abdk-libraries-solidity/ABDKMathQuad.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-/// @custom:oz-upgrades-from OldTool
-contract Tool is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+library ToolLib {
     uint256 private constant DECIMALS = 1e18;
     uint256 public constant SECONDS_PER_BLOCK = 6;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
-    function initialize(address _initialOwner) public initializer {
-        __Ownable_init(_initialOwner);
-        __UUPSUpgradeable_init();
-    }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    function LnUint256(uint256 value) public pure returns (uint256) {
+    function LnUint256(uint256 value) internal pure returns (uint256) {
         bytes16 v = ABDKMathQuad.ln(ABDKMathQuad.fromUInt(value));
         return getLnValue(v);
     }
 
-    function getLnValue(bytes16 value) public pure returns (uint256) {
+    function getLnValue(bytes16 value) internal pure returns (uint256) {
         return ABDKMathQuad.toUInt(ABDKMathQuad.mul(value, ABDKMathQuad.fromUInt(DECIMALS)));
     }
 
-    function safeDiv(uint256 a, uint256 b) public pure returns (uint256) {
+    function safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
         require(b > 0, "Division by zero");
 
         bytes16 scaledA = ABDKMathQuad.fromUInt(a * DECIMALS);
@@ -43,7 +29,7 @@ contract Tool is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return ABDKMathQuad.toUInt(result);
     }
 
-    function getDecimals() public pure returns (uint256) {
+    function getDecimals() internal pure returns (uint256) {
         return DECIMALS;
     }
 
@@ -82,7 +68,7 @@ contract Tool is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return num > 20;
     }
 
-    function checkString(string memory text) public pure returns (bool) {
+    function checkString(string memory text) internal pure returns (bool) {
         bool hasNvidia = contains(bytes(text), bytes("NVIDIA"));
 
         bool has = hasNumberGreaterThan20(text);

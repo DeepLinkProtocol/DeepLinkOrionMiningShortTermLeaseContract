@@ -49,8 +49,7 @@ contract Deploy is Script {
         proxy = Upgrades.deployUUPSProxy(
             "Rent.sol:Rent",
             abi.encodeCall(
-                Rent.initialize,
-                (msg.sender, precompileContract, stakingProxy, dbcAIProxy, rewardTokenContract)
+                Rent.initialize, (msg.sender, precompileContract, stakingProxy, dbcAIProxy, rewardTokenContract)
             )
         );
         return (proxy, logic);

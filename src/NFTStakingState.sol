@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
 import "./interface/IRentContract.sol";
 
 /// @custom:oz-upgrades-from OldNFTStakingState
-contract NFTStakingState  {
+contract NFTStakingState {
     IRentContract public rentContract;
 
+    uint256 public totalReservedAmount;
+    uint256 public totalGpuCount;
+    uint256 public totalCalcPoint;
     uint256 public addressCountInStaking;
     string[] public machineIds;
     SimpleStakeHolder[] public topStakeHolders;
@@ -21,7 +24,6 @@ contract NFTStakingState  {
         uint256 totalRentedGPUCount;
         uint256 totalBurnedRentFee;
         uint256 totalReservedAmount;
-        uint256 leftGPUCountBeforeRewardStart;
     }
 
     struct MachineInfo {
@@ -68,10 +70,13 @@ contract NFTStakingState  {
         _;
     }
 
-    function initialize(address _rentContract) internal {
+    function __State_Init(address _rentContract) internal {
         rentContract = IRentContract(_rentContract);
     }
 
+    function _setRentContract(address _rentContract) internal {
+        rentContract = IRentContract(_rentContract);
+    }
 
     function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256) {
         for (uint256 i = 0; i < arr.length; i++) {
@@ -126,9 +131,7 @@ contract NFTStakingState  {
         }
     }
 
-    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount)
-        internal
-    {
+    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -141,9 +144,7 @@ contract NFTStakingState  {
         stakeHolderInfo.totalReservedAmount += _reserveAmount;
     }
 
-    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount)
-        internal
-    {
+    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -170,7 +171,7 @@ contract NFTStakingState  {
         string memory _machineId,
         uint256 totalClaimedAmount,
         uint256 releasedAmount
-    )  internal {
+    ) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -385,29 +386,16 @@ contract NFTStakingState  {
         return rentContract.getTotalBurnedRentFee();
     }
 
-//    function getTotalGPUCountInStaking() public view returns (uint256) {
-//        return stakingContract.getTotalGPUCountInStaking();
-//    }
-//
-//    function getLeftGPUCountToStartReward() public view returns (uint256) {
-//        return stakingContract.getLeftGPUCountToStartReward();
-//    }
-
-//    function getStateSummary() public view returns (StateSummary memory) {
-//        uint256 totalGPUCount = stakingContract.getTotalGPUCountInStaking();
-//        uint256 _leftGPUCountBeforeRewardStart = stakingContract.getLeftGPUCountToStartReward();
-//        (uint256 totalCalcPoint, uint256 totalReservedAmount,) = stakingContract.getGlobalState();
-//
-//        return StateSummary({
-//            totalCalcPoint: totalCalcPoint,
-//            totalGPUCount: totalGPUCount,
-//            totalCalcPointPoolCount: addressCountInStaking,
-//            totalRentedGPUCount: rentContract.getTotalRentedGPUCount(),
-//            totalBurnedRentFee: rentContract.getTotalBurnedRentFee(),
-//            totalReservedAmount: totalReservedAmount,
-//            leftGPUCountBeforeRewardStart: _leftGPUCountBeforeRewardStart
-//        });
-//    }
+    function getStateSummary() public view returns (StateSummary memory) {
+        return StateSummary({
+            totalCalcPoint: totalCalcPoint,
+            totalGPUCount: totalGpuCount,
+            totalCalcPointPoolCount: addressCountInStaking,
+            totalRentedGPUCount: rentContract.getTotalRentedGPUCount(),
+            totalBurnedRentFee: rentContract.getTotalBurnedRentFee(),
+            totalReservedAmount: totalReservedAmount
+        });
+    }
 
     function isRented(string calldata machineId) external view returns (bool) {
         return rentContract.isRented(machineId);

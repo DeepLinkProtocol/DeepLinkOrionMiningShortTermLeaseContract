@@ -23,8 +23,6 @@ interface IStakingContract {
     function getGlobalState() external view returns (uint256, uint256, uint256);
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external;
 
-
-
     /////
 
     function getMachinesInStaking(uint256 page, uint256 pageSize) external view returns (string[] memory, uint256);
