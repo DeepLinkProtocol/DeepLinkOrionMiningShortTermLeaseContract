@@ -12,7 +12,6 @@ import "forge-std/console.sol";
 import "../interface/IDBCAIContract.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-/// @custom:oz-upgrades-from OldRent
 contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
     uint256 public constant REPORT_RESERVE_AMOUNT = 10_000 ether;

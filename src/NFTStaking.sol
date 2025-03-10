@@ -100,20 +100,23 @@ contract NFTStaking is
     mapping(string => bool) public machineId2Rented;
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
 
-    event staked(address indexed stakeholder, string machineId);
-    event reserveDLC(string machineId, uint256 amount);
-    event unStaked(address indexed stakeholder, string machineId);
-    event claimed(
+    event Staked(address indexed stakeholder, string machineId, uint256 calcPoint);
+    event AddedStakeHours(address indexed stakeholder, string machineId, uint256 stakeHours);
+
+    event ReserveDLC(string machineId, uint256 amount);
+    event Unstaked(address indexed stakeholder, string machineId);
+    event Claimed(
         address indexed stakeholder,
         string machineId,
-        uint256 rewardAmount,
+        uint256 totalRewardAmount,
+        uint256 moveToUserWalletAmount,
         uint256 moveToReservedAmount,
         bool paidSlash
     );
 
     event PaySlash(string machineId, address renter, uint256 slashAmount);
-    event RentMachine(string machineId);
-    event EndRentMachine(string machineId);
+    event RentMachine(address indexed machineOwner, string machineId);
+    event EndRentMachine(address indexed machineOwner, string machineId);
     event ReportMachineFault(string machineId, address renter);
     event RewardsPerCalcPointUpdate(uint256 accumulatedPerShareBefore, uint256 accumulatedPerShareAfter);
 
@@ -322,7 +325,7 @@ contract NFTStaking is
 
         _joinStaking(machineId, stakeInfo.calcPoint, amount + stakeInfo.reservedAmount);
         NFTStakingState.addReserveAmount(machineId, stakeInfo.holder, amount);
-        emit reserveDLC(machineId, amount);
+        emit ReserveDLC(machineId, amount);
     }
 
     function revertIfMachineInfoCanNotStake(uint256 calcPoint, string memory gpuType, uint256 mem) internal pure {
@@ -399,7 +402,7 @@ contract NFTStaking is
         holder2MachineIds[stakeholder].push(machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
         stakedMachineIds.push(machineId);
-        emit staked(stakeholder, machineId);
+        emit Staked(stakeholder, machineId, calcPoint);
     }
 
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external {
@@ -416,6 +419,7 @@ contract NFTStaking is
         require(block.timestamp < stakeInfo.endAtTimestamp, MachineNotStaked(machineId));
 
         stakeInfo.endAtTimestamp += additionSeconds;
+        emit AddedStakeHours(msg.sender, machineId, additionHours);
     }
 
     function getPendingSlashCount(string memory machineId) public view returns (uint256) {
@@ -515,7 +519,9 @@ contract NFTStaking is
             machineId2LockedRewardDetail[machineId].totalAmount += lockedAmount;
         }
 
-        emit claimed(stakeholder, machineId, canClaimAmount, moveToReserveAmount, paidSlash);
+        emit Claimed(
+            stakeholder, machineId, rewardAmount + _dailyReleaseAmount, canClaimAmount, moveToReserveAmount, paidSlash
+        );
     }
 
     function getMachineIdsByStakeholder(address holder) external view returns (string[] memory) {
@@ -672,7 +678,7 @@ contract NFTStaking is
 
         NFTStakingState.removeMachine(stakeInfo.holder, machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
-        emit unStaked(stakeholder, machineId);
+        emit Unstaked(stakeholder, machineId);
     }
 
     function removeStakingMachineFromHolder(address holder, string memory machineId) internal {
@@ -714,7 +720,7 @@ contract NFTStaking is
             machineId2Rented[machineId] = true;
         }
         NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
-        emit RentMachine(machineId);
+        emit RentMachine(stakeInfo.holder, machineId);
     }
 
     function endRentMachine(string calldata machineId) external onlyRentContract {
@@ -731,7 +737,7 @@ contract NFTStaking is
 
         NFTStakingState.subRentedGPUCount(stakeInfo.holder, machineId);
 
-        emit EndRentMachine(machineId);
+        emit EndRentMachine(stakeInfo.holder, machineId);
     }
 
     function reportMachineFault(string calldata machineId, address renter) public onlyRentContract {
