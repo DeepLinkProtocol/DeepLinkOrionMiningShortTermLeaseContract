@@ -162,6 +162,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error ReportedMachineNotFound();
     error VoteFinished();
     error NotDBCAIContract();
+    error RewardNotStart();
 
     modifier onlyApproveAdmins() {
         bool found = false;
@@ -315,10 +316,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
-        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        if (rewardEndAt == 60 days) {
-            return 1 ether * rentSeconds / 1 hours;
-        }
         (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
         require(calcPointInFact > 0, ZeroCalcPoint());
 
@@ -339,12 +336,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        uint256 maxRentDuration;
-        if (rewardEndAt == 60 days) {
-            maxRentDuration = Math.min(endAtTimestamp - block.timestamp, 60 days);
-        } else {
-            maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
-        }
+        require(rewardEndAt > 60 days, RewardNotStart());
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
         require(rentSeconds <= maxRentDuration, RentDurationTooLong(rentSeconds, maxRentDuration));
 
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
@@ -415,12 +408,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        uint256 maxRentDuration;
-        if (rewardEndAt == 60 days) {
-            maxRentDuration = Math.min(endAtTimestamp - block.timestamp, 60 days);
-        } else {
-            maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
-        }
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
+
         uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
         require(newRentDuration <= maxRentDuration, RentDurationTooLong(newRentDuration, maxRentDuration));
         uint256 additionalRentFeeInFact = getMachinePrice(rentId2RentInfo[rentId].machineId, additionalRentSeconds);

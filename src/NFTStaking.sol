@@ -100,11 +100,11 @@ contract NFTStaking is
     mapping(string => bool) public machineId2Rented;
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
 
-    event Staked(address indexed stakeholder, string machineId, uint256 calcPoint, uint256 stakeHours);
+    event Staked(address indexed stakeholder, string machineId, uint256 originCalcPoint, uint256 calcPoint, uint256 stakeHours);
     event AddedStakeHours(address indexed stakeholder, string machineId, uint256 stakeHours);
 
     event ReserveDLC(string machineId, uint256 amount);
-    event Unstaked(address indexed stakeholder, string machineId);
+    event Unstaked(address indexed stakeholder, string machineId,uint256 paybackReserveAmount);
     event Claimed(
         address indexed stakeholder,
         string machineId,
@@ -364,6 +364,7 @@ contract NFTStaking is
 
         uint256 nftCount = getNFTCount(nftTokenIdBalances);
         require(nftCount <= MAX_NFTS_PER_MACHINE, NFTCountGreaterThan20());
+        uint256 originCalcPoint = calcPoint;
         calcPoint = calcPoint * nftCount;
         uint256 currentTime = block.timestamp;
         uint256 stakeEndAt = 0;
@@ -402,7 +403,7 @@ contract NFTStaking is
         holder2MachineIds[stakeholder].push(machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
         stakedMachineIds.push(machineId);
-        emit Staked(stakeholder, machineId, calcPoint, stakeHours);
+        emit Staked(stakeholder, machineId, originCalcPoint,calcPoint, stakeHours);
     }
 
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external {
@@ -678,7 +679,7 @@ contract NFTStaking is
 
         NFTStakingState.removeMachine(stakeInfo.holder, machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
-        emit Unstaked(stakeholder, machineId);
+        emit Unstaked(stakeholder, machineId,reservedAmount);
     }
 
     function removeStakingMachineFromHolder(address holder, string memory machineId) internal {
