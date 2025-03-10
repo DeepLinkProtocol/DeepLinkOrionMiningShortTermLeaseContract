@@ -29,7 +29,7 @@ contract NFTStaking is
     UUPSUpgradeable,
     IERC1155Receiver
 {
-    string public constant PROJECT_NAME = "DeepLinkEVM";
+    string public constant PROJECT_NAME = "deeplink";
     uint8 public constant SECONDS_PER_BLOCK = 6;
     uint256 public constant BASE_RESERVE_AMOUNT = 10_000 ether;
     uint256 public constant REWARD_DURATION = 60 days;
