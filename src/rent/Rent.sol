@@ -284,6 +284,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
 
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        if (rewardEndAt == 60 days){
+            return false;
+        }
+
         (, uint256 calcPoint,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
             stakingContract.getMachineInfo(machineId);
         if (!isOnline || !isRegistered || isRented(machineId) || calcPoint == 0) {
