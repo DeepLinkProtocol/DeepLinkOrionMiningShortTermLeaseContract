@@ -100,7 +100,7 @@ contract NFTStaking is
     mapping(string => bool) public machineId2Rented;
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
 
-    event Staked(address indexed stakeholder, string machineId, uint256 calcPoint);
+    event Staked(address indexed stakeholder, string machineId, uint256 calcPoint, uint256 stakeHours);
     event AddedStakeHours(address indexed stakeholder, string machineId, uint256 stakeHours);
 
     event ReserveDLC(string machineId, uint256 amount);
@@ -402,7 +402,7 @@ contract NFTStaking is
         holder2MachineIds[stakeholder].push(machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
         stakedMachineIds.push(machineId);
-        emit Staked(stakeholder, machineId, calcPoint);
+        emit Staked(stakeholder, machineId, calcPoint, stakeHours);
     }
 
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external {
