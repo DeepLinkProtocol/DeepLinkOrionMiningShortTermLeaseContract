@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "../interface/IRentContract.sol";
-import "../interface/IStakingContract.sol";
+import "./interface/IRentContract.sol";
 
-contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+/// @custom:oz-upgrades-from OldNFTStakingState
+contract NFTStakingState {
     IRentContract public rentContract;
-    IStakingContract public stakingContract;
 
-    string[] public machineIds;
+    uint256 public totalReservedAmount;
+    uint256 public totalGpuCount;
+    uint256 public totalCalcPoint;
     uint256 public addressCountInStaking;
+    string[] public machineIds;
+    SimpleStakeHolder[] public topStakeHolders;
+
     mapping(address => uint8) public address2MachineCount;
+    mapping(address => StakeHolderInfo) public stakeHolders;
 
     struct StateSummary {
         uint256 totalCalcPoint;
@@ -22,7 +24,6 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         uint256 totalRentedGPUCount;
         uint256 totalBurnedRentFee;
         uint256 totalReservedAmount;
-        uint256 leftGPUCountBeforeRewardStart;
     }
 
     struct MachineInfo {
@@ -53,10 +54,6 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         uint256 totalCalcPoint;
     }
 
-    SimpleStakeHolder[] public topStakeHolders;
-
-    mapping(address => StakeHolderInfo) public stakeHolders;
-
     struct StakeHolder {
         address holder;
         uint256 totalCalcPoint;
@@ -68,36 +65,16 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         uint256 releasedRewardAmount;
     }
 
-    modifier onlyNftStakingAddress() {
-        require(msg.sender == address(stakingContract), "Only NFTStakingContractAddress can call this function");
-        _;
-    }
-
     modifier onlyRentAddress() {
         require(msg.sender == address(rentContract), "Only RentContractAddress can call this function");
         _;
     }
 
-    function initialize(address _initialOwner, address _rentContract, address _stakingContract) public initializer {
-        __Ownable_init(_initialOwner);
-        __UUPSUpgradeable_init();
-
+    function __State_Init(address _rentContract) internal {
         rentContract = IRentContract(_rentContract);
-        stakingContract = IStakingContract(_stakingContract);
     }
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    function setStakingContract(address caller) external onlyOwner {
-        stakingContract = IStakingContract(caller);
-    }
-
-    function setRentContract(address _rentContract) external onlyOwner {
+    function _setRentContract(address _rentContract) internal {
         rentContract = IRentContract(_rentContract);
     }
 
@@ -140,7 +117,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         stakeHolderInfo.rentedGPUCount += 1;
     }
 
-    function subRentedGPUCount(address _holder, string memory _machineId) external onlyNftStakingAddress {
+    function subRentedGPUCount(address _holder, string memory _machineId) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -154,10 +131,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         }
     }
 
-    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount)
-        external
-        onlyNftStakingAddress
-    {
+    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -170,10 +144,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         stakeHolderInfo.totalReservedAmount += _reserveAmount;
     }
 
-    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount)
-        external
-        onlyNftStakingAddress
-    {
+    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -200,7 +171,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         string memory _machineId,
         uint256 totalClaimedAmount,
         uint256 releasedAmount
-    ) external onlyNftStakingAddress {
+    ) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -221,7 +192,8 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         uint256 _calcPoint,
         uint8 _gpuCount,
         bool isAdd
-    ) external onlyNftStakingAddress {
+    ) internal {
+        require(_holder != address(0), "Invalid holder address");
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         if (stakeHolderInfo.holder == address(0)) {
@@ -252,7 +224,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
     }
 
-    function removeMachine(address _holder, string memory _machineId) external onlyNftStakingAddress {
+    function removeMachine(address _holder, string memory _machineId) internal {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         MachineInfo memory stakeInfoToRemove = stakeHolderInfo.machineId2Info[_machineId];
@@ -366,7 +338,7 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         }
     }
 
-    function removeMachineIdByValueUnordered(string memory machineId) public {
+    function removeMachineIdByValueUnordered(string memory machineId) internal {
         uint256 index = findMachineIdIndex(machineId);
 
         machineIds[index] = machineIds[machineIds.length - 1];
@@ -414,35 +386,18 @@ contract OldNFTStakingState is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         return rentContract.getTotalBurnedRentFee();
     }
 
-    function getTotalGPUCountInStaking() public view returns (uint256) {
-        return stakingContract.getTotalGPUCountInStaking();
-    }
-
-    function getLeftGPUCountToStartReward() public view returns (uint256) {
-        return stakingContract.getLeftGPUCountToStartReward();
-    }
-
     function getStateSummary() public view returns (StateSummary memory) {
-        uint256 totalGPUCount = stakingContract.getTotalGPUCountInStaking();
-        uint256 _leftGPUCountBeforeRewardStart = stakingContract.getLeftGPUCountToStartReward();
-        (uint256 totalCalcPoint, uint256 totalReservedAmount,) = stakingContract.getGlobalState();
-
         return StateSummary({
             totalCalcPoint: totalCalcPoint,
-            totalGPUCount: totalGPUCount,
+            totalGPUCount: totalGpuCount,
             totalCalcPointPoolCount: addressCountInStaking,
             totalRentedGPUCount: rentContract.getTotalRentedGPUCount(),
             totalBurnedRentFee: rentContract.getTotalBurnedRentFee(),
-            totalReservedAmount: totalReservedAmount,
-            leftGPUCountBeforeRewardStart: _leftGPUCountBeforeRewardStart
+            totalReservedAmount: totalReservedAmount
         });
     }
 
     function isRented(string calldata machineId) external view returns (bool) {
         return rentContract.isRented(machineId);
-    }
-
-    function version() external pure returns (uint256) {
-        return 1;
     }
 }

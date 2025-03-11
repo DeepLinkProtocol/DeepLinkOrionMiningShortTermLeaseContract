@@ -4,27 +4,23 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Rent} from "../src/rent/Rent.sol";
 import {NFTStaking} from "../src/NFTStaking.sol";
-import {NFTStakingState} from "../src/state/NFTStakingState.sol";
 import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
-
+import {ToolLib} from "../src/library/ToolLib.sol";
 import {IRewardToken} from "../src/interface/IRewardToken.sol";
-import {ITool} from "../src/interface/ITool.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import "../src/Tool.sol";
 import {Token} from "./MockRewardToken.sol";
 import "./MockERC1155.t.sol";
 
 contract RentTest is Test {
     Rent public rent;
     NFTStaking public nftStaking;
-    NFTStakingState public nftStakingState;
     IPrecompileContract public precompileContract;
     Token public rewardToken;
     DLCNode public nftToken;
     IDBCAIContract public dbcAIContract;
 
-    Tool public tool;
+    //    ToolLib public tool;
     address owner = address(0x01);
     address admin2 = address(0x02);
     address admin3 = address(0x03);
@@ -39,37 +35,17 @@ contract RentTest is Test {
         rewardToken = new Token();
         nftToken = new DLCNode(owner);
 
-        ERC1967Proxy proxy3 = new ERC1967Proxy(address(new Tool()), "");
-        Tool(address(proxy3)).initialize(owner);
-        tool = Tool(address(proxy3));
-
         ERC1967Proxy proxy1 = new ERC1967Proxy(address(new NFTStaking()), "");
         nftStaking = NFTStaking(address(proxy1));
-
-        ERC1967Proxy proxy2 = new ERC1967Proxy(address(new NFTStakingState()), "");
-        nftStakingState = NFTStakingState(address(proxy2));
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(new Rent()), "");
         rent = Rent(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
-            owner,
-            address(nftToken),
-            address(rewardToken),
-            address(nftStakingState),
-            address(rent),
-            address(dbcAIContract),
-            address(tool),
-            1
+            owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), 1
         );
-        NFTStakingState(address(proxy2)).initialize(owner, address(rent), address(nftStaking));
         Rent(address(proxy)).initialize(
-            owner,
-            address(precompileContract),
-            address(nftStaking),
-            address(nftStakingState),
-            address(dbcAIContract),
-            address(rewardToken)
+            owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 100000000000 * 1e18);
         deal(address(rewardToken), owner, 180000000 * 1e18);
@@ -145,7 +121,7 @@ contract RentTest is Test {
         stakeByOwner(machineId, 0, 480, stakeHolder);
         vm.stopPrank();
 
-        (NFTStakingState.StakeHolder[] memory topHolders,) = nftStakingState.getTopStakeHolders(0, 10);
+        (NFTStaking.StakeHolder[] memory topHolders,) = nftStaking.getTopStakeHolders(0, 10);
         assertEq(topHolders[0].holder, stakeHolder, "topHolders[0].holder, stakeHolder");
         assertEq(topHolders[0].totalCalcPoint, 100, "top1 holder calc point 100 failed");
         assertTrue(nftStaking.isStaking(machineId));
@@ -213,14 +189,14 @@ contract RentTest is Test {
         vm.startPrank(stakeHolder);
         // staking.stake(machineId3, 10 * 1e18, tokenIds2, 3);
         stakeByOwner(machineId3, 10 * 1e18, 2, stakeHolder);
-        (NFTStakingState.StakeHolder[] memory topHolders1, uint256 total) = nftStakingState.getTopStakeHolders(0, 10);
+        (NFTStaking.StakeHolder[] memory topHolders1, uint256 total) = nftStaking.getTopStakeHolders(0, 10);
         assertEq(topHolders1.length, 2, "topHolders1.length");
         assertEq(total, 2, "total");
         assertEq(topHolders1[0].totalCalcPoint, 200, "top 1 holder calc point 300 failed");
         assertEq(topHolders1[1].totalCalcPoint, 100, "top 2 holder calc point 200 failed");
 
         (address holder, uint256 calcPoint, uint256 gpuCount,, uint256 totalReservedAmount,,,) =
-            nftStakingState.stakeHolders(stakeHolder);
+            nftStaking.stakeHolders(stakeHolder);
 
         assertEq(holder, stakeHolder, "");
         assertEq(calcPoint, 200);
@@ -260,15 +236,15 @@ contract RentTest is Test {
         assertGt(balance2, balance1, "claim failed");
     }
 
-    function testTool() public view {
+    function testTool() public pure {
         string memory gpuType1 = "NVIDIA GeForce RTX 4060 Ti";
-        assertEq(tool.checkString(gpuType1), true, "checkString failed1");
+        assertEq(ToolLib.checkString(gpuType1), true, "checkString failed1");
 
         string memory gpuType2 = "Gen Intel(R) Core(TM) i7-13790F";
-        assertEq(tool.checkString(gpuType2), false, "checkString failed2");
+        assertEq(ToolLib.checkString(gpuType2), false, "checkString failed2");
 
         string memory gpuType3 = "NVIDIA GeForce RTX 20 Ti";
-        assertEq(tool.checkString(gpuType3), true, "checkString failed3");
+        assertEq(ToolLib.checkString(gpuType3), true, "checkString failed3");
     }
 
     function claimAfter(string memory machineId, address _owner, uint256 hour, bool shouldGetMore) internal {

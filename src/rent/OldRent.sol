@@ -8,23 +8,24 @@ import "../interface/IStakingContract.sol";
 import "../interface/IRewardToken.sol";
 import "../interface/IRentContract.sol";
 import "../interface/IPrecompileContract.sol";
-import "../interface/IStateContract.sol";
 import "forge-std/console.sol";
 import "../interface/IDBCAIContract.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-/// @custom:oz-upgrades-from OldRent
 contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
-    uint256 public constant REPORT_RESERVE_AMOUNT = 10000 * 1e18;
-    uint256 public constant SLASH_AMOUNT = 10000 * 1e18;
+    uint256 public constant REPORT_RESERVE_AMOUNT = 10_000 ether;
+    uint256 public constant SLASH_AMOUNT = 10_000 ether;
+    uint256 public constant ONE_CALC_POINT_USD_VALUE_PER_MONTH = 5_080;
+    uint256 public constant FACTOR = 10_000;
+    uint256 public constant USD_DECIMALS = 1_000_000;
 
     IRewardToken public feeToken;
     IPrecompileContract public precompileContract;
     IStakingContract public stakingContract;
-    IStateContract public stateContract;
     IDBCAIContract public dbcAIContract;
 
+    address public canUpgradeAddress;
     uint256 public lastRentId;
     uint256 public totalBurnedAmount;
     uint8 public voteThreshold;
@@ -97,16 +98,17 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(address => uint256[]) public renter2RentIds;
     mapping(string => BurnedInfo) public machineId2BurnedInfo;
     mapping(string => SlashInfo) public machineId2SlashInfo;
-    mapping(address => SlashInfo[]) public stakeHolder2SlashInfos;
     mapping(string => mapping(address => Vote)) public pendingSlashMachineId2ApprovedAdmins;
     mapping(string => uint8) public pendingSlashMachineId2ApprovedCount;
     mapping(string => uint8) public pendingSlashMachineId2RefuseCount;
     mapping(address => uint256) public stakeHolder2RentFee;
-
     mapping(address => RentGPUInfo) public stakeHolder2RentGPUInfo;
     mapping(string => uint256) public machineId2LastRentEndBlock;
+    mapping(string => SlashInfo[]) public machineId2SlashInfos;
 
-    event RentMachine(uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter);
+    event RentMachine(
+        uint256 rentId, string machineId, uint256 rentEndTime, uint8 gpuCount, address renter, uint256 rentFee
+    );
     event RenewRent(uint256 rentId, uint256 additionalRentSeconds, uint256 additionalRentFee, address renter);
     event EndRentMachine(uint256 rentId, string machineId, uint256 rentEndTime, address renter);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
@@ -118,7 +120,34 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event ExecuteReport(string machineId, Vote vote);
     event MachineRegister(string machineId, uint256 calcPoint);
     event MachineUnregister(string machineId, uint256 calcPoint);
-    event PaidSlash(address indexed stakeHolder, string machineId);
+    event PaidSlash(string machineId);
+    event SlashMachineOnOffline(
+        address indexed stakeHolder, address indexed renter, string machineId, uint256 slashAmount
+    );
+    event RemoveCalcPointOnOffline(string machineId);
+    event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
+
+    error NotApproveAdmin();
+    error ZeroCalcPoint();
+    error CallerNotStakingContract();
+    error ZeroAddress();
+    error CanNotUpgrade(address);
+    error CountOfApproveAdminsShouldBeFive();
+    error ElementNotFound();
+    error uint256Overflow();
+    error InvalidRentDuration(uint256 rentDuration);
+    error MachineCanNotRent();
+    error RentDurationTooLong(uint256 rentDuration, uint256 maxRentDuration);
+    error MachineCanNotRentWithin100BlocksAfterLastRent();
+    error BalanceNotEnough();
+    error RentEnd();
+    error RentNotEnd();
+    error NotRenter();
+    error MachineNotRented();
+    error ReserveAmountForReportShouldBe10000();
+    error ReportedMachineNotFound();
+    error VoteFinished();
+    error NotDBCAIContract();
 
     modifier onlyApproveAdmins() {
         bool found = false;
@@ -128,17 +157,17 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 break;
             }
         }
-        require(found, "not approve admin");
+        require(found, NotApproveAdmin());
         _;
     }
 
     modifier onlyStakingContract() {
-        require(msg.sender == address(stakingContract), "only staking contract");
+        require(msg.sender == address(stakingContract), CallerNotStakingContract());
         _;
     }
 
     modifier onlyDBCAIContract() {
-        require(msg.sender == address(dbcAIContract), "only dbc AI contract");
+        require(msg.sender == address(dbcAIContract), NotDBCAIContract());
         _;
     }
 
@@ -151,7 +180,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address _initialOwner,
         address _precompileContract,
         address _stakingContract,
-        address _stateContract,
         address _dbcAIContract,
         address _feeToken
     ) public initializer {
@@ -160,20 +188,31 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         feeToken = IRewardToken(_feeToken);
         precompileContract = IPrecompileContract(_precompileContract);
         stakingContract = IStakingContract(_stakingContract);
-        stateContract = IStateContract(_stateContract);
         dbcAIContract = IDBCAIContract(_dbcAIContract);
         voteThreshold = 3;
+        canUpgradeAddress = msg.sender;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
+        require(newImplementation != address(0), ZeroAddress());
+        require(msg.sender == canUpgradeAddress, CanNotUpgrade(msg.sender));
+    }
+
+    function setCanUpgradeAddress(address addr) external onlyOwner {
+        canUpgradeAddress = addr;
+    }
+
+    function setDBCAIContract(address addr) external onlyOwner {
+        dbcAIContract = IDBCAIContract(addr);
+    }
 
     function setAdminsToApproveMachineFaultReporting(address[] calldata admins) external onlyOwner {
-        require(admins.length == 5, "admins length should be 5");
+        require(admins.length == 5, CountOfApproveAdminsShouldBeFive());
         adminsToApprove = admins;
     }
 
     function setFeeToken(address _feeToken) external onlyOwner {
-        require(_feeToken != address(0x0), "fee token address should not be 0x0");
+        require(_feeToken != address(0x0), ZeroAddress());
         feeToken = IRewardToken(_feeToken);
     }
 
@@ -182,7 +221,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function setPrecompileContract(address _precompileContract) external onlyOwner {
-        require(_precompileContract != address(0x0), "precompile contract address should not be 0x0");
+        require(_precompileContract != address(0x0), ZeroAddress());
         precompileContract = IPrecompileContract(_precompileContract);
     }
 
@@ -192,7 +231,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 return i;
             }
         }
-        revert("Element not found");
+        revert ElementNotFound();
     }
 
     function removeValueOfUintArray(uint256 v, uint256[] storage arr) internal {
@@ -207,7 +246,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 return i;
             }
         }
-        revert("Element not found");
+        revert ElementNotFound();
     }
 
     function removeValueOfStringArray(string memory addr, string[] storage arr) internal {
@@ -217,15 +256,19 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getNextRentId() internal returns (uint256) {
-        require(lastRentId < type(uint256).max, "ID overflow");
+        require(lastRentId < type(uint256).max, uint256Overflow());
         lastRentId += 1;
         return lastRentId;
     }
 
     function canRent(string calldata machineId) public view returns (bool) {
+        if (isRented(machineId)) {
+            return false;
+        }
         if (!stakingContract.isStaking(machineId)) {
             return false;
         }
+
         (, uint256 calcPoint,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
             stakingContract.getMachineInfo(machineId);
         if (!isOnline || !isRegistered || isRented(machineId) || calcPoint == 0) {
@@ -237,7 +280,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
         if (endAtTimestamp > 0) {
-            return endAtTimestamp > block.timestamp;
+            return endAtTimestamp > block.timestamp && endAtTimestamp - block.timestamp > 1 hours;
         }
 
         return endAtTimestamp == 0;
@@ -250,7 +293,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     {
         (,,, uint256 endAt,, uint256 _reservedAmount,,) = stakingContract.getMachineInfo(machineId);
         uint256 rentFee = getMachinePrice(machineId, 1 hours / SECONDS_PER_BLOCK);
-
         if (isRented(machineId)) {
             return (0, _reservedAmount, rentFee);
         }
@@ -259,33 +301,40 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
-        (, uint256 calcPoint) = getMachineHolderAndCalcPoint(machineId);
-        require(calcPoint > 0, "machine calcPoint is 0 now");
-        uint256 rentBlockNumbers = rentSeconds / SECONDS_PER_BLOCK;
-        uint256 rentFee = precompileContract.getDLCRentFeeByCalcPoint(calcPoint, rentBlockNumbers, 1, 1);
-        return rentFee;
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        if (rewardEndAt == 60 days) {
+            return 1 ether * rentSeconds / 1 hours;
+        }
+        (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+        require(calcPointInFact > 0, ZeroCalcPoint());
+
+        // calcPont factor : 10000 ; ONE_CALC_POINT_USD_VALUE_PER_MONTH factor: 10000
+        uint256 totalFactor = FACTOR * FACTOR;
+        // 0.005U
+        uint256 dlcUSDPrice = 5000;
+        uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
+            / 60 / 60 / totalFactor;
+        rentFeeUSD = rentFeeUSD * 6 / 10; // 60% of the total rent fee
+        return 1e18 * rentFeeUSD / dlcUSDPrice;
     }
 
-    function rentMachine(string calldata machineId, uint256 rentSeconds, uint256 rentFee) external {
-        require(rentSeconds > 0, "rent duration should be greater than 0");
-        require(canRent(machineId), "machine can not rent");
-        require(!isRented(machineId), "machine already rented");
-        require(rentSeconds >= 10 minutes, "rent duration should be greater than 10 minutes");
-        require(rentSeconds <= 2 hours, "rent duration should be less than 2 hours");
+    function rentMachine(string calldata machineId, uint256 rentSeconds) external {
+        require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
+        require(canRent(machineId), MachineCanNotRent());
 
         (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt), 60 days);
-        require(rentSeconds <= maxRentDuration, "rent duration should be less than max rent duration");
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
+        require(rentSeconds <= maxRentDuration, RentDurationTooLong(rentSeconds, maxRentDuration));
 
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
         if (lastRentEndBlock != 0) {
-            require(block.number > lastRentEndBlock + 100, "machine can not rent too frequently");
+            require(block.number > lastRentEndBlock + 100, MachineCanNotRentWithin100BlocksAfterLastRent());
         }
 
         uint256 rentFeeInFact = getMachinePrice(machineId, rentSeconds);
-        require(rentFee >= rentFeeInFact, "rent fee not enough");
+        require(feeToken.balanceOf(msg.sender) >= rentFeeInFact, BalanceNotEnough());
 
         uint256 _now = block.timestamp;
 
@@ -329,23 +378,29 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId);
 
-        stateContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
-        stateContract.addRentedGPUCount(machineHolder, machineId);
+        stakingContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
+        stakingContract.addRentedGPUCount(machineHolder, machineId);
 
-        emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender);
+        emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender, rentFeeInFact);
     }
 
-    function renewRent(string memory machineId, uint256 additionalRentSeconds, uint256 additionalRentFee) external {
+    function renewRent(string memory machineId, uint256 additionalRentSeconds) external {
         uint256 rentId = machineId2RentId[machineId];
-        require(additionalRentSeconds > 0, "additional rent duration should be greater than 0");
-        require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, "rent end");
-        require(rentId2RentInfo[rentId].renter == msg.sender, "Only the renter can renew the rent");
-        require(isRented(machineId), "Machine is not currently rented");
-        require(additionalRentSeconds >= 10 minutes, "Additional rent duration should be greater than 10 minutes");
-        require(additionalRentSeconds <= 2 hours, "Additional rent duration should be less than 2 hours");
+        require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, RentEnd());
+        require(rentId2RentInfo[rentId].renter == msg.sender, NotRenter());
+        require(isRented(machineId), MachineNotRented());
+        require(
+            additionalRentSeconds >= 10 minutes && additionalRentSeconds <= 2 hours,
+            InvalidRentDuration(additionalRentSeconds)
+        );
 
+        (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
+        uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
+        require(newRentDuration <= maxRentDuration, RentDurationTooLong(newRentDuration, maxRentDuration));
         uint256 additionalRentFeeInFact = getMachinePrice(rentId2RentInfo[rentId].machineId, additionalRentSeconds);
-        require(additionalRentFee >= additionalRentFeeInFact, "Additional rent fee not enough");
+        require(feeToken.balanceOf(msg.sender) >= additionalRentFeeInFact, BalanceNotEnough());
 
         // Update rent end time
         rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
@@ -373,14 +428,14 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // update total burned amount
         totalBurnedAmount += additionalRentFeeInFact;
 
-        stateContract.setBurnedRentFee(machineHolder, machineId, additionalRentFee);
-        emit RenewRent(rentId, additionalRentSeconds, additionalRentFee, msg.sender);
+        stakingContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
+        emit RenewRent(rentId, additionalRentSeconds, additionalRentFeeInFact, msg.sender);
     }
 
     function endRentMachine(string calldata machineId) external {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
-        require(rentInfo.rentEndTime <= block.timestamp, "rent not end");
+        require(rentInfo.rentEndTime <= block.timestamp, RentNotEnd());
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
@@ -396,18 +451,18 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit EndRentMachine(rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
 
-    function getMachineHolderAndCalcPoint(string memory machineId) internal view returns (address, uint256) {
+    function getMachineHolderAndCalcPoint(string memory machineId) public view returns (address, uint256) {
         (address holder, uint256 calcPoint,,,,,,) = stakingContract.getMachineInfo(machineId);
         return (holder, calcPoint);
     }
 
     function reportMachineFault(string calldata machineId, uint256 reserveAmount) external {
-        require(reserveAmount == REPORT_RESERVE_AMOUNT, "reserve amount should be 10000");
+        require(reserveAmount == REPORT_RESERVE_AMOUNT, ReserveAmountForReportShouldBe10000());
 
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
-        require(rentInfo.renter == msg.sender, "not rent owner");
-        require(rentInfo.rentEndTime >= block.timestamp, "rent end");
+        require(rentInfo.renter == msg.sender, NotRenter());
+        require(rentInfo.rentEndTime >= block.timestamp, RentEnd());
 
         feeToken.transferFrom(msg.sender, address(this), REPORT_RESERVE_AMOUNT);
 
@@ -451,14 +506,14 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function addSlashInfoAndReport(SlashInfo memory slashInfo) internal {
-        stakeHolder2SlashInfos[slashInfo.stakeHolder].push(slashInfo);
+        machineId2SlashInfos[slashInfo.machineId].push(slashInfo);
         stakingContract.reportMachineFault(slashInfo.machineId, slashInfo.renter);
     }
 
     function approveMachineFaultReporting(string calldata machineId) external onlyApproveAdmins {
-        require(machineId2SlashInfo[machineId].renter != address(0x0), "not found reported machine");
+        require(machineId2SlashInfo[machineId].renter != address(0x0), ReportedMachineNotFound());
 
-        require(pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] != Vote.Finished, "vote already finished");
+        require(pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] != Vote.Finished, VoteFinished());
         pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] = Vote.Yes;
         emit ApprovedReport(machineId, msg.sender);
         pendingSlashMachineId2ApprovedCount[machineId] += 1;
@@ -480,9 +535,9 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function rejectMachineFaultReporting(string calldata machineId) external onlyApproveAdmins {
-        require(machineId2SlashInfo[machineId].renter != address(0), "not found reported machine");
+        require(machineId2SlashInfo[machineId].renter != address(0), ReportedMachineNotFound());
 
-        require(pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] != Vote.Finished, "vote already finished");
+        require(pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] != Vote.Finished, VoteFinished());
         pendingSlashMachineId2ApprovedAdmins[machineId][msg.sender] = Vote.No;
         pendingSlashMachineId2RefuseCount[machineId] += 1;
         emit RefusedReport(machineId, msg.sender);
@@ -511,7 +566,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function version() external pure returns (uint256) {
-        return 1;
+        return 0;
     }
 
     function getBurnedRentFeeByStakeHolder(address stakeHolder) public view returns (uint256) {
@@ -550,29 +605,33 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function notify(NotifyType tp, string calldata machineId) external onlyDBCAIContract returns (bool) {
+        if (tp == NotifyType.ContractRegister) {
+            registered = true;
+            return true;
+        }
+
+        bool isStaking = stakingContract.isStaking(machineId);
+        if (!isStaking) {
+            return false;
+        }
+
         (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
 
         (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
 
-        bool isStaking = stakingContract.isStaking(machineId);
-
-        if (tp == NotifyType.ContractRegister) {
-            registered = true;
-        } else if (tp == NotifyType.MachineRegister) {
-            if (calcPoint == 0 && isStaking) {
+        if (tp == NotifyType.MachineRegister) {
+            if (calcPoint == 0) {
                 // staked before
                 stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
+                emit MachineRegister(machineId, calcPointInFact);
             }
-            emit MachineRegister(machineId, calcPointInFact);
         } else if (tp == NotifyType.MachineUnregister) {
-            if (isStaking) {
-                stakingContract.joinStaking(machineId, 0, reservedAmount);
-            }
+            stakingContract.joinStaking(machineId, 0, reservedAmount);
             emit MachineUnregister(machineId, calcPoint);
         } else if (tp == NotifyType.MachineOffline) {
             uint256 rentId = machineId2RentId[machineId];
             RentInfo memory rentInfo = rentId2RentInfo[rentId];
-            if (isStaking && isRegistered) {
+            if (isRegistered) {
                 if (rentInfo.renter != address(0)) {
                     SlashInfo memory slashInfo = newSlashInfo(
                         rentInfo.stakeHolder,
@@ -585,30 +644,32 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                         rentInfo.renter
                     );
                     addSlashInfoAndReport(slashInfo);
+                    emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter, rentInfo.machineId, SLASH_AMOUNT);
                 } else {
                     stakingContract.joinStaking(machineId, 0, reservedAmount);
+                    emit RemoveCalcPointOnOffline(machineId);
                 }
             }
         } else if (tp == NotifyType.MachineOnline) {
-            if (calcPoint == 0 && isStaking) {
+            if (calcPoint == 0) {
                 // staked before
                 stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
+                emit AddBackCalcPointOnOnline(machineId, calcPointInFact);
             }
         }
         return true;
     }
 
-    function getSlashInfosByOwner(address stakeHolder, uint256 pageNumber, uint256 pageSize)
+    function getSlashInfosByMachineId(string memory machineId, uint256 pageNumber, uint256 pageSize)
         external
         view
         returns (SlashInfo[] memory paginatedSlashInfos, uint256 totalCount)
     {
-        require(pageNumber > 0, "Page number must be greater than zero");
-        require(pageSize > 0, "Page size must be greater than zero");
+        totalCount = machineId2SlashInfos[machineId].length;
 
-        // Get the total number of SlashInfo for the given machineOwner
-        totalCount = stakeHolder2SlashInfos[stakeHolder].length;
-        require(totalCount > 0, "No data available");
+        if (pageNumber == 0 || pageSize == 0 || totalCount == 0) {
+            return (new SlashInfo[](0), 0);
+        }
 
         // Calculate the start index for the requested page
         uint256 startIndex = (pageNumber - 1) * pageSize;
@@ -627,19 +688,19 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // Populate the paginated array
         for (uint256 i = 0; i < resultSize; i++) {
-            paginatedSlashInfos[i] = stakeHolder2SlashInfos[stakeHolder][startIndex + i];
+            paginatedSlashInfos[i] = machineId2SlashInfos[machineId][startIndex + i];
         }
     }
 
-    function paidSlash(address holder, string memory machineId) external onlyStakingContract {
-        SlashInfo[] memory slashInfos = stakeHolder2SlashInfos[holder];
+    function paidSlash(string memory machineId) external onlyStakingContract {
+        SlashInfo[] storage slashInfos = machineId2SlashInfos[machineId];
         for (uint256 i = 0; i < slashInfos.length; i++) {
+            if (slashInfos[i].paid) {
+                return;
+            }
             if (keccak256(abi.encodePacked(slashInfos[i].machineId)) == keccak256(abi.encodePacked(machineId))) {
-                if (slashInfos[i].paid) {
-                    return;
-                }
                 slashInfos[i].paid = true;
-                emit PaidSlash(holder, machineId);
+                emit PaidSlash(machineId);
             }
         }
     }

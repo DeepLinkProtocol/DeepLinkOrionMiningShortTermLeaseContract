@@ -41,17 +41,11 @@ contract Deploy is Script {
         address rewardTokenContract = vm.envAddress("REWARD_TOKEN_CONTRACT");
         console.log("rewardTokenContract Address:", rewardTokenContract);
 
-        address stateProxy = vm.envAddress("STATE_PROXY");
-        console.log("State Proxy Address:", stateProxy);
-
         address rentProxy = vm.envAddress("RENT_PROXY");
         console.log("Rent Proxy Address:", rentProxy);
 
         address dbcAIProxy = vm.envAddress("DBC_AI_PROXY");
         console.log("DBC AI Proxy Address:", dbcAIProxy);
-
-        address toolContractProxy = vm.envAddress("TOOL_PROXY");
-        console.log("Tool contract Proxy Address:", toolContractProxy);
 
         uint8 phase = uint8(vm.envUint("PHASE_LEVEL"));
         console.log("phaseLevel Address:", phase);
@@ -59,17 +53,7 @@ contract Deploy is Script {
         proxy = Upgrades.deployUUPSProxy(
             "NFTStaking.sol:NFTStaking",
             abi.encodeCall(
-                NFTStaking.initialize,
-                (
-                    msg.sender,
-                    nftContract,
-                    rewardTokenContract,
-                    stateProxy,
-                    rentProxy,
-                    dbcAIProxy,
-                    toolContractProxy,
-                    phase
-                )
+                NFTStaking.initialize, (msg.sender, nftContract, rewardTokenContract, rentProxy, dbcAIProxy, phase)
             )
         );
         return (proxy, logic);
