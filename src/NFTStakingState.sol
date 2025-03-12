@@ -360,7 +360,7 @@ contract NFTStakingState {
         view
         returns (string[] memory, uint256)
     {
-        if (startIndex < machineIds.length) {
+        if (startIndex > machineIds.length) {
             return (new string[](0), machineIds.length);
         }
 
