@@ -100,11 +100,18 @@ contract NFTStaking is
     mapping(string => bool) public machineId2Rented;
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
 
-    event Staked(address indexed stakeholder, string machineId, uint256 originCalcPoint, uint256 calcPoint, uint256 stakeHours);
+    event Staked(
+        address indexed stakeholder,
+        string machineId,
+        uint256 originCalcPoint,
+        uint256 calcPoint,
+        uint256 stakeHours,
+        string gpuType
+    );
     event AddedStakeHours(address indexed stakeholder, string machineId, uint256 stakeHours);
 
     event ReserveDLC(string machineId, uint256 amount);
-    event Unstaked(address indexed stakeholder, string machineId,uint256 paybackReserveAmount);
+    event Unstaked(address indexed stakeholder, string machineId, uint256 paybackReserveAmount);
     event Claimed(
         address indexed stakeholder,
         string machineId,
@@ -116,7 +123,7 @@ contract NFTStaking is
 
     event PaySlash(string machineId, address renter, uint256 slashAmount);
     event RentMachine(address indexed machineOwner, string machineId);
-    event EndRentMachine(address indexed machineOwner, string machineId);
+    event EndRentMachine(address indexed machineOwner, string machineId, uint256 nextCanRentTime);
     event ReportMachineFault(string machineId, address renter);
     event RewardsPerCalcPointUpdate(uint256 accumulatedPerShareBefore, uint256 accumulatedPerShareAfter);
 
@@ -403,7 +410,7 @@ contract NFTStaking is
         holder2MachineIds[stakeholder].push(machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
         stakedMachineIds.push(machineId);
-        emit Staked(stakeholder, machineId, originCalcPoint,calcPoint, stakeHours);
+        emit Staked(stakeholder, machineId, originCalcPoint, calcPoint, stakeHours, gpuType);
     }
 
     function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external {
@@ -633,7 +640,6 @@ contract NFTStaking is
 
     function unStake(string calldata machineId) public nonReentrant {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-        require(dlcClientWalletAddress[msg.sender] || msg.sender == stakeInfo.holder, NotMachineOwnerOrAdmin());
         require(stakeInfo.startAtTimestamp > 0, MachineNotStaked(machineId));
         require(block.timestamp >= stakeInfo.endAtTimestamp, MachineNotStaked(machineId));
         require(!stakeInfo.isRentedByUser, MachineRentedByUser());
@@ -679,7 +685,7 @@ contract NFTStaking is
 
         NFTStakingState.removeMachine(stakeInfo.holder, machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
-        emit Unstaked(stakeholder, machineId,reservedAmount);
+        emit Unstaked(stakeholder, machineId, reservedAmount);
     }
 
     function removeStakingMachineFromHolder(address holder, string memory machineId) internal {
@@ -731,6 +737,9 @@ contract NFTStaking is
 
         // 100 blocks
         stakeInfo.nextRenterCanRentAt = 600 + block.timestamp;
+        if (block.timestamp > stakeInfo.endAtTimestamp - 1 hours) {
+            stakeInfo.nextRenterCanRentAt = 0;
+        }
 
         uint256 newCalcPoint = (stakeInfo.calcPoint * 10) / 13;
         _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
@@ -738,7 +747,7 @@ contract NFTStaking is
 
         NFTStakingState.subRentedGPUCount(stakeInfo.holder, machineId);
 
-        emit EndRentMachine(stakeInfo.holder, machineId);
+        emit EndRentMachine(stakeInfo.holder, machineId, stakeInfo.nextRenterCanRentAt);
     }
 
     function reportMachineFault(string calldata machineId, address renter) public onlyRentContract {

@@ -78,17 +78,20 @@ contract NFTStakingState {
         rentContract = IRentContract(_rentContract);
     }
 
-    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256) {
+    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256, bool) {
         for (uint256 i = 0; i < arr.length; i++) {
             if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
-                return i;
+                return (i, true);
             }
         }
-        revert("Element not found");
+        return (0, false);
     }
 
     function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
-        uint256 index = findStringIndex(arr, addr);
+        (uint256 index, bool found) = findStringIndex(arr, addr);
+        if (!found) {
+            return;
+        }
         arr[index] = arr[arr.length - 1];
         arr.pop();
     }
@@ -228,9 +231,10 @@ contract NFTStakingState {
         StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
 
         MachineInfo memory stakeInfoToRemove = stakeHolderInfo.machineId2Info[_machineId];
-        require(stakeInfoToRemove.calcPoint > 0, "Machine not found");
+        if (stakeInfoToRemove.calcPoint > 0) {
+            stakeHolderInfo.totalCalcPoint -= stakeInfoToRemove.calcPoint;
+        }
 
-        stakeHolderInfo.totalCalcPoint -= stakeInfoToRemove.calcPoint;
         stakeHolderInfo.totalGPUCount -= stakeInfoToRemove.gpuCount;
         stakeHolderInfo.totalReservedAmount -= stakeInfoToRemove.reserveAmount;
         stakeHolderInfo.rentedGPUCount -= stakeInfoToRemove.rentedGPUCount;
@@ -243,7 +247,9 @@ contract NFTStakingState {
             if (stakedMachineCount == 1) {
                 addressCountInStaking -= 1;
             }
-            address2MachineCount[_holder] -= 1;
+            if (address2MachineCount[_holder] > 0) {
+                address2MachineCount[_holder] -= 1;
+            }
         }
 
         updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
@@ -339,20 +345,22 @@ contract NFTStakingState {
     }
 
     function removeMachineIdByValueUnordered(string memory machineId) internal {
-        uint256 index = findMachineIdIndex(machineId);
-
+        (uint256 index, bool found) = findMachineIdIndex(machineId);
+        if (!found) {
+            return;
+        }
         machineIds[index] = machineIds[machineIds.length - 1];
 
         machineIds.pop();
     }
 
-    function findMachineIdIndex(string memory machineId) internal view returns (uint256) {
+    function findMachineIdIndex(string memory machineId) internal view returns (uint256, bool) {
         for (uint256 i = 0; i < machineIds.length; i++) {
             if (keccak256(abi.encodePacked(machineIds[i])) == keccak256(abi.encodePacked(machineId))) {
-                return i;
+                return (i, true);
             }
         }
-        revert("Element not found");
+        return (0, false);
     }
 
     function getMachinesInStaking(uint256 startIndex, uint256 pageSize)

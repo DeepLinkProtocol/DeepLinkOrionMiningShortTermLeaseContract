@@ -118,7 +118,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     );
     event RenewRent(
         address indexed machineOnwer,
-        string  machineId,
+        string machineId,
         uint256 rentId,
         uint256 additionalRentSeconds,
         uint256 additionalRentFee,
@@ -285,7 +285,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        if (rewardEndAt == 60 days){
+        if (rewardEndAt == 60 days) {
             return false;
         }
 
@@ -295,7 +295,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
 
-        if (nextRenterCanRentAt > block.timestamp) {
+        if (nextRenterCanRentAt > block.timestamp || nextRenterCanRentAt == 0) {
             // not reach the start rent block number yet
             return false;
         }
