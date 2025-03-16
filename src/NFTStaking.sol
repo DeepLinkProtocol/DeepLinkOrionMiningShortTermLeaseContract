@@ -56,7 +56,7 @@ contract NFTStaking is
     uint256 public totalStakingGpuCount;
     RewardCalculatorLib.RewardsPerShare public rewardsPerCalcPoint;
 
-    string[] private stakedMachineIds;
+    string[] public stakedMachineIds;
 
     enum StakingType {
         ShortTerm,
@@ -99,6 +99,7 @@ contract NFTStaking is
     mapping(string => LockedRewardDetail) public machineId2LockedRewardDetail;
     mapping(string => bool) public machineId2Rented;
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
+    mapping(string => bool) private statedMachinesMap;
 
     event Staked(
         address indexed stakeholder, string machineId, uint256 originCalcPoint, uint256 calcPoint, uint256 stakeHours
@@ -380,7 +381,11 @@ contract NFTStaking is
         }
 
         uint8 gpuCount = 1;
-        totalGpuCount += gpuCount;
+        if (statedMachinesMap[machineId]){
+            stakedMachineIds.push(machineId);
+            statedMachinesMap[machineId] = true;
+            totalGpuCount += gpuCount;
+        }
         totalStakingGpuCount += gpuCount;
         if (totalGpuCount >= rewardStartGPUThreshold && rewardStartAtTimestamp == 0) {
             rewardStartAtTimestamp = currentTime;
@@ -409,7 +414,6 @@ contract NFTStaking is
         NFTStakingState.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
         holder2MachineIds[stakeholder].push(machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
-        stakedMachineIds.push(machineId);
         emit Staked(stakeholder, machineId, originCalcPoint, calcPoint, stakeHours);
         emit StakedGPUType(machineId, gpuType);
     }
@@ -690,7 +694,9 @@ contract NFTStaking is
         stakeInfo.nftCount = 0;
         _joinStaking(machineId, 0, 0);
         removeStakingMachineFromHolder(stakeholder, machineId);
-        totalStakingGpuCount -= Math.min(stakeInfo.gpuCount, 0);
+        if (totalStakingGpuCount > 0){
+            totalStakingGpuCount -= 1;
+        }
 
         NFTStakingState.removeMachine(stakeInfo.holder, machineId);
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
@@ -981,4 +987,5 @@ contract NFTStaking is
     function version() external pure returns (uint256) {
         return 1;
     }
+
 }

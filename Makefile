@@ -10,7 +10,6 @@ upgrade-staking:
 	source .env && forge script script/Upgrade.s.sol:Upgrade --rpc-url dbc-testnet --broadcast --verify --verifier blockscout --verifier-url $TEST_NET_VERIFIER_URL --force --skip-simulation --legacy
 
 
-	source .env && forge script script/Deploy.s.sol:Deploy --rpc-url dbc-testnet --private-key $PRIVATE_KEY --broadcast --verify --verifier blockscout --verifier-url $TEST_NET_VERIFIER_URL  --legacy
 
 deploy-staking-mainnet:
 	source .env && forge script script/Deploy.s.sol:Deploy --rpc-url dbc-mainnet --private-key $PRIVATE_KEY_MAINNET --broadcast --verify --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL --legacy
@@ -19,7 +18,7 @@ deploy-staking-mainnet:
 
 verify-staking-mainnet:
 	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL $STAKING_PROXY  src/NFTStaking.sol:NFTStaking
-	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0xbcD93B7F2b3020e385DfF48142D95A0D77A9B330 src/NFTStaking.sol:NFTStaking
+	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x6268Aba94D0d0e4FB917cC02765f631f309a7388 src/NFTStaking.sol:NFTStaking
 
 
 upgrade-staking-mainnet:
@@ -44,7 +43,7 @@ deploy-rent-mainnet:
 
 verify-rent-mainnet:
 	source .env && forge verify-contract --chain 19880818 --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL $RENT_PROXY  src/rent/Rent.sol:Rent
-	source .env && forge verify-contract --chain 19880818 --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x03080334a76c0c193800c1085f29835f7f305f6c  src/rent/Rent.sol:Rent
+	source .env && forge verify-contract --chain 19880818 --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x34B2d49EcbC42191113A9E5740Ac85A0DE7bC41D  src/rent/Rent.sol:Rent
 
 upgrade-rent-mainnet:
 	source .env && forge script script/rent/Upgrade.s.sol:Upgrade --rpc-url dbc-mainnet --broadcast --verify --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL --force --skip-simulation --legacy
