@@ -1,0 +1,114 @@
+specVersion: 1.2.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: NFTStaking
+    network: deepbrainchain-mainnet
+    source:
+      address: "0x6268Aba94D0d0e4FB917cC02765f631f309a7388"
+      abi: NFTStaking
+      startBlock: 1265285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - StateSummary
+        - StakeHolder
+        - MachineInfo
+      abis:
+        - name: NFTStaking
+          file: ./abis/NFTStaking.json
+      eventHandlers:
+        - event: MoveToReserveAmount(string,address,uint256)
+          handler: handleMoveToReserveAmount
+        - event: Claimed(indexed address,string,uint256,uint256,uint256,bool)
+          handler: handleClaimed
+        - event: PaySlash(string,address,uint256)
+          handler: handlePaySlash
+        - event: ReserveDLC(string,uint256)
+          handler: handleReserveDLC
+        - event: Staked(indexed address,string,uint256,uint256,uint256)
+          handler: handleStaked
+        - event: Unstaked(indexed address,string,uint256)
+          handler: handleUnstaked
+        - event: RentMachine(indexed address,string,uint256)
+          handler: handleRentMachine
+        - event: EndRentMachine(indexed address,string,uint256)
+          handler: handleEndRentMachine
+        - event: StakedGPUType(string,string)
+          handler: handleStakedGPUType
+
+     
+      file: ./src/nft-staking.ts
+  # - kind: ethereum
+  #   name: Rent
+  #   network: chapel
+  #   source:
+  #     address: "0x3a0560814ace61bdbfbec8cc44eaef5f70d7f9a2"
+  #     abi: Rent
+  #     startBlock: 48952423
+  #   mapping:
+  #     kind: ethereum/events
+  #     apiVersion: 0.0.9
+  #     language: wasm/assemblyscript
+  #     entities:
+  #       - AddBackCalcPointOnOnline
+  #       - ApprovedReport
+  #       - BurnedFee
+  #       - RentEndRentMachine
+  #       - ExecuteReport
+  #       - RentInitialized
+  #       - MachineRegister
+  #       - MachineUnregister
+  #       - RentOwnershipTransferred
+  #       - PaidSlash
+  #       - RefusedReport
+  #       - RemoveCalcPointOnOffline
+  #       - RenewRent
+  #       - RentRentMachine
+  #       - RentReportMachineFault
+  #       - SlashMachineOnOffline
+  #       - RentUpgraded
+  #     abis:
+  #       - name: Rent
+  #         file: ./abis/Rent.json
+  #     eventHandlers:
+  #       - event: AddBackCalcPointOnOnline(string,uint256)
+  #         handler: handleAddBackCalcPointOnOnline
+  #       - event: ApprovedReport(string,address)
+  #         handler: handleApprovedReport
+  #       - event: BurnedFee(string,uint256,uint256,uint256,address,uint8)
+  #         handler: handleBurnedFee
+  #       - event: EndRentMachine(address,uint256,string,uint256,address)
+  #         handler: handleEndRentMachine
+  #       - event: ExecuteReport(string,uint8)
+  #         handler: handleExecuteReport
+  #       - event: Initialized(uint64)
+  #         handler: handleInitialized
+  #       - event: MachineRegister(string,uint256)
+  #         handler: handleMachineRegister
+  #       - event: MachineUnregister(string,uint256)
+  #         handler: handleMachineUnregister
+  #       - event: OwnershipTransferred(indexed address,indexed address)
+  #         handler: handleOwnershipTransferred
+  #       - event: PaidSlash(string)
+  #         handler: handlePaidSlash
+  #       - event: RefusedReport(string,address)
+  #         handler: handleRefusedReport
+  #       - event: RemoveCalcPointOnOffline(string)
+  #         handler: handleRemoveCalcPointOnOffline
+  #       - event: RenewRent(indexed address,string,uint256,uint256,uint256,address)
+  #         handler: handleRenewRent
+  #       - event: RentMachine(indexed address,uint256,string,uint256,address,uint256)
+  #         handler: handleRentMachine
+  #       - event: ReportMachineFault(uint256,string,address)
+  #         handler: handleReportMachineFault
+  #       - event: SlashMachineOnOffline(indexed address,indexed address,string,uint256)
+  #         handler: handleSlashMachineOnOffline
+  #       - event: Upgraded(indexed address)
+  #         handler: handleUpgraded
+  #     file: ./src/rent.ts

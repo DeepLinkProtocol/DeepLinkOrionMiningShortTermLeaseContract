@@ -1,0 +1,997 @@
+[
+  { "inputs": [], "stateMutability": "nonpayable", "type": "constructor" },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "target", "type": "address" }
+    ],
+    "name": "AddressEmptyCode",
+    "type": "error"
+  },
+  { "inputs": [], "name": "BalanceNotEnough", "type": "error" },
+  { "inputs": [], "name": "CallerNotStakingContract", "type": "error" },
+  {
+    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "CanNotUpgrade",
+    "type": "error"
+  },
+  { "inputs": [], "name": "CountOfApproveAdminsShouldBeFive", "type": "error" },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "implementation", "type": "address" }
+    ],
+    "name": "ERC1967InvalidImplementation",
+    "type": "error"
+  },
+  { "inputs": [], "name": "ERC1967NonPayable", "type": "error" },
+  { "inputs": [], "name": "ElementNotFound", "type": "error" },
+  { "inputs": [], "name": "FailedInnerCall", "type": "error" },
+  { "inputs": [], "name": "InvalidInitialization", "type": "error" },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "rentDuration", "type": "uint256" }
+    ],
+    "name": "InvalidRentDuration",
+    "type": "error"
+  },
+  { "inputs": [], "name": "MachineCanNotRent", "type": "error" },
+  {
+    "inputs": [],
+    "name": "MachineCanNotRentWithin100BlocksAfterLastRent",
+    "type": "error"
+  },
+  { "inputs": [], "name": "MachineNotRented", "type": "error" },
+  { "inputs": [], "name": "NotApproveAdmin", "type": "error" },
+  { "inputs": [], "name": "NotDBCAIContract", "type": "error" },
+  { "inputs": [], "name": "NotInitializing", "type": "error" },
+  { "inputs": [], "name": "NotRenter", "type": "error" },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "owner", "type": "address" }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "account", "type": "address" }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "rentDuration", "type": "uint256" },
+      {
+        "internalType": "uint256",
+        "name": "maxRentDuration",
+        "type": "uint256"
+      }
+    ],
+    "name": "RentDurationTooLong",
+    "type": "error"
+  },
+  { "inputs": [], "name": "RentEnd", "type": "error" },
+  { "inputs": [], "name": "RentNotEnd", "type": "error" },
+  { "inputs": [], "name": "ReportedMachineNotFound", "type": "error" },
+  {
+    "inputs": [],
+    "name": "ReserveAmountForReportShouldBe10000",
+    "type": "error"
+  },
+  { "inputs": [], "name": "UUPSUnauthorizedCallContext", "type": "error" },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "slot", "type": "bytes32" }
+    ],
+    "name": "UUPSUnsupportedProxiableUUID",
+    "type": "error"
+  },
+  { "inputs": [], "name": "VoteFinished", "type": "error" },
+  { "inputs": [], "name": "ZeroAddress", "type": "error" },
+  { "inputs": [], "name": "ZeroCalcPoint", "type": "error" },
+  { "inputs": [], "name": "uint256Overflow", "type": "error" },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "calcPoint",
+        "type": "uint256"
+      }
+    ],
+    "name": "AddBackCalcPointOnOnline",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      }
+    ],
+    "name": "ApprovedReport",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "burnTime",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "burnDLCAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "renter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "rentGpuCount",
+        "type": "uint8"
+      }
+    ],
+    "name": "BurnedFee",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "machineOnwer",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentEndTime",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "renter",
+        "type": "address"
+      }
+    ],
+    "name": "EndRentMachine",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "enum Rent.Vote",
+        "name": "vote",
+        "type": "uint8"
+      }
+    ],
+    "name": "ExecuteReport",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "version",
+        "type": "uint64"
+      }
+    ],
+    "name": "Initialized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "calcPoint",
+        "type": "uint256"
+      }
+    ],
+    "name": "MachineRegister",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "calcPoint",
+        "type": "uint256"
+      }
+    ],
+    "name": "MachineUnregister",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      }
+    ],
+    "name": "PaidSlash",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      }
+    ],
+    "name": "RefusedReport",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      }
+    ],
+    "name": "RemoveCalcPointOnOffline",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "machineOnwer",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "additionalRentSeconds",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "additionalRentFee",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "renter",
+        "type": "address"
+      }
+    ],
+    "name": "RenewRent",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "machineOnwer",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentEndTime",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "renter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentFee",
+        "type": "uint256"
+      }
+    ],
+    "name": "RentMachine",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rentId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "reporter",
+        "type": "address"
+      }
+    ],
+    "name": "ReportMachineFault",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "stakeHolder",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "renter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "slashAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "SlashMachineOnOffline",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "implementation",
+        "type": "address"
+      }
+    ],
+    "name": "Upgraded",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "FACTOR",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "ONE_CALC_POINT_USD_VALUE_PER_MONTH",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "REPORT_RESERVE_AMOUNT",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SECONDS_PER_BLOCK",
+    "outputs": [{ "internalType": "uint8", "name": "", "type": "uint8" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SLASH_AMOUNT",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "UPGRADE_INTERFACE_VERSION",
+    "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "USD_DECIMALS",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "adminsToApprove",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "canUpgradeAddress",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "dbcAIContract",
+    "outputs": [
+      {
+        "internalType": "contract IDBCAIContract",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "machineId", "type": "string" }
+    ],
+    "name": "endRentMachine",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "feeToken",
+    "outputs": [
+      { "internalType": "contract IRewardToken", "name": "", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "stakeHolder", "type": "address" }
+    ],
+    "name": "getBurnedRentFeeByStakeHolder",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "stakeHolder", "type": "address" }
+    ],
+    "name": "getRentedGPUCountOfStakeHolder",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "machineId", "type": "string" }
+    ],
+    "name": "getRenter",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getTotalBurnedRentFee",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getTotalRentedGPUCount",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "_initialOwner", "type": "address" },
+      {
+        "internalType": "address",
+        "name": "_precompileContract",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_stakingContract",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_dbcAIContract",
+        "type": "address"
+      },
+      { "internalType": "address", "name": "_feeToken", "type": "address" }
+    ],
+    "name": "initialize",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "machineId", "type": "string" }
+    ],
+    "name": "isRented",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "lastRentId",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "name": "machineId2BurnedInfo",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "totalBurnedAmount",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "name": "machineId2LastRentEndBlock",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "name": "machineId2RentId",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "name": "machineId2SlashInfo",
+    "outputs": [
+      { "internalType": "address", "name": "stakeHolder", "type": "address" },
+      { "internalType": "string", "name": "machineId", "type": "string" },
+      { "internalType": "uint256", "name": "slashAmount", "type": "uint256" },
+      {
+        "internalType": "uint256",
+        "name": "rentStartAtTimestamp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rentEndAtTimestamp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rentedDurationSeconds",
+        "type": "uint256"
+      },
+      { "internalType": "address", "name": "renter", "type": "address" },
+      {
+        "internalType": "enum Rent.SlashType",
+        "name": "slashType",
+        "type": "uint8"
+      },
+      { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
+      { "internalType": "bool", "name": "paid", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "", "type": "string" },
+      { "internalType": "uint256", "name": "", "type": "uint256" }
+    ],
+    "name": "machineId2SlashInfos",
+    "outputs": [
+      { "internalType": "address", "name": "stakeHolder", "type": "address" },
+      { "internalType": "string", "name": "machineId", "type": "string" },
+      { "internalType": "uint256", "name": "slashAmount", "type": "uint256" },
+      {
+        "internalType": "uint256",
+        "name": "rentStartAtTimestamp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rentEndAtTimestamp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rentedDurationSeconds",
+        "type": "uint256"
+      },
+      { "internalType": "address", "name": "renter", "type": "address" },
+      {
+        "internalType": "enum Rent.SlashType",
+        "name": "slashType",
+        "type": "uint8"
+      },
+      { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
+      { "internalType": "bool", "name": "paid", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "machineId", "type": "string" }
+    ],
+    "name": "notify",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "", "type": "string" },
+      { "internalType": "address", "name": "", "type": "address" }
+    ],
+    "name": "pendingSlashMachineId2ApprovedAdmins",
+    "outputs": [
+      { "internalType": "enum Rent.Vote", "name": "", "type": "uint8" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "name": "pendingSlashMachineId2ApprovedCount",
+    "outputs": [{ "internalType": "uint8", "name": "", "type": "uint8" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "name": "pendingSlashMachineId2RefuseCount",
+    "outputs": [{ "internalType": "uint8", "name": "", "type": "uint8" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "pendingSlashMachineIds",
+    "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "precompileContract",
+    "outputs": [
+      {
+        "internalType": "contract IPrecompileContract",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "proxiableUUID",
+    "outputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "registered",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "machineId", "type": "string" },
+      {
+        "internalType": "uint256",
+        "name": "additionalRentSeconds",
+        "type": "uint256"
+      }
+    ],
+    "name": "renewRent",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "rentGPUInfo",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "rentedGPUCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rentingGPUCount",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "rentId2RentInfo",
+    "outputs": [
+      { "internalType": "address", "name": "stakeHolder", "type": "address" },
+      { "internalType": "string", "name": "machineId", "type": "string" },
+      { "internalType": "uint256", "name": "rentStatTime", "type": "uint256" },
+      { "internalType": "uint256", "name": "rentEndTime", "type": "uint256" },
+      { "internalType": "address", "name": "renter", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "machineId", "type": "string" },
+      { "internalType": "uint256", "name": "rentSeconds", "type": "uint256" }
+    ],
+    "name": "rentMachine",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "", "type": "address" },
+      { "internalType": "uint256", "name": "", "type": "uint256" }
+    ],
+    "name": "renter2RentIds",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "stakeHolder2RentFee",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "stakeHolder2RentGPUInfo",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "rentedGPUCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rentingGPUCount",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "stakingContract",
+    "outputs": [
+      {
+        "internalType": "contract IStakingContract",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalBurnedAmount",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "newOwner", "type": "address" }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newImplementation",
+        "type": "address"
+      },
+      { "internalType": "bytes", "name": "data", "type": "bytes" }
+    ],
+    "name": "upgradeToAndCall",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "voteThreshold",
+    "outputs": [{ "internalType": "uint8", "name": "", "type": "uint8" }],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

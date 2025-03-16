@@ -1,0 +1,53 @@
+type StateSummary @entity {
+  id: Bytes!
+  totalGPUCount: BigInt! # uint256
+  totalStakingGPUCount: BigInt! # uint256
+  totalCalcPointPoolCount: BigInt! # uint256
+  totalRentedGPUCount: BigInt! # uint256
+  totalBurnedRentFee: BigInt! # uint256
+  totalReservedAmount: BigInt! # uint256
+}
+
+type StakeHolder @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  totalCalcPoint: BigInt! # uint256
+  fullTotalCalcPoint: BigInt! # uint256
+  totalGPUCount: BigInt! # uint256
+  totalStakingGPUCount: BigInt! # uint256
+  rentedGPUCount: BigInt! # uint256
+  totalReservedAmount: BigInt! # uint256
+  burnedRentFee: BigInt! # uint256
+  totalClaimedRewardAmount: BigInt! # uint256
+  totalReleasedRewardAmount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  machineInfos: [MachineInfo!]! @derivedFrom(field: "holderRef")
+}
+
+type MachineInfo @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  holderRef: StakeHolder! @belongsTo(field: "holder")  # ‌:ml-citation{ref="1,2" data="citationList"}
+  machineId: String!
+  totalCalcPoint: BigInt! # uint256
+  totalCalcPointWithNFT: BigInt! # uint256
+  fullTotalCalcPoint: BigInt! # uint256
+  totalGPUCount: BigInt! # uint256
+  rentedGPUCount: BigInt! # uint256
+  totalReservedAmount: BigInt! # uint256
+  burnedRentFee: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+
+  stakeEndTimestamp: BigInt! # uint256
+  nextCanRentTimestamp: BigInt! # uint256
+  isRented : Boolean!
+  isStaking: Boolean!
+  online: Boolean!
+  registered: Boolean!
+  gpuType: String!
+}
+
