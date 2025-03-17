@@ -86,6 +86,8 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
     machineInfo.fullTotalCalcPoint = machineInfo.fullTotalCalcPoint.minus(reducedCalcPoint)
   }
   machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime
+  machineInfo.nextCanRentTime = new Date(machineInfo.nextCanRentTimestamp.toU64() * 1000).toISOString();
+
   machineInfo.save()
 
   let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
@@ -223,6 +225,8 @@ export function handleStaked(event: StakedEvent): void {
   machineInfo.fullTotalCalcPoint = event.params.calcPoint
   machineInfo.stakeEndTimestamp = event.block.timestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
   machineInfo.nextCanRentTimestamp = event.block.timestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
+  machineInfo.stakeEndTime = new Date(machineInfo.stakeEndTimestamp.toU64() * 1000).toISOString();
+  machineInfo.nextCanRentTime = new Date(machineInfo.nextCanRentTimestamp.toU64() * 1000).toISOString();
   machineInfo.isStaking = true
   machineInfo.online = true
   machineInfo.registered = true
@@ -331,3 +335,14 @@ export function handleUnstaked(event: UnstakedEvent): void {
   machineInfo.save()
 }
 
+export function handleAddStakeHours(event: AddedStakeHoursEvent): void {
+  let id = Bytes.fromUTF8(event.params.machineId.toString());
+  let machineInfo = MachineInfo.load(id)
+  if (machineInfo == null) {
+    return
+  }
+
+  machineInfo.stakeEndTimestamp = machineInfo.stakeEndTimestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
+  machineInfo.stakeEndTime = new Date(machineInfo.stakeEndTimestamp.toU64() * 1000).toISOString();
+  machineInfo.save()
+}

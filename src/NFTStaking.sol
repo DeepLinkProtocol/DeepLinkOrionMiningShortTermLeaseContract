@@ -126,6 +126,7 @@ contract NFTStaking is
     event RewardsPerCalcPointUpdate(uint256 accumulatedPerShareBefore, uint256 accumulatedPerShareAfter);
     event MoveToReserveAmount(string machineId, address holder, uint256 amount);
     event RenewRent(string machineId, address holder, uint256 rentFee);
+    event ExitStakingForOffline(string machineId, address holder);
 
     // error
 
@@ -381,7 +382,7 @@ contract NFTStaking is
         }
 
         uint8 gpuCount = 1;
-        if (statedMachinesMap[machineId]){
+        if (statedMachinesMap[machineId]) {
             stakedMachineIds.push(machineId);
             statedMachinesMap[machineId] = true;
             totalGpuCount += gpuCount;
@@ -416,11 +417,6 @@ contract NFTStaking is
         dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
         emit Staked(stakeholder, machineId, originCalcPoint, calcPoint, stakeHours);
         emit StakedGPUType(machineId, gpuType);
-    }
-
-    function joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) external {
-        require(msg.sender == address(rentContract), CallerNotRentContract());
-        _joinStaking(machineId, calcPoint, reserveAmount);
     }
 
     function addStakeHours(string memory machineId, uint256 additionHours) external {
@@ -653,11 +649,15 @@ contract NFTStaking is
 
     function unStake(string calldata machineId) public nonReentrant {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
-        require(stakeInfo.startAtTimestamp > 0, MachineNotStaked(machineId));
-        require(block.timestamp >= stakeInfo.endAtTimestamp, MachineNotStaked(machineId));
-        require(!stakeInfo.isRentedByUser, MachineRentedByUser());
-        (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
-        require(!isRegistered, MachineStillRegistered());
+        if (msg.sender != address(rentContract)) {
+            require(stakeInfo.startAtTimestamp > 0, MachineNotStaked(machineId));
+            require(block.timestamp >= stakeInfo.endAtTimestamp, MachineNotStaked(machineId));
+            require(!stakeInfo.isRentedByUser, MachineRentedByUser());
+            (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
+            require(!isRegistered, MachineStillRegistered());
+        }else{
+            emit ExitStakingForOffline(machineId, stakeInfo.holder);
+        }
         _claim(machineId);
         _unStake(machineId, stakeInfo.holder);
     }
@@ -694,7 +694,7 @@ contract NFTStaking is
         stakeInfo.nftCount = 0;
         _joinStaking(machineId, 0, 0);
         removeStakingMachineFromHolder(stakeholder, machineId);
-        if (totalStakingGpuCount > 0){
+        if (totalStakingGpuCount > 0) {
             totalStakingGpuCount -= 1;
         }
 
@@ -752,7 +752,6 @@ contract NFTStaking is
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(stakeInfo.isRentedByUser, MachineNotRented());
         stakeInfo.isRentedByUser = false;
-
 
         // 100 blocks
         stakeInfo.nextRenterCanRentAt = 600 + block.timestamp;
@@ -987,5 +986,4 @@ contract NFTStaking is
     function version() external pure returns (uint256) {
         return 1;
     }
-
 }

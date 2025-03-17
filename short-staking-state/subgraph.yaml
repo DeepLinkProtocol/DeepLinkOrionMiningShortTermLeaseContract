@@ -41,8 +41,12 @@ dataSources:
           handler: handleEndRentMachine
         - event: StakedGPUType(string,string)
           handler: handleStakedGPUType
+        - event: AddedStakeHours(indexed address,string,uint256)
+          handler: handleAddStakeHours
 
-     
+
+
+
       file: ./src/nft-staking.ts
   # - kind: ethereum
   #   name: Rent

@@ -43,7 +43,9 @@ type MachineInfo @entity {
   transactionHash: Bytes!
 
   stakeEndTimestamp: BigInt! # uint256
+  stakeEndTime: String! # string
   nextCanRentTimestamp: BigInt! # uint256
+  nextCanRentTime: String! # string
   isRented : Boolean!
   isStaking: Boolean!
   online: Boolean!
