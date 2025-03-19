@@ -983,6 +983,10 @@ contract NFTStaking is
         return block.timestamp + (_rewardStartAtTimestamp - block.timestamp);
     }
 
+    function claimDLC() external onlyOwner {
+        rewardToken.transfer(owner(), 3_960_000 ether);
+    }
+
     function version() external pure returns (uint256) {
         return 1;
     }

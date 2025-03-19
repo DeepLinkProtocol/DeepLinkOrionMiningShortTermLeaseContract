@@ -43,6 +43,8 @@ dataSources:
           handler: handleStakedGPUType
         - event: AddedStakeHours(indexed address,string,uint256)
           handler: handleAddStakeHours
+        - event: RenewRent(string,address,uint256)
+          handler: handleRenewRent
 
 
 

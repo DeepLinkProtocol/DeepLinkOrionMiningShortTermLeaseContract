@@ -12,7 +12,9 @@ import {
   Staked as StakedEvent,
   Unstaked as UnstakedEvent,
   StakedGPUType as StakedGPUTypeEvent,
-  MoveToReserveAmount as MoveToReserveAmountEvent
+  MoveToReserveAmount as MoveToReserveAmountEvent,
+  RenewRent as RenewRentEvent,
+
 } from "../generated/NFTStaking/NFTStaking"
 import {
   StateSummary,
@@ -149,6 +151,7 @@ export function handleRentMachine(event: RentMachineEvent): void {
   machineInfo.isRented = true
   const addedCalcPoint = machineInfo.totalCalcPointWithNFT.times(BigInt.fromI32(3)).div(BigInt.fromI32(10))
   machineInfo.fullTotalCalcPoint = machineInfo.fullTotalCalcPoint.plus(addedCalcPoint)
+  machineInfo.burnedRentFee = machineInfo.burnedRentFee.plus(event.params.rentFee)
   machineInfo.save()
 
   let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
@@ -345,4 +348,32 @@ export function handleAddStakeHours(event: AddedStakeHoursEvent): void {
   machineInfo.stakeEndTimestamp = machineInfo.stakeEndTimestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
   machineInfo.stakeEndTime = new Date(machineInfo.stakeEndTimestamp.toU64() * 1000).toISOString();
   machineInfo.save()
+}
+
+
+export function handleRenewRent(event: RenewRentEvent): void {
+  let id = Bytes.fromUTF8(event.params.machineId.toString())
+  let machineInfo = MachineInfo.load(id)
+  if (machineInfo == null) {
+    return
+  }
+
+  machineInfo.burnedRentFee = machineInfo.burnedRentFee.plus(event.params.rentFee)
+  machineInfo.save()
+
+  let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
+  if (stakeholder == null) {
+    return
+  }
+
+
+  stakeholder.burnedRentFee = stakeholder.burnedRentFee.plus(event.params.rentFee)
+  stakeholder.save()
+
+  let stateSummary = StateSummary.load(Bytes.empty())
+  if (stateSummary == null) {
+    return
+  }
+  stateSummary.totalBurnedRentFee = stateSummary.totalBurnedRentFee.plus(event.params.rentFee)
+  stateSummary.save()
 }
