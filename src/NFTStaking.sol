@@ -212,6 +212,8 @@ contract NFTStaking is
         );
 
         require((stakeHours >= 2), InvalidStakeHours());
+        require((stakeHours <= 72), InvalidStakeHours());
+
         require(!rewardEnd(), RewardEnd());
         (bool isOnline, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
         require(isOnline && isRegistered, MachineNotOnlineOrRegistered());
@@ -382,8 +384,8 @@ contract NFTStaking is
         }
 
         uint8 gpuCount = 1;
-        if (statedMachinesMap[machineId]) {
-            stakedMachineIds.push(machineId);
+        if (!statedMachinesMap[machineId]) {
+//            stakedMachineIds.push(machineId);
             statedMachinesMap[machineId] = true;
             totalGpuCount += gpuCount;
         }
@@ -990,4 +992,5 @@ contract NFTStaking is
     function version() external pure returns (uint256) {
         return 1;
     }
+
 }

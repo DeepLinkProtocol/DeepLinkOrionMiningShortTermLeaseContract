@@ -18,13 +18,12 @@ deploy-staking-mainnet:
 
 verify-staking-mainnet:
 	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL $STAKING_PROXY  src/NFTStaking.sol:NFTStaking
-	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x6268Aba94D0d0e4FB917cC02765f631f309a7388 src/NFTStaking.sol:NFTStaking
+	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0xBbF14706C9456D94CaA2a9e8d5747B7C98A77Da7 src/NFTStaking.sol:NFTStaking
 
 
 upgrade-staking-mainnet:
 	source .env && forge script script/Upgrade.s.sol:Upgrade --rpc-url dbc-mainnet --broadcast --verify --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL  --legacy
 	source .env && forge script script/Upgrade.s.sol:Upgrade --rpc-url dbc-mainnet --broadcast  --legacy
-
 
 
 deploy-rent:
