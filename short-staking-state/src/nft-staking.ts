@@ -19,7 +19,7 @@ import {
 import {
   StateSummary,
   StakeHolder,
-  MachineInfo
+  MachineInfo, GpuTypeValue
 
 } from "../generated/schema"
 
@@ -275,14 +275,17 @@ export function handleStaked(event: StakedEvent): void {
     stateSummary.totalRentedGPUCount = BigInt.fromI32(0)
     stateSummary.totalBurnedRentFee = BigInt.fromI32(0)
     stateSummary.totalReservedAmount = BigInt.fromI32(0)
+    stateSummary.totalCalcPoint = BigInt.fromI32(0)
   }
   if (isNewMachine){
     stateSummary.totalGPUCount = stateSummary.totalGPUCount.plus(BigInt.fromI32(1))
+    stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(machineInfo.totalCalcPoint)
   }
   stateSummary.totalStakingGPUCount = stateSummary.totalStakingGPUCount.plus(BigInt.fromI32(1))
   if (stakeholder.totalStakingGPUCount.toU32() == 1) {
     stateSummary.totalCalcPointPoolCount = stateSummary.totalCalcPointPoolCount.plus(BigInt.fromI32(1))
   }
+
   stateSummary.save()
   return
 }
@@ -294,6 +297,13 @@ export function handleStakedGPUType(event: StakedGPUTypeEvent): void{
     return
   }
   machineInfo.gpuType = event.params.gpuType
+  let gpuTypeValue = GpuTypeValue.load(Bytes.fromUTF8(event.params.gpuType))
+  if (gpuTypeValue == null) {
+     gpuTypeValue = new GpuTypeValue(Bytes.fromUTF8(event.params.gpuType))
+     gpuTypeValue.value = event.params.gpuType
+     gpuTypeValue.save()
+  }
+
   machineInfo.save()
 }
 

@@ -6,6 +6,7 @@ type StateSummary @entity {
   totalRentedGPUCount: BigInt! # uint256
   totalBurnedRentFee: BigInt! # uint256
   totalReservedAmount: BigInt! # uint256
+  totalCalcPoint: BigInt! # uint256
 }
 
 type StakeHolder @entity {
@@ -51,5 +52,10 @@ type MachineInfo @entity {
   online: Boolean!
   registered: Boolean!
   gpuType: String!
+}
+
+type GpuTypeValue @entity {
+  id: Bytes!
+  value: String!
 }
 
