@@ -9,6 +9,7 @@ import "./interface/IRewardToken.sol";
 import "./interface/IRentContract.sol";
 import "./interface/IDBCAIContract.sol";
 import "./interface/ILongStakeContract.sol";
+
 import "forge-std/console.sol";
 
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -157,6 +158,7 @@ contract NFTStaking is
     error NotMachineOwnerOrAdmin();
     error MachineStillRegistered();
     error StakingInLongTerm();
+    error IsStaking();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -205,6 +207,8 @@ contract NFTStaking is
         uint256[] memory nftTokenIdBalances
     ) {
         require(dlcClientWalletAddress[msg.sender], NotAdmin());
+        StakeInfo memory stakeInfo = machineId2StakeInfos[machineId];
+        require(stakeInfo.nftTokenIds.length == 0, IsStaking());
         require(dbcAIContract.freeGpuAmount(machineId) >= 1, MachineNotStakeEnoughDBC());
         require(
             nftTokenIds.length == nftTokenIdBalances.length,

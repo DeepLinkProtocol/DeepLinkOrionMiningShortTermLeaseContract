@@ -11,8 +11,8 @@
     "deploy-test": "graph deploy staking-state --ipfs http://8.214.55.62:8021 --node http://8.214.55.62:8020 --version-label v0.0.1 ",
     "test": "graph test",
 
-    "create-mainnet": "graph create 1 --node http://8.214.55.62:8034",
-    "deploy-mainnet": "graph deploy short-staking-state --ipfs http://8.214.55.62:8031 --node http://8.214.55.62:8034"
+    "create-mainnet": "graph create short-staking-state --node http://54.179.233.88:8034",
+    "deploy-mainnet": "graph deploy short-staking-state --ipfs http://54.179.233.88:8031 --node http://54.179.233.88:8034"
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "0.96.0",

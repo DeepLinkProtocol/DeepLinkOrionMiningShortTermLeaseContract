@@ -208,7 +208,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         canUpgradeAddress = msg.sender;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
+    function _authorizeUpgrade(address newImplementation) internal view override {
         require(newImplementation != address(0), ZeroAddress());
         require(msg.sender == canUpgradeAddress, CanNotUpgrade(msg.sender));
     }
@@ -326,8 +326,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // calcPont factor : 10000 ; ONE_CALC_POINT_USD_VALUE_PER_MONTH factor: 10000
         uint256 totalFactor = FACTOR * FACTOR;
-        // 0.005U
         uint256 dlcUSDPrice = 5000;
+        //todo ..
+//        uint256 dlcUSDPrice = precompileContract.getDLCPrice();
+//        if (dlcUSDPrice == 0) {
+//            dlcUSDPrice = 5000;
+//        }
+
         uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
             / 60 / 60 / totalFactor;
         rentFeeUSD = rentFeeUSD * 6 / 10; // 60% of the total rent fee
@@ -335,6 +340,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function rentMachine(string calldata machineId, uint256 rentSeconds) external {
+        // todo ..
+        revert("can not rent for now");
         require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
         require(canRent(machineId), MachineCanNotRent());
 

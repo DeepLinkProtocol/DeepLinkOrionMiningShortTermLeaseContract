@@ -18,7 +18,7 @@ deploy-staking-mainnet:
 
 verify-staking-mainnet:
 	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL $STAKING_PROXY  src/NFTStaking.sol:NFTStaking
-	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0xBbF14706C9456D94CaA2a9e8d5747B7C98A77Da7 src/NFTStaking.sol:NFTStaking
+	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x8Deb7ccc04f0c9d22b28552164afeE04a07d6d44 src/NFTStaking.sol:NFTStaking
 
 
 upgrade-staking-mainnet:
