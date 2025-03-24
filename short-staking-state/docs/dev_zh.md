@@ -66,6 +66,8 @@
 ```graphql
     type GpuTypeValue @entity {
       id: Bytes!
-      value: String!
-    }
+      value: String! # string  gpu类型值
+      count: BigInt! # uint256  该cpu类型的机器 处于质押状态的数量
+
+}
 ```
