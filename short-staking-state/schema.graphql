@@ -57,5 +57,6 @@ type MachineInfo @entity {
 type GpuTypeValue @entity {
   id: Bytes!
   value: String!
+  count: BigInt! # uint256
 }
 
