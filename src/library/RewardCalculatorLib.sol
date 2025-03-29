@@ -46,15 +46,23 @@ library RewardCalculatorLib {
     function getUpdateUserRewards(
         UserRewards memory userRewardsIn,
         uint256 userShares,
-        RewardsPerShare memory rewardsPerToken_
+        RewardsPerShare memory rewardsPerToken_,
+        uint256 rewardPerShareAtRewardStart
     ) internal pure returns (UserRewards memory) {
         if (userRewardsIn.lastAccumulatedPerShare == rewardsPerToken_.lastUpdated) return userRewardsIn;
+
+        if (userRewardsIn.lastAccumulatedPerShare == 0) {
+            userRewardsIn.lastAccumulatedPerShare = rewardPerShareAtRewardStart;
+        }
+
         UserRewards memory userRewardsOut = UserRewards(userRewardsIn.accumulated, rewardsPerToken_.accumulatedPerShare);
         userRewardsOut.accumulated = calculatePendingUserRewards(
             userShares, userRewardsIn.lastAccumulatedPerShare, rewardsPerToken_.accumulatedPerShare
         ) + userRewardsIn.accumulated;
         userRewardsOut.lastAccumulatedPerShare = rewardsPerToken_.accumulatedPerShare;
-
+        if (userRewardsOut.lastAccumulatedPerShare == 0) {
+            userRewardsOut.lastAccumulatedPerShare = rewardPerShareAtRewardStart;
+        }
         return userRewardsOut;
     }
 

@@ -136,7 +136,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event MachineUnregister(string machineId, uint256 calcPoint);
     event PaidSlash(string machineId);
     event SlashMachineOnOffline(
-        address indexed stakeHolder, address indexed renter, string machineId, uint256 slashAmount
+        address indexed stakeHolder,
+        string machineId,
+        address indexed renter,
+        uint256 slashAmount,
+        uint256 rentStartAt,
+        uint256 rentEndAt,
+        SlashType slashType
     );
     event RemoveCalcPointOnOffline(string machineId);
     event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
@@ -328,10 +334,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 totalFactor = FACTOR * FACTOR;
         uint256 dlcUSDPrice = 5000;
         //todo ..
-//        uint256 dlcUSDPrice = precompileContract.getDLCPrice();
-//        if (dlcUSDPrice == 0) {
-//            dlcUSDPrice = 5000;
-//        }
+        //        uint256 dlcUSDPrice = precompileContract.getDLCPrice();
+        //        if (dlcUSDPrice == 0) {
+        //            dlcUSDPrice = 5000;
+        //        }
 
         uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
             / 60 / 60 / totalFactor;
@@ -654,7 +660,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                     rentInfo.renter
                 );
                 addSlashInfoAndReport(slashInfo);
-                emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter, rentInfo.machineId, SLASH_AMOUNT);
+                emit SlashMachineOnOffline(
+                    rentInfo.stakeHolder,
+                    rentInfo.machineId,
+                    rentInfo.renter,
+                    SLASH_AMOUNT,
+                    rentInfo.rentStatTime,
+                    rentInfo.rentEndTime,
+                    SlashType.Offline
+                );
             } else {
                 stakingContract.unStake(machineId);
                 emit RemoveCalcPointOnOffline(machineId);

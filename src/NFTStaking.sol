@@ -102,6 +102,8 @@ contract NFTStaking is
     mapping(string => RewardCalculatorLib.UserRewards) public machineId2StakeUnitRewards;
     mapping(string => bool) private statedMachinesMap;
 
+    uint256 public constant rewardPerShareAtRewardStart = 770415857426136133;
+
     event Staked(
         address indexed stakeholder, string machineId, uint256 originCalcPoint, uint256 calcPoint, uint256 stakeHours
     );
@@ -389,7 +391,7 @@ contract NFTStaking is
 
         uint8 gpuCount = 1;
         if (!statedMachinesMap[machineId]) {
-//            stakedMachineIds.push(machineId);
+            //            stakedMachineIds.push(machineId);
             statedMachinesMap[machineId] = true;
             totalGpuCount += gpuCount;
         }
@@ -414,6 +416,8 @@ contract NFTStaking is
             gpuCount: gpuCount,
             nextRenterCanRentAt: currentTime
         });
+
+        //        machineId2StakeUnitRewards[machineId].lastAccumulatedPerShare = rewardsPerCalcPoint.accumulatedPerShare;
 
         _joinStaking(machineId, calcPoint, 0);
         _tryInitMachineLockRewardInfo(machineId, currentTime);
@@ -661,7 +665,7 @@ contract NFTStaking is
             require(!stakeInfo.isRentedByUser, MachineRentedByUser());
             (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
             require(!isRegistered, MachineStillRegistered());
-        }else{
+        } else {
             emit ExitStakingForOffline(machineId, stakeInfo.holder);
         }
         _claim(machineId);
@@ -899,8 +903,12 @@ contract NFTStaking is
         _updateRewardPerCalcPoint();
 
         RewardCalculatorLib.UserRewards memory machineRewards = machineId2StakeUnitRewards[machineId];
-        RewardCalculatorLib.UserRewards memory machineRewardsUpdated =
-            RewardCalculatorLib.getUpdateUserRewards(machineRewards, machineShares, rewardsPerCalcPoint);
+        if (machineRewards.lastAccumulatedPerShare == 0) {
+            machineRewards.lastAccumulatedPerShare = rewardsPerCalcPoint.accumulatedPerShare;
+        }
+        RewardCalculatorLib.UserRewards memory machineRewardsUpdated = RewardCalculatorLib.getUpdateUserRewards(
+            machineRewards, machineShares, rewardsPerCalcPoint, rewardPerShareAtRewardStart
+        );
         machineId2StakeUnitRewards[machineId] = machineRewardsUpdated;
     }
 
@@ -931,7 +939,9 @@ contract NFTStaking is
 
         stakeInfo.calcPoint = calcPoint;
         if (reserveAmount > stakeInfo.reservedAmount) {
-            SafeERC20.safeTransferFrom(rewardToken, stakeInfo.holder, address(this), reserveAmount);
+            SafeERC20.safeTransferFrom(
+                rewardToken, stakeInfo.holder, address(this), reserveAmount - stakeInfo.reservedAmount
+            );
         }
         if (reserveAmount != stakeInfo.reservedAmount) {
             totalReservedAmount = totalReservedAmount + reserveAmount - stakeInfo.reservedAmount;
@@ -949,8 +959,12 @@ contract NFTStaking is
         RewardCalculatorLib.UserRewards memory machineRewards = machineId2StakeUnitRewards[machineId];
 
         RewardCalculatorLib.RewardsPerShare memory currentRewardPerCalcPoint = _getUpdatedRewardPerCalcPoint();
+        uint256 v = machineRewards.lastAccumulatedPerShare;
+        if (machineRewards.lastAccumulatedPerShare == 0) {
+            v = rewardPerShareAtRewardStart;
+        }
         uint256 rewardAmount = RewardCalculatorLib.calculatePendingUserRewards(
-            machineShares, machineRewards.lastAccumulatedPerShare, currentRewardPerCalcPoint.accumulatedPerShare
+            machineShares, v, currentRewardPerCalcPoint.accumulatedPerShare
         );
 
         return machineRewards.accumulated + rewardAmount;
@@ -997,4 +1011,36 @@ contract NFTStaking is
         return 1;
     }
 
+    function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 elapsed = 1 days;
+        uint256 rewardsRate = (getDailyRewardAmount()) / 1 days;
+
+        uint256 accumulatedPerShare = currentAccumulatedPerShare + 1 ether * elapsed * rewardsRate / totalShares;
+
+        return accumulatedPerShare;
+    }
+
+    function preCalculateRewards(uint256 calcPoint, uint256 nftCount, uint256 reserveAmount)
+        public
+        view
+        returns (uint256)
+    {
+        calcPoint = calcPoint * nftCount;
+        uint256 machineShares = _getMachineShares(calcPoint, reserveAmount);
+        uint256 machineAccumulatedPerShare = rewardsPerCalcPoint.accumulatedPerShare;
+
+        uint256 totalShares = totalAdjustUnit + machineShares;
+
+        uint256 _oneDayAccumulatedPerShare = oneDayAccumulatedPerShare(machineAccumulatedPerShare, totalShares);
+
+        uint256 rewardAmount = RewardCalculatorLib.calculatePendingUserRewards(
+            machineShares, machineAccumulatedPerShare, _oneDayAccumulatedPerShare
+        );
+
+        return rewardAmount;
+    }
 }

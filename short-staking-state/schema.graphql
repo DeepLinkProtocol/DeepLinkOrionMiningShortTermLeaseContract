@@ -52,6 +52,7 @@ type MachineInfo @entity {
   online: Boolean!
   registered: Boolean!
   gpuType: String!
+  claimTimes: BigInt! # uint256
 }
 
 type GpuTypeValue @entity {

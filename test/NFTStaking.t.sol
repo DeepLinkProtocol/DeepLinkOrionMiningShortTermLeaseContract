@@ -102,6 +102,10 @@ contract RentTest is Test {
         uint256 totalCalcPoint = nftStaking.totalCalcPoint();
 
         assertEq(totalCalcPoint, totalCalcPointBefore + 100);
+        (uint256 accumulatedPerShare,) = nftStaking.rewardsPerCalcPoint();
+        (uint256 accumulated, uint256 lastAccumulatedPerShare) = nftStaking.machineId2StakeUnitRewards(machineId);
+        assertEq(accumulatedPerShare, lastAccumulatedPerShare);
+        assertEq(accumulated, 0);
     }
 
     function testStake() public {
@@ -118,7 +122,7 @@ contract RentTest is Test {
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = 1;
         vm.startPrank(stakeHolder);
-        stakeByOwner(machineId, 0, 480, stakeHolder);
+        stakeByOwner(machineId, 0, 72, stakeHolder);
         vm.stopPrank();
 
         (NFTStaking.StakeHolder[] memory topHolders,) = nftStaking.getTopStakeHolders(0, 10);
@@ -144,7 +148,7 @@ contract RentTest is Test {
         // staking.stake(machineId2, 0, tokenIds0, 2);
 
         vm.prank(stakeHolder2);
-        stakeByOwner(machineId2, 0, 480, stakeHolder2);
+        stakeByOwner(machineId2, 0, 72, stakeHolder2);
         passDays(1);
 
         uint256 reward2 = nftStaking.getReward(machineId2);
