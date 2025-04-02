@@ -14,12 +14,21 @@ import {
   StakedGPUType as StakedGPUTypeEvent,
   MoveToReserveAmount as MoveToReserveAmountEvent,
   RenewRent as RenewRentEvent,
+  ExitStakingForOffline as ExitStakingForOfflineEvent,
 
 } from "../generated/NFTStaking/NFTStaking"
 import {
   StateSummary,
   StakeHolder,
-  MachineInfo, GpuTypeValue
+  MachineInfo,
+  GpuTypeValue,
+  AddStakeHour,
+  MachineOfflineRecord,
+  MachineSlashedRecord,
+  HolderPaidSlashRecord,
+  LatestPaidSlashRecord,
+  AddDLCRecord,
+  giveBackDlc
 
 } from "../generated/schema"
 
@@ -38,7 +47,7 @@ export function handleClaimed(event: ClaimedEvent): void {
   }
 
 
-  if (event.params.moveToUserWalletAmount.gt(BigInt.fromString("3000000000000000000000000")) && machineInfo.machineId == "e36e94c30d483129fb3a2feed81458926066d6a0f27094b0744e8b0aedbf00ee" ){
+  if (event.params.moveToUserWalletAmount.gt(BigInt.fromString("3000000000000000000000000")) && machineInfo.machineId == "e36e94c30d483129fb3a2feed81458926066d6a0f27094b0744e8b0aedbf00ee") {
     return
   }
 
@@ -54,7 +63,7 @@ export function handleClaimed(event: ClaimedEvent): void {
 
 }
 
-export function handleMoveToReserveAmount(event : MoveToReserveAmountEvent): void{
+export function handleMoveToReserveAmount(event: MoveToReserveAmountEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
   let machineInfo = MachineInfo.load(id)
   if (machineInfo == null) {
@@ -105,12 +114,12 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
 
   let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
   if (stakeholder == null) {
-      return
+    return
   }
 
 
   stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1))
-  if (stakeholder.fullTotalCalcPoint > reducedCalcPoint){
+  if (stakeholder.fullTotalCalcPoint > reducedCalcPoint) {
     stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(reducedCalcPoint)
   }
 
@@ -149,6 +158,31 @@ export function handlePaySlash(event: PaySlashEvent): void {
 
   stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.minus(event.params.slashAmount)
   stateSummary.save()
+
+  let payRecord = new HolderPaidSlashRecord(event.transaction.hash)
+  payRecord.holder = machineInfo.holder
+  payRecord.paid = true
+  payRecord.blockNumber = event.block.number
+  payRecord.blockTimestamp = event.block.timestamp
+  payRecord.transactionHash = event.transaction.hash
+  payRecord.save()
+
+
+  let latestRecord = LatestPaidSlashRecord.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
+  if (latestRecord == null) {
+    latestRecord = new LatestPaidSlashRecord(Bytes.fromHexString(machineInfo.holder.toHexString()))
+    latestRecord.holder = machineInfo.holder
+    latestRecord.paid = true
+    latestRecord.blockNumber = event.block.number
+    latestRecord.blockTimestamp = event.block.timestamp
+    latestRecord.transactionHash = event.transaction.hash
+  } else {
+    latestRecord.paid = true
+    latestRecord.blockNumber = event.block.number
+    latestRecord.blockTimestamp = event.block.timestamp
+    latestRecord.transactionHash = event.transaction.hash
+  }
+  payRecord.save()
 }
 
 
@@ -211,6 +245,15 @@ export function handleReserveDLC(event: ReserveDLCEvent): void {
 
   stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.plus(event.params.amount)
   stateSummary.save()
+
+
+  let addDlc = new AddDLCRecord(event.transaction.hash)
+  addDlc.machineId = event.params.machineId
+  addDlc.amount = event.params.amount
+  addDlc.blockNumber = event.block.number
+  addDlc.blockTimestamp = event.block.timestamp
+  addDlc.transactionHash = event.transaction.hash
+  addDlc.save()
 }
 
 
@@ -239,7 +282,7 @@ export function handleStaked(event: StakedEvent): void {
   machineInfo.totalCalcPointWithNFT = event.params.calcPoint
   machineInfo.fullTotalCalcPoint = event.params.calcPoint
   machineInfo.stakeEndTimestamp = event.block.timestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
-  machineInfo.nextCanRentTimestamp = event.block.timestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
+  machineInfo.nextCanRentTimestamp = event.block.timestamp
   machineInfo.stakeEndTime = new Date(machineInfo.stakeEndTimestamp.toU64() * 1000).toISOString();
   machineInfo.nextCanRentTime = new Date(machineInfo.nextCanRentTimestamp.toU64() * 1000).toISOString();
   machineInfo.isStaking = true
@@ -266,7 +309,7 @@ export function handleStaked(event: StakedEvent): void {
   }
 
 
-  if (isNewMachine){
+  if (isNewMachine) {
     stakeholder.totalGPUCount = stakeholder.totalGPUCount.plus(BigInt.fromI32(1))
   }
   stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.plus(BigInt.fromI32(1))
@@ -289,7 +332,7 @@ export function handleStaked(event: StakedEvent): void {
     stateSummary.totalReservedAmount = BigInt.fromI32(0)
     stateSummary.totalCalcPoint = BigInt.fromI32(0)
   }
-  if (isNewMachine){
+  if (isNewMachine) {
     stateSummary.totalGPUCount = stateSummary.totalGPUCount.plus(BigInt.fromI32(1))
     stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(machineInfo.totalCalcPoint)
   }
@@ -302,7 +345,7 @@ export function handleStaked(event: StakedEvent): void {
   return
 }
 
-export function handleStakedGPUType(event: StakedGPUTypeEvent): void{
+export function handleStakedGPUType(event: StakedGPUTypeEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
   let machineInfo = MachineInfo.load(id)
   if (machineInfo == null) {
@@ -313,16 +356,19 @@ export function handleStakedGPUType(event: StakedGPUTypeEvent): void{
 
   let gpuTypeValue = GpuTypeValue.load(Bytes.fromUTF8(event.params.gpuType))
   if (gpuTypeValue == null) {
-     gpuTypeValue = new GpuTypeValue(Bytes.fromUTF8(event.params.gpuType))
-     gpuTypeValue.value = event.params.gpuType
-     gpuTypeValue.count = BigInt.fromI32(1)
-  }else{
-     gpuTypeValue.count = gpuTypeValue.count.plus(BigInt.fromI32(1))
+    gpuTypeValue = new GpuTypeValue(Bytes.fromUTF8(event.params.gpuType))
+    gpuTypeValue.value = event.params.gpuType
+    gpuTypeValue.count = BigInt.fromI32(1)
+  } else {
+    gpuTypeValue.count = gpuTypeValue.count.plus(BigInt.fromI32(1))
   }
   gpuTypeValue.save()
 }
 
 export function handleUnstaked(event: UnstakedEvent): void {
+
+
+
   let id = Bytes.fromUTF8(event.params.machineId.toString());
   let machineInfo = MachineInfo.load(id)
   if (machineInfo == null) {
@@ -352,6 +398,15 @@ export function handleUnstaked(event: UnstakedEvent): void {
   stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.minus(machineInfo.totalReservedAmount)
   stateSummary.save()
 
+
+  let giveBackDlcRecord = new giveBackDlc(event.transaction.hash)
+  giveBackDlcRecord.machineId = event.params.machineId
+  giveBackDlcRecord.blockNumber = event.block.number
+  giveBackDlcRecord.blockTimestamp = event.block.timestamp
+  giveBackDlcRecord.transactionHash = event.transaction.hash
+  giveBackDlcRecord.amount = machineInfo.totalReservedAmount
+  giveBackDlcRecord.save()
+
   machineInfo.totalReservedAmount = BigInt.zero()
   machineInfo.totalGPUCount = BigInt.zero()
   machineInfo.totalCalcPoint = BigInt.zero()
@@ -366,10 +421,12 @@ export function handleUnstaked(event: UnstakedEvent): void {
   if (gpuTypeValue == null) {
     return
   }
-  if (gpuTypeValue.count.toU32() >=1){
+  if (gpuTypeValue.count.toU32() >= 1) {
     gpuTypeValue.count = gpuTypeValue.count.minus(BigInt.fromI32(1))
     gpuTypeValue.save()
   }
+
+
 
 }
 
@@ -380,9 +437,24 @@ export function handleAddStakeHours(event: AddedStakeHoursEvent): void {
     return
   }
 
-  machineInfo.stakeEndTimestamp = machineInfo.stakeEndTimestamp.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
+  let addStakeHours = new AddStakeHour(event.transaction.hash)
+  addStakeHours.holder = event.params.stakeholder
+  addStakeHours.machineId = event.params.machineId
+  addStakeHours.blockNumber = event.block.number
+  addStakeHours.blockTimestamp = event.block.timestamp
+  addStakeHours.transactionHash = event.transaction.hash
+  addStakeHours.hours = event.params.stakeHours
+  let stakeEndTimestampBefore = machineInfo.stakeEndTimestamp
+
+  addStakeHours.stakeEndTimestampBefore = stakeEndTimestampBefore
+
+  machineInfo.stakeEndTimestamp = stakeEndTimestampBefore.plus(event.params.stakeHours.times(BigInt.fromI32(3600)))
   machineInfo.stakeEndTime = new Date(machineInfo.stakeEndTimestamp.toU64() * 1000).toISOString();
   machineInfo.save()
+
+  addStakeHours.stakeEndTimestampAfter = machineInfo.stakeEndTimestamp
+  addStakeHours.save()
+
 }
 
 
@@ -411,4 +483,16 @@ export function handleRenewRent(event: RenewRentEvent): void {
   }
   stateSummary.totalBurnedRentFee = stateSummary.totalBurnedRentFee.plus(event.params.rentFee)
   stateSummary.save()
+}
+
+export function handleExitStakingForOffline(event: ExitStakingForOfflineEvent): void {
+  let id = Bytes.fromUTF8(event.params.machineId.toString())
+  let record = new MachineOfflineRecord(id)
+  record.blockNumber = event.block.number
+  record.blockTimestamp = event.block.timestamp
+  record.machineId = event.params.machineId
+  record.holder = event.params.holder
+  record.transactionHash = event.transaction.hash
+  record.save()
+
 }

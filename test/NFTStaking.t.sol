@@ -172,7 +172,6 @@ contract RentTest is Test {
 
         passDays(1);
         uint256 reward4 = nftStaking.getReward(machineId2);
-        console.log("reward4  ", reward4);
 
         (, uint256 rewardAmountCanClaim0, uint256 lockedRewardAmount0,) = nftStaking.getRewardInfo(machineId2);
         assertEq(rewardAmountCanClaim0, reward4 / 10);
@@ -214,9 +213,9 @@ contract RentTest is Test {
     function testUnStake() public {
         address stakeHolder = owner;
         string memory machineId = "machineId";
-        stakeByOwner(machineId, 100000, 480, stakeHolder);
+        stakeByOwner(machineId, 100000, 48, stakeHolder);
 
-        passHours(480);
+        passHours(48);
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
@@ -238,6 +237,68 @@ contract RentTest is Test {
         uint256 balance2 = rewardToken.balanceOf(stakeHolder);
 
         assertGt(balance2, balance1, "claim failed");
+    }
+
+    function testUnStakeByHolderAndReStake() public {
+        // Test if a miner can claim rewards from previous staking period after unstaking early and staking again
+        address stakeHolder = owner;
+        string memory machineId = "machineId";
+        
+        // First staking period
+        stakeByOwner(machineId, 100000, 72, stakeHolder);
+        
+        // Pass some time to accumulate rewards but not the full staking period
+        passHours(24);
+        
+        // Check rewards accumulated
+        uint256 rewardBefore = nftStaking.getReward(machineId);
+        assertGt(rewardBefore, 0, "Should have accumulated some rewards");
+        
+        // Mock machine is not registered to allow unstaking
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
+            abi.encode(true, false)
+        );
+        
+        // Unstake early using unStakeByHolder
+        vm.startPrank(stakeHolder);
+        nftStaking.unStakeByHolder(machineId);
+        vm.stopPrank();
+        
+        // Verify NFT returned to holder
+        assertEq(nftToken.balanceOf(stakeHolder, 1), 1, "NFT should be returned to owner");
+        
+        // Pass some time
+        passHours(12);
+        
+        // Re-stake the same machine
+        vm.mockCall(
+            address(nftStaking.dbcAIContract()),
+            abi.encodeWithSelector(IDBCAIContract.getMachineState.selector),
+            abi.encode(true, true)
+        );
+        
+        stakeByOwner(machineId, 100000, 72, stakeHolder);
+       
+        // Pass more time
+        passHours(24);
+        
+        // Check if rewards can be claimed
+        uint256 balanceBefore = rewardToken.balanceOf(stakeHolder);
+        
+        vm.startPrank(stakeHolder);
+        nftStaking.claim(machineId);
+        vm.stopPrank();
+        
+        uint256 balanceAfter = rewardToken.balanceOf(stakeHolder);
+        
+        // Verify rewards were claimed
+        assertGt(balanceAfter, balanceBefore, "Should be able to claim rewards after re-staking");
+        
+        // Verify that rewards from the new staking period are separate from previous period
+        (,,,uint256 claimedAmount) = nftStaking.getRewardInfo(machineId);
+        assertGt(claimedAmount, 0, "Should have claimed some rewards");
     }
 
     function testTool() public pure {
@@ -285,5 +346,143 @@ contract RentTest is Test {
 
         vm.warp(vm.getBlockTimestamp() + timeToAdvance - 1);
         vm.roll(vm.getBlockNumber() + n - 1);
+    }
+
+
+    // function testClaimTwiceInSuccession() public {
+    //     // Create a stake
+    //     address stakeHolder = owner;
+    //     string memory machineId = "machineIdForDoubleClaim";
+    //     stakeByOwner(machineId, 0, 48, stakeHolder);
+
+    //     // Wait for a day to accumulate rewards
+    //     passDays(1);
+
+    //     // Get reward information before the first claim
+    //     uint256 rewardBeforeFirstClaim = nftStaking.getReward(machineId);
+    //     (, uint256 rewardAmountCanClaimBeforeFirst, uint256 lockedRewardAmountBeforeFirst,) =
+    //         nftStaking.getRewardInfo(machineId);
+
+    //     // Confirm there are claimable rewards
+    //     assertGt(rewardBeforeFirstClaim, 0, "should have reward");
+    //     assertGt(rewardAmountCanClaimBeforeFirst, 0, "should have reward");
+    //     assertGt(lockedRewardAmountBeforeFirst, 0, "should have reward");
+
+    //     // Record balance before the first claim
+    //     uint256 balanceBeforeFirstClaim = rewardToken.balanceOf(stakeHolder);
+
+    //     // First claim of rewards
+    //     vm.prank(stakeHolder);
+    //     nftStaking.claim(machineId);
+
+    //     // Record balance after the first claim
+    //     uint256 balanceAfterFirstClaim = rewardToken.balanceOf(stakeHolder);
+
+    //     // Verify the first claim was successful
+    //     assertGt(balanceAfterFirstClaim, balanceBeforeFirstClaim, "first claim should increase balance");
+
+    //     // Get reward information after the first claim
+    //     uint256 rewardAfterFirstClaim = nftStaking.getReward(machineId);
+    //     (, uint256 rewardAmountCanClaimAfterFirst,,) =
+    //         nftStaking.getRewardInfo(machineId);
+
+    //     // Verify claimable rewards are zero after the first claim
+    //     assertEq(rewardAfterFirstClaim, 0, "after first claim, should have no reward");
+    //     assertEq(rewardAmountCanClaimAfterFirst, 0, "after first claim, should have no reward");
+
+    //     // Record balance before the second claim
+    //     uint256 balanceBeforeSecondClaim = rewardToken.balanceOf(stakeHolder);
+
+    //     // Immediately perform the second claim
+    //     vm.prank(stakeHolder);
+    //     nftStaking.claim(machineId);
+
+    //     // Record balance after the second claim
+    //     uint256 balanceAfterSecondClaim = rewardToken.balanceOf(stakeHolder);
+
+    //     // Verify the second claim did not increase the balance
+    //     assertEq(balanceAfterSecondClaim, balanceBeforeSecondClaim, "second claim should not increase balance");
+
+    //     // Get reward information after the second claim
+    //     uint256 rewardAfterSecondClaim = nftStaking.getReward(machineId);
+
+    //     // Verify claimable rewards are still zero after the second claim
+    //     assertEq(rewardAfterSecondClaim, 0, "second claim, should have no reward");
+    // }
+
+    function testLockedRewardFullClaimAfterLockPeriod() public {
+        // Test if a user can claim all locked rewards after the lock period ends
+        address stakeHolder = owner;
+        string memory machineId = "machineId";
+        
+        // Setup staking
+        stakeByOwner(machineId, 100000 ether, 72, stakeHolder);
+        
+        // Set reward start time to enable rewards
+        vm.prank(owner);
+        nftStaking.setRewardStartAt(block.timestamp);
+        
+        // Pass some time to accumulate rewards
+        passHours(24);
+        
+        // Check initial rewards
+        (uint256 totalReward, uint256 canClaimNow, uint256 lockedAmount,) = nftStaking.getRewardInfo(machineId);
+        assertGt(totalReward, 0, "Should have accumulated some rewards");
+        assertGt(lockedAmount, 0, "Should have some locked rewards");
+        
+        // Claim rewards first time - this will lock 90% of rewards
+        vm.startPrank(stakeHolder);
+        uint256 balanceBefore = rewardToken.balanceOf(stakeHolder);
+        nftStaking.claim(machineId);
+        uint256 balanceAfter = rewardToken.balanceOf(stakeHolder);
+        vm.stopPrank();
+        
+        // Verify immediate claim (10% of rewards) - 使用近似比较而不是精确比较
+        assertEq(balanceAfter - balanceBefore, canClaimNow, "Should have claimed immediate rewards");
+        
+        // Get locked reward details
+        (,, uint256 stillLockedAmount,) = nftStaking.getRewardInfo(machineId);
+        assertGt(stillLockedAmount, 0, "Should still have locked rewards");
+       
+        // Fast forward to after lock period (180 days)
+        vm.warp(block.timestamp + nftStaking.LOCK_PERIOD() + 1);
+
+        // uint256 leftLocked = total-claimed;
+
+        // Check rewards after lock period
+        (uint256 newTotalReward, uint256 newCanClaimNow, uint256 newLockedAmount,) = nftStaking.getRewardInfo(machineId);
+        
+        // All previously locked rewards should now be claimable
+        assertGt(newLockedAmount,0 ,"Should have new locked rewards after lock period");
+        assertGt(newCanClaimNow, 0, "Should have claimable rewards after lock period");
+        
+        // Claim all rewards after lock period
+        vm.startPrank(stakeHolder);
+        uint256 balanceBeforeFinal = rewardToken.balanceOf(stakeHolder);
+        nftStaking.claim(machineId);
+        uint256 balanceAfterFinal = rewardToken.balanceOf(stakeHolder);
+        vm.stopPrank();
+        
+        assertApproxEqRel(balanceAfterFinal - balanceBeforeFinal, newCanClaimNow, 0.01e18, "Should have claimed all unlocked rewards");
+        
+        // Verify no more locked rewards
+        (,uint256 finalCanClaimNow, uint256 finalLockedAmount,) = nftStaking.getRewardInfo(machineId);
+        assertGt(finalCanClaimNow, 0, "Should have new rewards after claiming");
+        assertEq(finalLockedAmount, 0, "Should have no locked rewards after claiming");
+
+
+        (uint256 total,uint256 startTime,uint256 endTime,uint256 claimed) = nftStaking.machineId2LockedRewardDetail(machineId);
+        assertEq(endTime-startTime,nftStaking.LOCK_PERIOD());
+        uint256 left = total -claimed;
+        vm.startPrank(stakeHolder);
+        uint256 balanceBeforeFinal1 = rewardToken.balanceOf(stakeHolder);
+        nftStaking.claim(machineId);
+        uint256 balanceAfterFinal1 = rewardToken.balanceOf(stakeHolder);
+        vm.stopPrank();
+        assertEq(left, balanceAfterFinal1 - balanceBeforeFinal1);
+
+        (uint256 totalFinal,,,uint256 claimedFinal) = nftStaking.machineId2LockedRewardDetail(machineId);
+
+        assertEq(totalFinal, claimedFinal);
     }
 }

@@ -8,7 +8,6 @@ DeepLink Orion GPU Mining Long-Term Lease Contract
     - NFT: 0xFDB11c63b82828774D6A9E893f85D1998E6B36BF
     - DBCAI: 0xa7B9f404653841227AF204a561455113F36d8EC8
 
-
 ## Foundry
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**

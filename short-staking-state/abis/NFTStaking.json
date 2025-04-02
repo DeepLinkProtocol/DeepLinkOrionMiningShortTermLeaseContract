@@ -106,6 +106,11 @@
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "IsStaking",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
         "internalType": "string",
@@ -417,6 +422,25 @@
       }
     ],
     "name": "EndRentMachine",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "machineId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      }
+    ],
+    "name": "ExitStakingForOffline",
     "type": "event"
   },
   {
@@ -964,6 +988,13 @@
   {
     "inputs": [],
     "name": "claimAll",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "claimDLC",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1609,29 +1640,6 @@
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "machineId",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "calcPoint",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "reserveAmount",
-        "type": "uint256"
-      }
-    ],
-    "name": "joinStaking",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "longStakeContractAddress",
     "outputs": [
@@ -1953,6 +1961,35 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "calcPoint",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "nftCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "reserveAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "preCalculateRewards",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "proxiableUUID",
     "outputs": [
@@ -2047,6 +2084,19 @@
         "internalType": "bool",
         "name": "",
         "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "rewardPerShareAtRewardStart",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",

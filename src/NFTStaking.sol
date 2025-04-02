@@ -161,6 +161,8 @@ contract NFTStaking is
     error MachineStillRegistered();
     error StakingInLongTerm();
     error IsStaking();
+    error ShouldPaySlashBeforeStake();
+    error InRenting();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -208,6 +210,7 @@ contract NFTStaking is
         uint256[] memory nftTokenIds,
         uint256[] memory nftTokenIdBalances
     ) {
+        require(pendingSlashedMachineId2Renter[machineId].length == 0, ShouldPaySlashBeforeStake());
         require(dlcClientWalletAddress[msg.sender], NotAdmin());
         StakeInfo memory stakeInfo = machineId2StakeInfos[machineId];
         require(stakeInfo.nftTokenIds.length == 0, IsStaking());
@@ -329,7 +332,7 @@ contract NFTStaking is
 
         if (approvedReportInfos.length > 0) {
             require(
-                amount >= BASE_RESERVE_AMOUNT * approvedReportInfos.length,
+                amount == BASE_RESERVE_AMOUNT * approvedReportInfos.length,
                 StakeAmountLessThanReserve(machineId, amount)
             );
             for (uint8 i = 0; i < approvedReportInfos.length; i++) {
@@ -679,9 +682,9 @@ contract NFTStaking is
         require(stakeInfo.isRentedByUser == false, MachineRentedByUser());
         (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
         require(!isRegistered, MachineStillRegistered());
-        if (machineId2Rented[machineId] || stakeInfo.endAtTimestamp < block.timestamp) {
-            _claim(machineId);
-        }
+        
+        require(machineId2Rented[machineId] == false, InRenting());
+        _claim(machineId);
         _unStake(machineId, stakeInfo.holder);
     }
 

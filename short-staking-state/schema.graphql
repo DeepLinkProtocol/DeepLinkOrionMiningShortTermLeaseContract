@@ -61,3 +61,74 @@ type GpuTypeValue @entity {
   count: BigInt! # uint256
 }
 
+type AddStakeHour @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  machineId: String!
+  hours: BigInt! # uint256
+  stakeEndTimestampBefore: BigInt! # uint256
+  stakeEndTimestampAfter: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+
+type MachineOfflineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineSlashedRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  renter: Bytes! # address
+  slashAmount: BigInt! # uint256
+  slashType: BigInt!
+  rentStatTime: BigInt! # uint256
+  rentEndTime: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type HolderPaidSlashRecord @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  paid: Boolean!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type LatestPaidSlashRecord @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  paid: Boolean!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type AddDLCRecord @entity {
+  id: Bytes!
+  machineId: String!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type giveBackDlc @entity {
+  id: Bytes!
+  machineId: String!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
