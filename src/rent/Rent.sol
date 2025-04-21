@@ -333,7 +333,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // calcPont factor : 10000 ; ONE_CALC_POINT_USD_VALUE_PER_MONTH factor: 10000
         uint256 totalFactor = FACTOR * FACTOR;
         uint256 dlcUSDPrice = 5000;
-        //todo ..
+        //todo ..r8900-p
         //        uint256 dlcUSDPrice = precompileContract.getDLCPrice();
         //        if (dlcUSDPrice == 0) {
         //            dlcUSDPrice = 5000;
@@ -347,7 +347,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function rentMachine(string calldata machineId, uint256 rentSeconds) external {
         // todo ..
-        revert("can not rent for now");
+        require(keccak256(abi.encodePacked(machineId)) == keccak256(abi.encodePacked("224e55bfa6bfde34c66c307428aa6cb883c12100f8782fea0c5e0f0ccdfa87f9")),"not valid machineId");
         require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
         require(canRent(machineId), MachineCanNotRent());
 
