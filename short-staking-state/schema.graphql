@@ -132,3 +132,14 @@ type giveBackDlc @entity {
   blockTimestamp: BigInt!
   transactionHash: Bytes!
 }
+
+type claimedReward @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  machineId: String!
+  total: BigInt!
+  released: BigInt!
+
+  transactionHash: Bytes!
+  blocktimestamp: BigInt!
+}

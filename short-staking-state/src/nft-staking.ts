@@ -28,39 +28,47 @@ import {
   HolderPaidSlashRecord,
   LatestPaidSlashRecord,
   AddDLCRecord,
-  giveBackDlc
+  giveBackDlc, claimedReward
 
 } from "../generated/schema"
 
 
 export function handleClaimed(event: ClaimedEvent): void {
-  let id = Bytes.fromUTF8(event.params.machineId.toString());
-  let machineInfo = MachineInfo.load(id)
-  if (machineInfo == null) {
-    return
-  }
-  machineInfo.claimTimes = machineInfo.claimTimes.plus(BigInt.fromI32(1))
 
-  let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
+  let stakeholder = StakeHolder.load(Bytes.fromHexString(event.params.stakeholder.toHexString()))
   if (stakeholder == null) {
     return
   }
 
 
-  if (event.params.moveToUserWalletAmount.gt(BigInt.fromString("3000000000000000000000000")) && machineInfo.machineId == "e36e94c30d483129fb3a2feed81458926066d6a0f27094b0744e8b0aedbf00ee") {
+  if (event.params.moveToUserWalletAmount.gt(BigInt.fromString("3000000000000000000000000")) && event.params.machineId == "e36e94c30d483129fb3a2feed81458926066d6a0f27094b0744e8b0aedbf00ee") {
     return
   }
 
   stakeholder.totalReleasedRewardAmount = stakeholder.totalReleasedRewardAmount.plus(event.params.moveToUserWalletAmount)
   stakeholder.totalClaimedRewardAmount = stakeholder.totalClaimedRewardAmount.plus(event.params.totalRewardAmount)
-  // if (machineInfo.machineId == "e36e94c30d483129fb3a2feed81458926066d6a0f27094b0744e8b0aedbf00ee" && machineInfo.claimTimes.equals(BigInt.fromI32(1))){
-  //   stakeholder.totalReleasedRewardAmount = stakeholder.totalReleasedRewardAmount.minus(BigInt.fromString("4190373916556411948312603"))
-  //   stakeholder.totalClaimedRewardAmount = stakeholder.totalClaimedRewardAmount.minus(BigInt.fromString("41903739165564119483126031"))
-  // }
 
-  // stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.plus(event.params.moveToReservedAmount)
+  stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.plus(event.params.moveToReservedAmount)
   stakeholder.save()
+  //
+  // let r = new claimedReward(event.transaction.hash)
+  // r.holder = event.params.stakeholder
+  // r.machineId = event.params.machineId.toString()
+  // r.total = event.params.totalRewardAmount
+  // r.released = event.params.moveToUserWalletAmount
+  // r.blocktimestamp = event.block.timestamp
+  // r.transactionHash = event.transaction.hash
+  // r.save()
 
+  let id = Bytes.fromUTF8(event.params.machineId.toString());
+  let machineInfo = MachineInfo.load(id)
+  if (machineInfo == null) {
+
+    return
+  }
+
+
+  machineInfo.claimTimes = machineInfo.claimTimes.plus(BigInt.fromI32(1))
 }
 
 export function handleMoveToReserveAmount(event: MoveToReserveAmountEvent): void {
