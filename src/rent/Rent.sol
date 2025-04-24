@@ -12,6 +12,7 @@ import "forge-std/console.sol";
 import "../interface/IDBCAIContract.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "../interface/IOracle.sol";
 
 /// @custom:oz-upgrades-from OldRent
 contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
@@ -108,6 +109,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(string => uint256) public machineId2LastRentEndBlock;
     mapping(string => SlashInfo[]) public machineId2SlashInfos;
 
+    IOracle public oracle;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -145,6 +148,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         SlashType slashType
     );
     event RemoveCalcPointOnOffline(string machineId);
+    event AddCalcPointOnline(string machineId);
+
     event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
 
     error NotApproveAdmin();
@@ -227,6 +232,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         dbcAIContract = IDBCAIContract(addr);
     }
 
+    function setOracle(address addr) external onlyOwner  {
+        oracle = IOracle(addr);
+    }
+
     function setAdminsToApproveMachineFaultReporting(address[] calldata admins) external onlyOwner {
         require(admins.length == 5, CountOfApproveAdminsShouldBeFive());
         adminsToApprove = admins;
@@ -290,6 +299,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
 
+        if (stakingContract.isStakingButOffline(machineId)) {
+            return false;
+        }
+
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
         if (rewardEndAt == 60 days) {
             return false;
@@ -332,12 +345,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // calcPont factor : 10000 ; ONE_CALC_POINT_USD_VALUE_PER_MONTH factor: 10000
         uint256 totalFactor = FACTOR * FACTOR;
-        uint256 dlcUSDPrice = 5000;
-        //todo ..r8900-p
-        //        uint256 dlcUSDPrice = precompileContract.getDLCPrice();
-        //        if (dlcUSDPrice == 0) {
-        //            dlcUSDPrice = 5000;
-        //        }
+        uint256 dlcUSDPrice = oracle.getTokenPriceInUSD(10, address(feeToken));
 
         uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
             / 60 / 60 / totalFactor;
@@ -347,7 +355,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function rentMachine(string calldata machineId, uint256 rentSeconds) external {
         // todo ..
-        require(keccak256(abi.encodePacked(machineId)) == keccak256(abi.encodePacked("224e55bfa6bfde34c66c307428aa6cb883c12100f8782fea0c5e0f0ccdfa87f9")),"not valid machineId");
+        require(
+            keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("224e55bfa6bfde34c66c307428aa6cb883c12100f8782fea0c5e0f0ccdfa87f9")),
+            "not valid machineId"
+        );
         require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
         require(canRent(machineId), MachineCanNotRent());
 
@@ -408,9 +420,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId, rentFeeInFact);
 
-        stakingContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
-        stakingContract.addRentedGPUCount(machineHolder, machineId);
-
         emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, msg.sender, rentFeeInFact);
     }
 
@@ -459,7 +468,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // update total burned amount
         totalBurnedAmount += additionalRentFeeInFact;
         stakingContract.renewRentMachine(machineId, additionalRentFeeInFact);
-        stakingContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
         emit RenewRent(machineHolder, machineId, rentId, additionalRentSeconds, additionalRentFeeInFact, msg.sender);
     }
 
@@ -670,9 +678,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                     SlashType.Offline
                 );
             } else {
-                stakingContract.unStake(machineId);
+                stakingContract.stopRewarding(machineId);
                 emit RemoveCalcPointOnOffline(machineId);
             }
+        } else if (tp == NotifyType.MachineOnline && stakingContract.isStakingButOffline(machineId)) {
+            stakingContract.recoverRewarding(machineId);
+            emit AddCalcPointOnline(machineId);
         }
         return true;
     }

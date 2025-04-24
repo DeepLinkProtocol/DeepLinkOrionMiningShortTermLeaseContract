@@ -378,8 +378,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId, rentFeeInFact);
 
-        stakingContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
-        stakingContract.addRentedGPUCount(machineHolder, machineId);
 
         emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender, rentFeeInFact);
     }
@@ -428,7 +426,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // update total burned amount
         totalBurnedAmount += additionalRentFeeInFact;
 
-        stakingContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
         emit RenewRent(rentId, additionalRentSeconds, additionalRentFeeInFact, msg.sender);
     }
 
