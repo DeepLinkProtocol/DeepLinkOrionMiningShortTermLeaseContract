@@ -168,6 +168,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error RentEnd();
     error RentNotEnd();
     error NotRenter();
+    error RentingNotExist();
     error MachineNotRented();
     error ReserveAmountForReportShouldBe10000();
     error ReportedMachineNotFound();
@@ -232,7 +233,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         dbcAIContract = IDBCAIContract(addr);
     }
 
-    function setOracle(address addr) external onlyOwner  {
+    function setOracle(address addr) external onlyOwner {
         oracle = IOracle(addr);
     }
 
@@ -353,13 +354,19 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return 1e18 * rentFeeUSD / dlcUSDPrice;
     }
 
+    function inRentWhiteList(string calldata machineId) internal pure returns (bool) {
+        return keccak256(abi.encodePacked(machineId))
+            == keccak256(abi.encodePacked("224e55bfa6bfde34c66c307428aa6cb883c12100f8782fea0c5e0f0ccdfa87f9"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("f2a12613c18c14722e7e90049064b7769a7653a0dfa572fc5835136cb91aabe3"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("2dd9d41711289e099a9d04ae122fc68666487138559261ac5e4918594e7a2752"));
+//            || keccak256(abi.encodePacked(machineId))
+//                == keccak256(abi.encodePacked("4d7462c0f558cf058e1ec1c8c374f2c2aea90305d5c0f417fd36c07bcb1b56c9"));
+    }
+
     function rentMachine(string calldata machineId, uint256 rentSeconds) external {
-        // todo ..
-        require(
-            keccak256(abi.encodePacked(machineId))
-                == keccak256(abi.encodePacked("224e55bfa6bfde34c66c307428aa6cb883c12100f8782fea0c5e0f0ccdfa87f9")),
-            "not valid machineId"
-        );
+        require(inRentWhiteList(machineId), "not valid machineId");
         require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
         require(canRent(machineId), MachineCanNotRent());
 
@@ -475,6 +482,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
         require(rentInfo.rentEndTime <= block.timestamp, RentNotEnd());
+        require(rentInfo.rentEndTime > 0, RentingNotExist());
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 

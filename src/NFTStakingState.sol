@@ -74,335 +74,335 @@ contract NFTStakingState {
         rentContract = IRentContract(_rentContract);
     }
 
-//
-//    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256, bool) {
-//        for (uint256 i = 0; i < arr.length; i++) {
-//            if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
-//                return (i, true);
-//            }
-//        }
-//        return (0, false);
-//    }
-//
-//    function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
-//        (uint256 index, bool found) = findStringIndex(arr, addr);
-//        if (!found) {
-//            return;
-//        }
-//        arr[index] = arr[arr.length - 1];
-//        arr.pop();
-//    }
+    //
+    //    function findStringIndex(string[] memory arr, string memory v) internal pure returns (uint256, bool) {
+    //        for (uint256 i = 0; i < arr.length; i++) {
+    //            if (keccak256(abi.encodePacked(arr[i])) == keccak256(abi.encodePacked(v))) {
+    //                return (i, true);
+    //            }
+    //        }
+    //        return (0, false);
+    //    }
+    //
+    //    function removeStringValueOfArray(string memory addr, string[] storage arr) internal {
+    //        (uint256 index, bool found) = findStringIndex(arr, addr);
+    //        if (!found) {
+    //            return;
+    //        }
+    //        arr[index] = arr[arr.length - 1];
+    //        arr.pop();
+    //    }
 
-//    function setBurnedRentFee(address _holder, string memory _machineId, uint256 fee) external onlyRentAddress {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//        previousMachineInfo.burnedRentFee += fee;
-//        stakeHolderInfo.burnedRentFee += fee;
-//    }
+    //    function setBurnedRentFee(address _holder, string memory _machineId, uint256 fee) external onlyRentAddress {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //        previousMachineInfo.burnedRentFee += fee;
+    //        stakeHolderInfo.burnedRentFee += fee;
+    //    }
 
-//    function addRentedGPUCount(address _holder, string memory _machineId) external onlyRentAddress {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//        previousMachineInfo.rentedGPUCount += 1;
-//        stakeHolderInfo.rentedGPUCount += 1;
-//    }
+    //    function addRentedGPUCount(address _holder, string memory _machineId) external onlyRentAddress {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //        previousMachineInfo.rentedGPUCount += 1;
+    //        stakeHolderInfo.rentedGPUCount += 1;
+    //    }
 
-//    function subRentedGPUCount(address _holder, string memory _machineId) internal {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//        if (previousMachineInfo.rentedGPUCount >= 1) {
-//            previousMachineInfo.rentedGPUCount -= 1;
-//            stakeHolderInfo.rentedGPUCount -= 1;
-//        }
-//    }
+    //    function subRentedGPUCount(address _holder, string memory _machineId) internal {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //        if (previousMachineInfo.rentedGPUCount >= 1) {
+    //            previousMachineInfo.rentedGPUCount -= 1;
+    //            stakeHolderInfo.rentedGPUCount -= 1;
+    //        }
+    //    }
 
-//    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount) internal {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//
-//        previousMachineInfo.reserveAmount += _reserveAmount;
-//        stakeHolderInfo.totalReservedAmount += _reserveAmount;
-//    }
+    //    function addReserveAmount(string memory _machineId, address _holder, uint256 _reserveAmount) internal {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //
+    //        previousMachineInfo.reserveAmount += _reserveAmount;
+    //        stakeHolderInfo.totalReservedAmount += _reserveAmount;
+    //    }
 
-//    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) internal {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//
-//        if (previousMachineInfo.reserveAmount > _reserveAmount) {
-//            previousMachineInfo.reserveAmount -= _reserveAmount;
-//        } else {
-//            previousMachineInfo.reserveAmount = 0;
-//        }
-//
-//        if (stakeHolderInfo.totalReservedAmount > _reserveAmount) {
-//            stakeHolderInfo.totalReservedAmount -= _reserveAmount;
-//        } else {
-//            stakeHolderInfo.totalReservedAmount = 0;
-//        }
-//    }
+    //    function subReserveAmount(address _holder, string memory _machineId, uint256 _reserveAmount) internal {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //
+    //        if (previousMachineInfo.reserveAmount > _reserveAmount) {
+    //            previousMachineInfo.reserveAmount -= _reserveAmount;
+    //        } else {
+    //            previousMachineInfo.reserveAmount = 0;
+    //        }
+    //
+    //        if (stakeHolderInfo.totalReservedAmount > _reserveAmount) {
+    //            stakeHolderInfo.totalReservedAmount -= _reserveAmount;
+    //        } else {
+    //            stakeHolderInfo.totalReservedAmount = 0;
+    //        }
+    //    }
 
-//    function addClaimedRewardAmount(
-//        address _holder,
-//        string memory _machineId,
-//        uint256 totalClaimedAmount,
-//        uint256 releasedAmount
-//    ) internal {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//
-//        previousMachineInfo.totalClaimedRewardAmount += totalClaimedAmount;
-//        previousMachineInfo.releasedRewardAmount += releasedAmount;
-//        stakeHolderInfo.totalClaimedRewardAmount += totalClaimedAmount;
-//        stakeHolderInfo.releasedRewardAmount += releasedAmount;
-//    }
+    //    function addClaimedRewardAmount(
+    //        address _holder,
+    //        string memory _machineId,
+    //        uint256 totalClaimedAmount,
+    //        uint256 releasedAmount
+    //    ) internal {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        MachineInfo storage previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //
+    //        previousMachineInfo.totalClaimedRewardAmount += totalClaimedAmount;
+    //        previousMachineInfo.releasedRewardAmount += releasedAmount;
+    //        stakeHolderInfo.totalClaimedRewardAmount += totalClaimedAmount;
+    //        stakeHolderInfo.releasedRewardAmount += releasedAmount;
+    //    }
 
-//    function addOrUpdateStakeHolder(
-//        address _holder,
-//        string memory _machineId,
-//        uint256 _calcPoint,
-//        uint8 _gpuCount,
-//        bool isAdd
-//    ) internal {
-//        require(_holder != address(0), "Invalid holder address");
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        if (stakeHolderInfo.holder == address(0)) {
-//            stakeHolderInfo.holder = _holder;
-//        }
-//
-//        if (isAdd) {
-//            machineIds.push(_machineId);
-//            uint256 stakedMachineCount = address2MachineCount[_holder];
-//            if (stakedMachineCount == 0) {
-//                addressCountInStaking += 1;
-//            }
-//            address2MachineCount[_holder] += 1;
-//
-//            stakeHolderInfo.totalGPUCount += _gpuCount;
-//            stakeHolderInfo.machineId2Info[_machineId].gpuCount = _gpuCount;
-//        }
-//
-//        MachineInfo memory previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
-//        stakeHolderInfo.machineId2Info[_machineId].calcPoint = _calcPoint;
-//
-//        if (previousMachineInfo.calcPoint == 0) {
-//            stakeHolderInfo.machineIds.push(_machineId);
-//        }
-//
-//        stakeHolderInfo.totalCalcPoint = stakeHolderInfo.totalCalcPoint + _calcPoint - previousMachineInfo.calcPoint;
-//
-////        updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
-//    }
+    //    function addOrUpdateStakeHolder(
+    //        address _holder,
+    //        string memory _machineId,
+    //        uint256 _calcPoint,
+    //        uint8 _gpuCount,
+    //        bool isAdd
+    //    ) internal {
+    //        require(_holder != address(0), "Invalid holder address");
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        if (stakeHolderInfo.holder == address(0)) {
+    //            stakeHolderInfo.holder = _holder;
+    //        }
+    //
+    //        if (isAdd) {
+    //            machineIds.push(_machineId);
+    //            uint256 stakedMachineCount = address2MachineCount[_holder];
+    //            if (stakedMachineCount == 0) {
+    //                addressCountInStaking += 1;
+    //            }
+    //            address2MachineCount[_holder] += 1;
+    //
+    //            stakeHolderInfo.totalGPUCount += _gpuCount;
+    //            stakeHolderInfo.machineId2Info[_machineId].gpuCount = _gpuCount;
+    //        }
+    //
+    //        MachineInfo memory previousMachineInfo = stakeHolderInfo.machineId2Info[_machineId];
+    //        stakeHolderInfo.machineId2Info[_machineId].calcPoint = _calcPoint;
+    //
+    //        if (previousMachineInfo.calcPoint == 0) {
+    //            stakeHolderInfo.machineIds.push(_machineId);
+    //        }
+    //
+    //        stakeHolderInfo.totalCalcPoint = stakeHolderInfo.totalCalcPoint + _calcPoint - previousMachineInfo.calcPoint;
+    //
+    ////        updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
+    //    }
 
-//    function removeMachine(address _holder, string memory _machineId) internal {
-//        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
-//
-//        MachineInfo memory stakeInfoToRemove = stakeHolderInfo.machineId2Info[_machineId];
-//        if (stakeInfoToRemove.calcPoint > 0) {
-//            stakeHolderInfo.totalCalcPoint -= stakeInfoToRemove.calcPoint;
-//        }
-//
-//        stakeHolderInfo.totalGPUCount -= stakeInfoToRemove.gpuCount;
-//        stakeHolderInfo.totalReservedAmount -= stakeInfoToRemove.reserveAmount;
-//        stakeHolderInfo.rentedGPUCount -= stakeInfoToRemove.rentedGPUCount;
-//        removeStringValueOfArray(_machineId, stakeHolderInfo.machineIds);
-//        delete stakeHolderInfo.machineId2Info[_machineId];
-//        removeMachineIdByValueUnordered(_machineId);
-//
-//        uint256 stakedMachineCount = address2MachineCount[_holder];
-//        if (stakedMachineCount > 0) {
-//            if (stakedMachineCount == 1) {
-//                addressCountInStaking -= 1;
-//            }
-//            if (address2MachineCount[_holder] > 0) {
-//                address2MachineCount[_holder] -= 1;
-//            }
-//        }
-//
-//        updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
-//    }
+    //    function removeMachine(address _holder, string memory _machineId) internal {
+    //        StakeHolderInfo storage stakeHolderInfo = stakeHolders[_holder];
+    //
+    //        MachineInfo memory stakeInfoToRemove = stakeHolderInfo.machineId2Info[_machineId];
+    //        if (stakeInfoToRemove.calcPoint > 0) {
+    //            stakeHolderInfo.totalCalcPoint -= stakeInfoToRemove.calcPoint;
+    //        }
+    //
+    //        stakeHolderInfo.totalGPUCount -= stakeInfoToRemove.gpuCount;
+    //        stakeHolderInfo.totalReservedAmount -= stakeInfoToRemove.reserveAmount;
+    //        stakeHolderInfo.rentedGPUCount -= stakeInfoToRemove.rentedGPUCount;
+    //        removeStringValueOfArray(_machineId, stakeHolderInfo.machineIds);
+    //        delete stakeHolderInfo.machineId2Info[_machineId];
+    //        removeMachineIdByValueUnordered(_machineId);
+    //
+    //        uint256 stakedMachineCount = address2MachineCount[_holder];
+    //        if (stakedMachineCount > 0) {
+    //            if (stakedMachineCount == 1) {
+    //                addressCountInStaking -= 1;
+    //            }
+    //            if (address2MachineCount[_holder] > 0) {
+    //                address2MachineCount[_holder] -= 1;
+    //            }
+    //        }
+    //
+    //        updateTopStakeHolders(_holder, stakeHolderInfo.totalCalcPoint);
+    //    }
 
-//    function updateTopStakeHolders(address _holder, uint256 newCalcPoint) internal {
-//        bool exists = false;
-//        uint256 index;
-//
-//        for (uint256 i = 0; i < topStakeHolders.length; i++) {
-//            if (topStakeHolders[i].holder == _holder) {
-//                exists = true;
-//                index = i;
-//                break;
-//            }
-//        }
-//
-//        if (exists) {
-//            topStakeHolders[index].totalCalcPoint = newCalcPoint;
-//        } else {
-//            topStakeHolders.push(SimpleStakeHolder(_holder, newCalcPoint));
-//            index = topStakeHolders.length - 1;
-//        }
-//    }
+    //    function updateTopStakeHolders(address _holder, uint256 newCalcPoint) internal {
+    //        bool exists = false;
+    //        uint256 index;
+    //
+    //        for (uint256 i = 0; i < topStakeHolders.length; i++) {
+    //            if (topStakeHolders[i].holder == _holder) {
+    //                exists = true;
+    //                index = i;
+    //                break;
+    //            }
+    //        }
+    //
+    //        if (exists) {
+    //            topStakeHolders[index].totalCalcPoint = newCalcPoint;
+    //        } else {
+    //            topStakeHolders.push(SimpleStakeHolder(_holder, newCalcPoint));
+    //            index = topStakeHolders.length - 1;
+    //        }
+    //    }
 
-//    function getHolderMachineIds(address _holder) external view returns (string[] memory) {
-//        return stakeHolders[_holder].machineIds;
-//    }
-//
-//    function getTopStakeHolders(uint256 offset, uint256 limit)
-//        external
-//        view
-//        returns (StakeHolder[] memory, uint256 total)
-//    {
-//        uint256 totalItems = topStakeHolders.length;
-//
-//        if (offset >= totalItems) {
-//            StakeHolder[] memory empty = new StakeHolder[](0);
-//            return (empty, totalItems);
-//        }
-//
-//        uint256 end = offset + limit;
-//        if (end > totalItems) {
-//            end = totalItems;
-//        }
-//
-//        uint256 size = end - offset;
-//
-//        SimpleStakeHolder[] memory sortedStakeHolders = new SimpleStakeHolder[](totalItems);
-//
-//        for (uint256 i = 0; i < totalItems; i++) {
-//            sortedStakeHolders[i] = topStakeHolders[i];
-//        }
-//
-//        selectionSort(sortedStakeHolders);
-//
-//        StakeHolder[] memory result = new StakeHolder[](size);
-//
-//        for (uint256 i = 0; i < size; i++) {
-//            SimpleStakeHolder memory simpleHolder = sortedStakeHolders[offset + i];
-//            StakeHolderInfo storage stakeHolderInfo = stakeHolders[simpleHolder.holder];
-//
-//            result[i] = StakeHolder({
-//                holder: simpleHolder.holder,
-//                totalCalcPoint: simpleHolder.totalCalcPoint,
-//                totalGPUCount: stakeHolderInfo.totalGPUCount,
-//                totalReservedAmount: stakeHolderInfo.totalReservedAmount,
-//                rentedGPUCount: stakeHolderInfo.rentedGPUCount,
-//                burnedRentFee: stakeHolderInfo.burnedRentFee,
-//                totalClaimedRewardAmount: stakeHolderInfo.totalClaimedRewardAmount,
-//                releasedRewardAmount: stakeHolderInfo.releasedRewardAmount
-//            });
-//        }
-//
-//        return (result, totalItems);
-//    }
+    //    function getHolderMachineIds(address _holder) external view returns (string[] memory) {
+    //        return stakeHolders[_holder].machineIds;
+    //    }
+    //
+    //    function getTopStakeHolders(uint256 offset, uint256 limit)
+    //        external
+    //        view
+    //        returns (StakeHolder[] memory, uint256 total)
+    //    {
+    //        uint256 totalItems = topStakeHolders.length;
+    //
+    //        if (offset >= totalItems) {
+    //            StakeHolder[] memory empty = new StakeHolder[](0);
+    //            return (empty, totalItems);
+    //        }
+    //
+    //        uint256 end = offset + limit;
+    //        if (end > totalItems) {
+    //            end = totalItems;
+    //        }
+    //
+    //        uint256 size = end - offset;
+    //
+    //        SimpleStakeHolder[] memory sortedStakeHolders = new SimpleStakeHolder[](totalItems);
+    //
+    //        for (uint256 i = 0; i < totalItems; i++) {
+    //            sortedStakeHolders[i] = topStakeHolders[i];
+    //        }
+    //
+    //        selectionSort(sortedStakeHolders);
+    //
+    //        StakeHolder[] memory result = new StakeHolder[](size);
+    //
+    //        for (uint256 i = 0; i < size; i++) {
+    //            SimpleStakeHolder memory simpleHolder = sortedStakeHolders[offset + i];
+    //            StakeHolderInfo storage stakeHolderInfo = stakeHolders[simpleHolder.holder];
+    //
+    //            result[i] = StakeHolder({
+    //                holder: simpleHolder.holder,
+    //                totalCalcPoint: simpleHolder.totalCalcPoint,
+    //                totalGPUCount: stakeHolderInfo.totalGPUCount,
+    //                totalReservedAmount: stakeHolderInfo.totalReservedAmount,
+    //                rentedGPUCount: stakeHolderInfo.rentedGPUCount,
+    //                burnedRentFee: stakeHolderInfo.burnedRentFee,
+    //                totalClaimedRewardAmount: stakeHolderInfo.totalClaimedRewardAmount,
+    //                releasedRewardAmount: stakeHolderInfo.releasedRewardAmount
+    //            });
+    //        }
+    //
+    //        return (result, totalItems);
+    //    }
 
-//    function selectionSort(SimpleStakeHolder[] memory arr) internal pure {
-//        uint256 len = arr.length;
-//        for (uint256 i = 0; i < len - 1; i++) {
-//            uint256 maxIndex = i;
-//            for (uint256 j = i + 1; j < len; j++) {
-//                if (arr[j].totalCalcPoint > arr[maxIndex].totalCalcPoint) {
-//                    maxIndex = j;
-//                }
-//            }
-//            if (maxIndex != i) {
-//                SimpleStakeHolder memory temp = arr[i];
-//                arr[i] = arr[maxIndex];
-//                arr[maxIndex] = temp;
-//            }
-//        }
-//    }
+    //    function selectionSort(SimpleStakeHolder[] memory arr) internal pure {
+    //        uint256 len = arr.length;
+    //        for (uint256 i = 0; i < len - 1; i++) {
+    //            uint256 maxIndex = i;
+    //            for (uint256 j = i + 1; j < len; j++) {
+    //                if (arr[j].totalCalcPoint > arr[maxIndex].totalCalcPoint) {
+    //                    maxIndex = j;
+    //                }
+    //            }
+    //            if (maxIndex != i) {
+    //                SimpleStakeHolder memory temp = arr[i];
+    //                arr[i] = arr[maxIndex];
+    //                arr[maxIndex] = temp;
+    //            }
+    //        }
+    //    }
 
-//    function removeMachineIdByValueUnordered(string memory machineId) internal {
-//        (uint256 index, bool found) = findMachineIdIndex(machineId);
-//        if (!found) {
-//            return;
-//        }
-//        machineIds[index] = machineIds[machineIds.length - 1];
-//
-//        machineIds.pop();
-//    }
+    //    function removeMachineIdByValueUnordered(string memory machineId) internal {
+    //        (uint256 index, bool found) = findMachineIdIndex(machineId);
+    //        if (!found) {
+    //            return;
+    //        }
+    //        machineIds[index] = machineIds[machineIds.length - 1];
+    //
+    //        machineIds.pop();
+    //    }
 
-//    function findMachineIdIndex(string memory machineId) internal view returns (uint256, bool) {
-//        for (uint256 i = 0; i < machineIds.length; i++) {
-//            if (keccak256(abi.encodePacked(machineIds[i])) == keccak256(abi.encodePacked(machineId))) {
-//                return (i, true);
-//            }
-//        }
-//        return (0, false);
-//    }
+    //    function findMachineIdIndex(string memory machineId) internal view returns (uint256, bool) {
+    //        for (uint256 i = 0; i < machineIds.length; i++) {
+    //            if (keccak256(abi.encodePacked(machineIds[i])) == keccak256(abi.encodePacked(machineId))) {
+    //                return (i, true);
+    //            }
+    //        }
+    //        return (0, false);
+    //    }
 
-//    function getMachinesInStaking(uint256 startIndex, uint256 pageSize)
-//        external
-//        view
-//        returns (string[] memory, uint256)
-//    {
-//        if (startIndex > machineIds.length) {
-//            return (new string[](0), machineIds.length);
-//        }
-//
-//        uint256 endIndex = startIndex + pageSize;
-//        if (endIndex > machineIds.length) {
-//            endIndex = machineIds.length;
-//        }
-//        uint256 length = endIndex - startIndex;
-//
-//        string[] memory pageItems = new string[](length);
-//        for (uint256 i = 0; i < length; i++) {
-//            pageItems[i] = machineIds[startIndex + i];
-//        }
-//
-//        return (pageItems, machineIds.length);
-//    }
+    //    function getMachinesInStaking(uint256 startIndex, uint256 pageSize)
+    //        external
+    //        view
+    //        returns (string[] memory, uint256)
+    //    {
+    //        if (startIndex > machineIds.length) {
+    //            return (new string[](0), machineIds.length);
+    //        }
+    //
+    //        uint256 endIndex = startIndex + pageSize;
+    //        if (endIndex > machineIds.length) {
+    //            endIndex = machineIds.length;
+    //        }
+    //        uint256 length = endIndex - startIndex;
+    //
+    //        string[] memory pageItems = new string[](length);
+    //        for (uint256 i = 0; i < length; i++) {
+    //            pageItems[i] = machineIds[startIndex + i];
+    //        }
+    //
+    //        return (pageItems, machineIds.length);
+    //    }
 
-//    function getRentedGPUCountInDlcNftStaking() external view returns (uint256) {
-//        return rentContract.getTotalRentedGPUCount();
-//    }
+    //    function getRentedGPUCountInDlcNftStaking() external view returns (uint256) {
+    //        return rentContract.getTotalRentedGPUCount();
+    //    }
 
-//    function getTotalDlcNftStakingBurnedRentFee() external view returns (uint256) {
-//        return rentContract.getTotalBurnedRentFee();
-//    }
+    //    function getTotalDlcNftStakingBurnedRentFee() external view returns (uint256) {
+    //        return rentContract.getTotalBurnedRentFee();
+    //    }
 
-//    function getStateSummary() public view returns (StateSummary memory) {
-//        return StateSummary({
-//            totalCalcPoint: totalCalcPoint,
-//            totalGPUCount: totalGpuCount,
-//            totalCalcPointPoolCount: addressCountInStaking,
-//            totalRentedGPUCount: rentContract.getTotalRentedGPUCount(),
-//            totalBurnedRentFee: rentContract.getTotalBurnedRentFee(),
-//            totalReservedAmount: totalReservedAmount
-//        });
-//    }
+    //    function getStateSummary() public view returns (StateSummary memory) {
+    //        return StateSummary({
+    //            totalCalcPoint: totalCalcPoint,
+    //            totalGPUCount: totalGpuCount,
+    //            totalCalcPointPoolCount: addressCountInStaking,
+    //            totalRentedGPUCount: rentContract.getTotalRentedGPUCount(),
+    //            totalBurnedRentFee: rentContract.getTotalBurnedRentFee(),
+    //            totalReservedAmount: totalReservedAmount
+    //        });
+    //    }
 
-//    function isRented(string calldata machineId) external view returns (bool) {
-//        return rentContract.isRented(machineId);
-//    }
+    //    function isRented(string calldata machineId) external view returns (bool) {
+    //        return rentContract.isRented(machineId);
+    //    }
 }

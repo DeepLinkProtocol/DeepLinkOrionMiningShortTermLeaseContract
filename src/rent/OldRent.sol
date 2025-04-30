@@ -378,7 +378,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId, rentFeeInFact);
 
-
         emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender, rentFeeInFact);
     }
 

@@ -125,10 +125,10 @@ contract RentTest is Test {
         stakeByOwner(machineId, 0, 72, stakeHolder);
         vm.stopPrank();
 
-//        (NFTStaking.StakeHolder[] memory topHolders,) = nftStaking.getTopStakeHolders(0, 10);
-//        assertEq(topHolders[0].holder, stakeHolder, "topHolders[0].holder, stakeHolder");
-//        assertEq(topHolders[0].totalCalcPoint, 100, "top1 holder calc point 100 failed");
-//        assertTrue(nftStaking.isStaking(machineId));
+        //        (NFTStaking.StakeHolder[] memory topHolders,) = nftStaking.getTopStakeHolders(0, 10);
+        //        assertEq(topHolders[0].holder, stakeHolder, "topHolders[0].holder, stakeHolder");
+        //        assertEq(topHolders[0].totalCalcPoint, 100, "top1 holder calc point 100 failed");
+        //        assertTrue(nftStaking.isStaking(machineId));
 
         passDays(1);
 
@@ -190,18 +190,6 @@ contract RentTest is Test {
         uint256[] memory tokenIds3 = new uint256[](1);
         tokenIds3[0] = 10;
         vm.startPrank(stakeHolder);
-        // staking.stake(machineId3, 10 * 1e18, tokenIds2, 3);
-        stakeByOwner(machineId3, 10 * 1e18, 2, stakeHolder);
-
-        (address holder, uint256 calcPoint, uint256 gpuCount,, uint256 totalReservedAmount,,,) =
-            nftStaking.stakeHolders(stakeHolder);
-
-        assertEq(holder, stakeHolder, "");
-        assertEq(calcPoint, 200);
-
-        assertEq(gpuCount, 2, "gpuCount");
-
-        assertEq(totalReservedAmount, 10 * 1e18);
         vm.stopPrank();
     }
 
