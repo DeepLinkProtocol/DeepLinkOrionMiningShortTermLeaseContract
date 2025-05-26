@@ -56,14 +56,9 @@ contract RentTest is Test {
             address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.reportStakingStatus.selector), abi.encode()
         );
         vm.mockCall(address(dbcAIContract), abi.encodeWithSelector(dbcAIContract.freeGpuAmount.selector), abi.encode(1));
-        vm.mockCall(
-            address(rent),
-            abi.encodeWithSelector(rent.getMachinePrice.selector),
-            abi.encode(100)
-        );
+        vm.mockCall(address(rent), abi.encodeWithSelector(rent.getMachinePrice.selector), abi.encode(100));
         vm.stopPrank();
     }
-
 
     function testRentMachine() public {
         string memory machineId = "machineId";

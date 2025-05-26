@@ -163,6 +163,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error InvalidRentDuration(uint256 rentDuration);
     error MachineCanNotRent();
     error RentDurationTooLong(uint256 rentDuration, uint256 maxRentDuration);
+    error RenTimeCannotOverMachineUnstakeTime();
     error MachineCanNotRentWithin100BlocksAfterLastRent();
     error BalanceNotEnough();
     error RentEnd();
@@ -175,6 +176,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error VoteFinished();
     error NotDBCAIContract();
     error RewardNotStart();
+    error NotValidMachineId();
+    error RenterAndPayerIsSame();
 
     modifier onlyApproveAdmins() {
         bool found = false;
@@ -305,7 +308,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        if (rewardEndAt == 60 days) {
+        if (rewardEndAt == stakingContract.getRewardDuration()) {
             return false;
         }
 
@@ -360,30 +363,108 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             || keccak256(abi.encodePacked(machineId))
                 == keccak256(abi.encodePacked("f2a12613c18c14722e7e90049064b7769a7653a0dfa572fc5835136cb91aabe3"))
             || keccak256(abi.encodePacked(machineId))
-                == keccak256(abi.encodePacked("2dd9d41711289e099a9d04ae122fc68666487138559261ac5e4918594e7a2752"));
-//            || keccak256(abi.encodePacked(machineId))
-//                == keccak256(abi.encodePacked("4d7462c0f558cf058e1ec1c8c374f2c2aea90305d5c0f417fd36c07bcb1b56c9"));
+                == keccak256(abi.encodePacked("2dd9d41711289e099a9d04ae122fc68666487138559261ac5e4918594e7a2752"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("4d7462c0f558cf058e1ec1c8c374f2c2aea90305d5c0f417fd36c07bcb1b56c9"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("bce9e409e6772cc85794b929003358619acd3423e3e5e1d8f82cb303e338eea5"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("3571ab1356e5813b1c06d614f68221e2ee0b3394d085dd39500e197c801d34da"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("48533076f4ec0d51829c2e407154250df27fb8e8e31763f3910ae8676b9d1fc4"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("5f0a9ffd7daf97608079feac3c0018ea7224bfbf824cd61edd8b6e76fd2b4a17"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("385cd58aff68d8a7176beed24fcc0defcace0d744f60ace5ba75d49dca89bc33"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("b8eb8e9293b26ce28055a12f146330fcfccfa81749aedd37939f3b7fd1f16d70"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("82d5f725d35af07e6134c6a513806c6e3296e683db531623755d725575eee22b"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("a6f8afa323d61b24a36c8eb399cf4133a9442d69d1e6eebc771e4a75a6948244"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("966d79e2fb6cfbe8cb0724fed1454f873c33a8457cc610caa137f5f32841c7fa"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("4d7462c0f558cf058e1ec1c8c374f2c2aea90305d5c0f417fd36c07bcb1b56c9"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("445b27d59cfe5bf5159eb034e4608954152a1239ca6729ad703ca349e6340538"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("6d7bbfdf34622706c198717afb92fd46f1967b7bfbd173a4a6064383f8c6fa1f"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("ef3d457644c8c3cd6ebdb3214ela7129d4ecf5d06e53b0e9c0e644336b8960b1"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("0f1e6391ac430d8e2dc5be00f94b92cf87aadd2320abb897772fa8cb14342d80"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("b1691667485179d37ffe8fda6d534a797c014d034d56f2c16eb6f9740b2d147e"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("dc14e7ba74778870d8b985c807a606240f7623a2b1765f3bf5a778917144bb95"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("5808feb5f65215c92114b316ef66ffa937624ef3c8a2f3c2ea9374018a8b1398"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("c1a3fd3df2e2b23ecc7ae198ff7aace4acd4ea015483088a800c1587f1c25818"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("321ac31bd15523c33c38098ae778dcb5383da2d598f5e011243c3c8c9b1e9ba4"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("0bfe670d641f27902fe4ee31280dbfe4b6236ca5d7c45233339801a1312e367f"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("cae5b7208ff65268ca1bfb0f65ce134f592664468136d86ab2023923a109b22a"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("5b8b4b7487de11703ecd4d76d6deb8266a5b392ab4bc39798181c059569b8691"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("cbaf2a50e4885f08d633f7505feb9a9b3bc8184b87974129146c16f8b5007d0"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("439443e8e7985713c20f577a26edcd62e0fe8dcf7c60638f81ecb03b2bc17635"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("8c2085bdc6ca4996e71512787d442e732285219f19c708abb6908a2700ed8cd0"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("9d0905956e2c50d35dc6b1dc73e3a06682148553a6d15565b4d2d705fb9505c8"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("a92e5274aa7fee20b4f9a2b6d2774406739541d98be92a65acbabdffb43c5e12"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("2df868545989c46d7f7bbc80e6f094633b5ec08dfec339877d63248f15869034"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("0429180a4eaf95bf8290ec54d5de95d181e45770812b025e088871366f7effc2"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("58d4cd84a88432d126da78aafa21d61797ef86b12325b468991c20c20bc41dbc"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("0021ffc67cdd3368390622153eac6f14739c51273dc374064657fe6a01c4ba10"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("d3cc8b1f12732f8f8dab863e681eeae59797fc91424b870a7dd3a84197f68f2d"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("bcbaf2a50e4885f08d633f7505feb9a9b3bc8184b87974129146c16f8b5007d0"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("7d52dba0adc1d1a4c5b22c2720ad7aa70d92bca1ff51ad3d7eabf179af2f068f"));
     }
 
     function rentMachine(string calldata machineId, uint256 rentSeconds) external {
-        require(inRentWhiteList(machineId), "not valid machineId");
+        _rentMachine(msg.sender, msg.sender, machineId, rentSeconds);
+    }
+
+    function rentProxyMachine(address renter, string calldata machineId, uint256 rentSeconds) external {
+        require(msg.sender != renter, RenterAndPayerIsSame());
+        _rentMachine(msg.sender, renter, machineId, rentSeconds);
+    }
+
+    function _rentMachine(address payer, address renter, string calldata machineId, uint256 rentSeconds) internal {
+        require(inRentWhiteList(machineId), NotValidMachineId());
         require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
         require(canRent(machineId), MachineCanNotRent());
 
         (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
-
+        require(block.timestamp + rentSeconds < endAtTimestamp, RenTimeCannotOverMachineUnstakeTime());
+        uint256 rewardDuration = stakingContract.getRewardDuration();
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        require(rewardEndAt > 60 days, RewardNotStart());
-        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
+        require(rewardEndAt > rewardDuration, RewardNotStart());
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, rewardDuration);
         require(rentSeconds <= maxRentDuration, RentDurationTooLong(rentSeconds, maxRentDuration));
 
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
         if (lastRentEndBlock != 0) {
-            require(block.number > lastRentEndBlock + 100, MachineCanNotRentWithin100BlocksAfterLastRent());
+            require(block.number > lastRentEndBlock + 30, MachineCanNotRentWithin100BlocksAfterLastRent());
         }
 
         uint256 rentFeeInFact = getMachinePrice(machineId, rentSeconds);
-        require(feeToken.balanceOf(msg.sender) >= rentFeeInFact, BalanceNotEnough());
+        require(feeToken.balanceOf(payer) >= rentFeeInFact, BalanceNotEnough());
 
         uint256 _now = block.timestamp;
 
@@ -394,22 +475,18 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             machineId: machineId,
             rentStatTime: _now,
             rentEndTime: _now + rentSeconds,
-            renter: msg.sender
+            renter: renter
         });
         machineId2RentId[machineId] = lastRentId;
-        renter2RentIds[msg.sender].push(lastRentId);
+        renter2RentIds[renter].push(lastRentId);
 
         // burn rent fee
-        feeToken.burnFrom(msg.sender, rentFeeInFact);
-        emit BurnedFee(machineId, lastRentId, block.timestamp, rentFeeInFact, msg.sender, 1);
+        feeToken.burnFrom(payer, rentFeeInFact);
+        emit BurnedFee(machineId, lastRentId, block.timestamp, rentFeeInFact, renter, 1);
 
         // add machine burn info
-        BurnedDetail memory burnedDetail = BurnedDetail({
-            rentId: lastRentId,
-            burnTime: block.timestamp,
-            burnDLCAmount: rentFeeInFact,
-            renter: msg.sender
-        });
+        BurnedDetail memory burnedDetail =
+            BurnedDetail({rentId: lastRentId, burnTime: block.timestamp, burnDLCAmount: rentFeeInFact, renter: renter});
 
         stakeHolder2RentGPUInfo[machineHolder].rentedGPUCount += 1;
         stakeHolder2RentGPUInfo[machineHolder].rentingGPUCount += 1;
@@ -427,7 +504,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId, rentFeeInFact);
 
-        emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, msg.sender, rentFeeInFact);
+        emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, renter, rentFeeInFact);
     }
 
     function renewRent(string memory machineId, uint256 additionalRentSeconds) external {
@@ -442,8 +519,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, 60 days);
+        uint256 maxRentDuration =
+            Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, stakingContract.getRewardDuration());
 
+        require(
+            rentId2RentInfo[rentId].rentEndTime + additionalRentSeconds < endAtTimestamp,
+            RenTimeCannotOverMachineUnstakeTime()
+        );
         uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
         require(newRentDuration <= maxRentDuration, RentDurationTooLong(newRentDuration, maxRentDuration));
         uint256 additionalRentFeeInFact = getMachinePrice(rentId2RentInfo[rentId].machineId, additionalRentSeconds);
@@ -639,7 +721,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
         if (lastRentEndBlock > 0) {
-            return block.number <= lastRentEndBlock + 100;
+            return block.number <= lastRentEndBlock + 30;
         }
         return false;
     }

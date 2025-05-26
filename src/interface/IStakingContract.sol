@@ -31,4 +31,5 @@ interface IStakingContract {
     function stopRewarding(string memory machineId) external;
     function recoverRewarding(string memory machineId) external;
     function isStakingButOffline(string calldata machineId) external view returns (bool);
+    function getRewardDuration() external view returns (uint256);
 }

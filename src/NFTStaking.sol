@@ -104,6 +104,7 @@ contract NFTStaking is
 
     uint256 public constant rewardPerShareAtRewardStart = 770415857426136133;
     uint256 public constant SLASH_AMOUNT = 1_000 ether;
+    uint256 public phase;
 
     event Staked(
         address indexed stakeholder, string machineId, uint256 originCalcPoint, uint256 calcPoint, uint256 stakeHours
@@ -163,6 +164,7 @@ contract NFTStaking is
     error StakingInLongTerm();
     error IsStaking();
     error InRenting();
+    error RewardNotEnough();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -271,9 +273,33 @@ contract NFTStaking is
         rewardsPerCalcPoint.lastUpdated = block.timestamp;
     }
 
-    //    function setToolContract(ITool _toolContract) internal onlyOwner {
-    //        toolContract = _toolContract;
-    //    }
+    function getRewardDuration() public view returns (uint256) {
+        if (phase <= 1) {
+            return REWARD_DURATION;
+        }
+        if (phase == 2) {
+            return REWARD_DURATION * 2;
+        }
+        return REWARD_DURATION * 3;
+    }
+
+    function setPhase(uint8 _phase) external onlyOwner {
+        require(_phase >= 1 && _phase <= 3, "Invalid phase");
+        require(rewardEnd(), "Current phaseReward not end");
+        phase = _phase;
+
+        if (phase == 1) {
+            initRewardAmount = 180_000_000 ether;
+        }
+        if (phase == 2) {
+            initRewardAmount = 240_000_000 ether;
+        }
+        if (phase == 3) {
+            initRewardAmount = 580_000_000 ether;
+        }
+
+        dailyRewardAmount = initRewardAmount / 60;
+    }
 
     function setThreshold(uint256 _threshold) public onlyOwner {
         rewardStartGPUThreshold = _threshold;
@@ -523,6 +549,7 @@ contract NFTStaking is
         }
 
         if (canClaimAmount > 0) {
+            require(rewardToken.balanceOf(address(this)) - totalReservedAmount >= canClaimAmount, RewardNotEnough());
             SafeERC20.safeTransfer(rewardToken, stakeholder, canClaimAmount);
         }
 
@@ -562,6 +589,10 @@ contract NFTStaking is
             claimedAmount += _claimedAmount;
         }
         return (availableRewardAmount, canClaimAmount, lockedAmount, claimedAmount);
+    }
+
+    function endTime() external view returns (uint256) {
+        return rewardStartAtTimestamp + getRewardDuration();
     }
 
     function claim(string memory machineId) public {
@@ -667,7 +698,7 @@ contract NFTStaking is
         (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
         require(!isRegistered, MachineStillRegistered());
 
-//        require(machineId2Rented[machineId] == false, InRenting());
+        //        require(machineId2Rented[machineId] == false, InRenting());
         _claim(machineId);
         _unStake(machineId, stakeInfo.holder);
     }
@@ -750,8 +781,8 @@ contract NFTStaking is
         require(stakeInfo.isRentedByUser, MachineNotRented());
         stakeInfo.isRentedByUser = false;
         machineId2Rented[machineId] = false;
-        // 100 blocks
-        stakeInfo.nextRenterCanRentAt = 600 + block.timestamp;
+        // 30 blocks
+        stakeInfo.nextRenterCanRentAt = 30 * SECONDS_PER_BLOCK + block.timestamp;
         if (block.timestamp > stakeInfo.endAtTimestamp - 1 hours) {
             stakeInfo.nextRenterCanRentAt = 0;
         }
@@ -842,7 +873,7 @@ contract NFTStaking is
     }
 
     function getGlobalState() external view returns (uint256, uint256, uint256) {
-        return (totalCalcPoint, totalReservedAmount, rewardStartAtTimestamp + REWARD_DURATION);
+        return (totalCalcPoint, totalReservedAmount, rewardStartAtTimestamp + getRewardDuration());
     }
 
     function _getRewardDetail(uint256 totalRewardAmount)
@@ -883,7 +914,7 @@ contract NFTStaking is
             return RewardCalculatorLib.RewardsPerShare(0, 0);
         }
         //        uint256 rewardEndAt = Math.min(rewardStartAtTimestamp + REWARD_DURATION, stakeEndAtTimestamp);
-        uint256 rewardEndAt = rewardStartAtTimestamp + REWARD_DURATION;
+        uint256 rewardEndAt = rewardStartAtTimestamp + getRewardDuration();
 
         RewardCalculatorLib.RewardsPerShare memory rewardsPerTokenUpdated = RewardCalculatorLib.getUpdateRewardsPerShare(
             rewardsPerCalcPoint, totalAdjustUnit, rewardsPerSeconds, rewardStartAtTimestamp, rewardEndAt
@@ -1101,11 +1132,11 @@ contract NFTStaking is
         if (rewardStartAtTimestamp == 0) {
             return false;
         }
-        return (block.timestamp > rewardStartAtTimestamp + REWARD_DURATION);
+        return (block.timestamp > rewardStartAtTimestamp + getRewardDuration());
     }
 
     function getRewardEndAtTimestamp(uint256 stakeEndAtTimestamp) internal view returns (uint256) {
-        uint256 rewardEndAt = rewardStartAtTimestamp + REWARD_DURATION;
+        uint256 rewardEndAt = rewardStartAtTimestamp + getRewardDuration();
         uint256 currentTime = block.timestamp;
         if (stakeEndAtTimestamp > rewardEndAt) {
             return rewardEndAt;

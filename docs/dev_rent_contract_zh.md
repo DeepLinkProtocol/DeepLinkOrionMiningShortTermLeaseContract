@@ -119,4 +119,16 @@ Rent 合约是一个基于 Solidity 的智能合约，用于管理租赁机器�
         uint256 createdAt;  // slash 创建时间戳
         bool paid;  // slash 是否已缴纳
     }
+
+### `proxyRentMachine(address renter, string calldata machineId, uint256 rentSeconds, uint256 rentFee)`
+- 描述: 租赁一台机器
+- 参数:
+- `renter`: 租用人地址
+- `machineId`: 机器 ID
+- `rentSeconds`: 租赁时长（秒）
+- `rentFee`: 租赁费用
+-事件:
+- `RentMachine`: 租赁机器事件
+
+
 ```

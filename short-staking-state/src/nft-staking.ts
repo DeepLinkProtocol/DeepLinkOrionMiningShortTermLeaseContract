@@ -45,7 +45,8 @@ export function handleClaimed(event: ClaimedEvent): void {
     return
   }
 
-  stakeholder.totalReleasedRewardAmount = stakeholder.totalReleasedRewardAmount.plus(event.params.moveToUserWalletAmount)
+
+  stakeholder.totalReleasedRewardAmount = stakeholder.totalReleasedRewardAmount.plus(event.params.moveToUserWalletAmount.plus(event.params.moveToReservedAmount))
   stakeholder.totalClaimedRewardAmount = stakeholder.totalClaimedRewardAmount.plus(event.params.totalRewardAmount)
 
   stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.plus(event.params.moveToReservedAmount)

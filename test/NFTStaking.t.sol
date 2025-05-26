@@ -114,7 +114,6 @@ contract RentTest is Test {
         //        address nftAddr = address(nftToken);
         string memory machineId = "machineId";
         string memory machineId2 = "machineId2";
-        string memory machineId3 = "machineId3";
 
         //        vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.transferFrom.selector), abi.encode(true));
         //        vm.mockCall(nftAddr, abi.encodeWithSelector(IERC721.balanceOf.selector), abi.encode(1));
