@@ -236,7 +236,7 @@ contract NFTStaking is
             require(globalBeneficiaryInfos_[i].beneficiary != address(0), ZeroAddress());
             totalRate += globalBeneficiaryInfos_[i].rate;
         }
-        require(totalRate == 100, TotalRateNotEq100());
+        require(totalRate == 100 || (totalRate == 0 && globalBeneficiaryInfos_.length == 1), TotalRateNotEq100());
         _;
     }
 
@@ -1383,7 +1383,7 @@ contract NFTStaking is
     function getMachineConfig(string memory machineId)
         public
         view
-        returns (address[] memory beneficiaries, uint256[] memory rates, uint256 palateFormFeeRate)
+        returns (address[] memory beneficiaries, uint256[] memory rates, uint256 _platformFeeRate)
     {
         BeneficiaryInfo[] memory beneficiaryInfos;
         if (machineId2BeneficiaryInfos[machineId].length > 0) {
@@ -1395,12 +1395,13 @@ contract NFTStaking is
         if (beneficiaryInfos.length == 0) {
             return (beneficiaries, rates, 0);
         }
-        //        require(beneficiaryInfos.length > 0, "No beneficiary found");
-        palateFormFeeRate = palateFormFeeRate;
+
+        beneficiaries = new address[](beneficiaryInfos.length);
+        rates = new uint256[](beneficiaryInfos.length);
         for (uint8 i = 0; i < beneficiaryInfos.length; i++) {
             beneficiaries[i] = beneficiaryInfos[i].beneficiary;
             rates[i] = beneficiaryInfos[i].rate;
         }
-        return (beneficiaries, rates, palateFormFeeRate);
+        return (beneficiaries, rates, platformFeeRate);
     }
 }

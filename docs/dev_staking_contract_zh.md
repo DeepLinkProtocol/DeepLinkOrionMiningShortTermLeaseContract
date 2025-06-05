@@ -148,7 +148,7 @@
 
 #### `setMachineConfig(string calldata machineId, BeneficiaryInfo[] calldata machineBeneficiaryInfos_)`
 
-- 描述：设置单个机器的收益分配配置
+- 描述：设置单个机器的收益分配配置(优先级高于全局配置)
 - 参数：
   - `machineId`: 机器 ID
   - `machineBeneficiaryInfos_`: 机器特定的收益分配配置

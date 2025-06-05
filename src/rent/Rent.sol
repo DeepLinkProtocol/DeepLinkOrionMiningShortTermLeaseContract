@@ -361,9 +361,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 baseMachinePrice = getBaseMachinePrice(machineId, rentSeconds);
         uint256 extraRentFee = getExtraRentFee(machineId, rentSeconds);
         (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
-        uint256 platformFee = (baseMachinePrice + baseMachinePrice) * platformFeeRate / 100;
+        uint256 platformFee = (baseMachinePrice + extraRentFee) * platformFeeRate / 100;
         return baseMachinePrice + extraRentFee + platformFee;
     }
+
 
     function getBaseMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
         (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
