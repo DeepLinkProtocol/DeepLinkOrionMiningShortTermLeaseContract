@@ -32,4 +32,11 @@ interface IStakingContract {
     function recoverRewarding(string memory machineId) external;
     function isStakingButOffline(string calldata machineId) external view returns (bool);
     function getRewardDuration() external view returns (uint256);
+    function getMachineExtraRentFee(string memory machineId) external view returns (uint256);
+    function machineIsBlocked(string memory machineId) external view returns (bool);
+    function getaCalcPoint(string memory machineId) external view returns (uint256);
+    function getMachineConfig(string memory machineId)
+        external
+        view
+        returns (address[] memory beneficiaries, uint256[] memory rates, uint256 palateFormFeeRate);
 }

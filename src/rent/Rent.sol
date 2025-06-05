@@ -109,7 +109,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(string => uint256) public machineId2LastRentEndBlock;
     mapping(string => SlashInfo[]) public machineId2SlashInfos;
 
+    struct FeeInfo {
+        uint256 baseFee;
+        uint256 extraFee;
+        uint256 platformFee;
+    }
+
     IOracle public oracle;
+    mapping(uint256 => FeeInfo) public rentId2FeeInfoInDLC;
 
     event RentMachine(
         address indexed machineOnwer,
@@ -127,11 +134,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 additionalRentFee,
         address renter
     );
+    event ExtraRentFeeTransfer(address indexed machineOnwer, uint256 amount);
     event EndRentMachine(address machineOnwer, uint256 rentId, string machineId, uint256 rentEndTime, address renter);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
     event BurnedFee(
         string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
     );
+    event RenterPayExtraRentFee(uint256 rentId, address renter, uint256 amount);
     event ApprovedReport(string machineId, address admin);
     event RefusedReport(string machineId, address admin);
     event ExecuteReport(string machineId, Vote vote);
@@ -151,6 +160,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event AddCalcPointOnline(string machineId);
 
     event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
+    event PlatformFeeTransfer(address indexed machineOnwer, uint256 amount);
 
     error NotApproveAdmin();
     error ZeroCalcPoint();
@@ -303,6 +313,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
 
+        if (stakingContract.machineIsBlocked(machineId)) {
+            return false;
+        }
+
         if (stakingContract.isStakingButOffline(machineId)) {
             return false;
         }
@@ -344,6 +358,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        uint256 baseMachinePrice = getBaseMachinePrice(machineId, rentSeconds);
+        uint256 extraRentFee = getExtraRentFee(machineId, rentSeconds);
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+        uint256 platformFee = (baseMachinePrice + baseMachinePrice) * platformFeeRate / 100;
+        return baseMachinePrice + extraRentFee + platformFee;
+    }
+
+    function getBaseMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
         (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
         require(calcPointInFact > 0, ZeroCalcPoint());
 
@@ -354,10 +376,23 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
             / 60 / 60 / totalFactor;
         rentFeeUSD = rentFeeUSD * 6 / 10; // 60% of the total rent fee
-        return 1e18 * rentFeeUSD / dlcUSDPrice;
+        uint256 baseRentFeeUSD = 1e18 * rentFeeUSD / dlcUSDPrice;
+        return baseRentFeeUSD;
     }
 
-    function inRentWhiteList(string calldata machineId) internal pure returns (bool) {
+    function getExtraRentFee(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        uint256 rentMinutes = rentSeconds / 60;
+
+        uint256 fee = stakingContract.getMachineExtraRentFee(machineId) * rentMinutes;
+        if (fee == 0) {
+            return 0;
+        }
+        uint256 dlcUSDPrice = oracle.getTokenPriceInUSD(10, address(feeToken));
+        uint256 baseRentFeeUSD = 1e18 * fee / dlcUSDPrice;
+        return baseRentFeeUSD;
+    }
+
+    function inRentWhiteList(string calldata machineId) public pure returns (bool) {
         return keccak256(abi.encodePacked(machineId))
             == keccak256(abi.encodePacked("224e55bfa6bfde34c66c307428aa6cb883c12100f8782fea0c5e0f0ccdfa87f9"))
             || keccak256(abi.encodePacked(machineId))
@@ -433,7 +468,65 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             || keccak256(abi.encodePacked(machineId))
                 == keccak256(abi.encodePacked("bcbaf2a50e4885f08d633f7505feb9a9b3bc8184b87974129146c16f8b5007d0"))
             || keccak256(abi.encodePacked(machineId))
-                == keccak256(abi.encodePacked("7d52dba0adc1d1a4c5b22c2720ad7aa70d92bca1ff51ad3d7eabf179af2f068f"));
+                == keccak256(abi.encodePacked("7d52dba0adc1d1a4c5b22c2720ad7aa70d92bca1ff51ad3d7eabf179af2f068f"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("11e3597dad5e79049cb8ddaa823995fe31854f3c5de2678a1db7aaad96a72d77"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("e0c93e0dbccf9f64ba237b9aa19b0ab337903a03754ac0b383c835ec3dc35e43"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("9c3a7b5a7897c58245e81dc2750dead00ed856809263ce3f974bfb8da1451278"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("d6526df1b49caa7ae47f9833549023a6b6e4a92acc2650d2773317fcb5e0e547"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("b7273cf6c4fe7b1df1e7c2d4ea6fa244e142bf9f418ff04b7a5e37f61ee4aeae"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("e9ce34a54840c258d5f906e191571f851459a4d91ebca7a7ec8752c04cc9485a"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("947444b0d5aea4d711b81bcd41be4a01650d73e3c84c87120136fad83fc9fffa"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("0e70749c13824e64e90eadd9cf87cdbd35b10755e1dc64fe47522336e4aa704f"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("839195c0dd76344ce43bf2b7799aca9696d04462fa43558002ebc86a7c5bb30c"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("71c0e057a8641cf42d3d7b6e3b883cd64a298077506cb46bba91e54acb9d9f75"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("b6797a54ef3be69c9b15ed63232d7abaa975eef1c071f242df0fdb1ecaa1f236"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("7c1c410d8e9725825ed5cb3bf96c0495da3b3923ce65dd75800f6dca3837a135"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("846c0d04ebd6560cfaff1721928132f698f82434d1d463c320693f415c20f10c"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("c8faba0edf0b87e844b3ede789437fd214a9a6f208ec376bc74cee3e202fd683"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("a2c281e3506d7ca3d6403f41a5e9b0c17d23b26f97bef08208279a16aa7cdc92"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("cfbbdbb7a16f2e45762a5c1b693339e90015dd5d732f06ef491d3b655315a682"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("7e96790d09b2f3dd94cebc8acedb38d95f9b6cd23aec81cd77bbd0f20ea48624"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("151710d93fc1088eb4e1e842b8b22f53763823db6011a83aa2cc126d181c8774"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("e98aa2fa1a0f37ecf66f01a67aad1c11d5f45d8af5ee4ab6db3beb7ad627304a"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("190210ab33ed0355dc11a28a00e4ffc57a54e52277c25e10358272e73eddb79a"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("935f090179b42a9a45a6ce4893dc4f47a11a32fbc54b3189205b55ca4ff9ccff"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("148a09d00cc955b0f1d1276e959ebad2115e11f95e0e7eebbf15fb6699a23093"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("6ebdb12de38abe2de58c845502ed3db49017b4888e7784ba9ce02d593f9fef4a"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("e7902547db9b72bb2812d4908ab7794d2ebf06f2a582f234fbb88d9744bbb306"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("9f86e1572935f720d7c1ff739b5e43cdb63f3b037e88cddb7ef16202e254734a"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("7155b00d7c3d6e105c14f5375e450c5975e31154d451b906764c248901b6828c"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("c90a8dd75d845e0b9b083822cd0bf0c86f857e1d4f541cd621f865eabce96735"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("c00ec5bb1b5a1451f28400235b3c507b59e5a640120bb58f155853ca5d2841b5"))
+            || keccak256(abi.encodePacked(machineId))
+                == keccak256(abi.encodePacked("a30b2bcc6fe3740296add29762d9e67d75a6402393e4ad4f7c7fd980e42910ea"));
     }
 
     function rentMachine(string calldata machineId, uint256 rentSeconds) external {
@@ -463,8 +556,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             require(block.number > lastRentEndBlock + 30, MachineCanNotRentWithin100BlocksAfterLastRent());
         }
 
-        uint256 rentFeeInFact = getMachinePrice(machineId, rentSeconds);
-        require(feeToken.balanceOf(payer) >= rentFeeInFact, BalanceNotEnough());
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+
+        uint256 baseRentFee = getBaseMachinePrice(machineId, rentSeconds);
+        uint256 extraRentFee = getExtraRentFee(machineId, rentSeconds);
+        uint256 platformFee = (baseRentFee + extraRentFee) * platformFeeRate / 100;
+        uint256 totalRentFee = baseRentFee + extraRentFee + platformFee;
+        require(feeToken.balanceOf(payer) >= totalRentFee, BalanceNotEnough());
 
         uint256 _now = block.timestamp;
 
@@ -481,30 +579,37 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         renter2RentIds[renter].push(lastRentId);
 
         // burn rent fee
-        feeToken.burnFrom(payer, rentFeeInFact);
-        emit BurnedFee(machineId, lastRentId, block.timestamp, rentFeeInFact, renter, 1);
+        feeToken.burnFrom(payer, baseRentFee);
+        emit BurnedFee(machineId, lastRentId, block.timestamp, baseRentFee, renter, 1);
+
+        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
+        feeInfo.baseFee = baseRentFee;
+        feeInfo.extraFee = extraRentFee;
+        feeInfo.platformFee = platformFee;
+
+        feeToken.transferFrom(msg.sender, address(this), platformFee + extraRentFee);
 
         // add machine burn info
         BurnedDetail memory burnedDetail =
-            BurnedDetail({rentId: lastRentId, burnTime: block.timestamp, burnDLCAmount: rentFeeInFact, renter: renter});
+            BurnedDetail({rentId: lastRentId, burnTime: block.timestamp, burnDLCAmount: baseRentFee, renter: renter});
 
         stakeHolder2RentGPUInfo[machineHolder].rentedGPUCount += 1;
         stakeHolder2RentGPUInfo[machineHolder].rentingGPUCount += 1;
         rentGPUInfo.rentedGPUCount += 1;
         rentGPUInfo.rentingGPUCount += 1;
 
-        stakeHolder2RentFee[machineHolder] += rentFeeInFact;
+        stakeHolder2RentFee[machineHolder] += baseRentFee;
         BurnedInfo storage burnedInfo = machineId2BurnedInfo[machineId];
         burnedInfo.details.push(burnedDetail);
-        burnedInfo.totalBurnedAmount += rentFeeInFact;
+        burnedInfo.totalBurnedAmount += baseRentFee;
 
         // update total burned amount
-        totalBurnedAmount += rentFeeInFact;
+        totalBurnedAmount += baseRentFee;
 
         // notify staking contract renting machine action happened
-        stakingContract.rentMachine(machineId, rentFeeInFact);
+        stakingContract.rentMachine(machineId, baseRentFee);
 
-        emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, renter, rentFeeInFact);
+        emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, renter, baseRentFee);
     }
 
     function renewRent(string memory machineId, uint256 additionalRentSeconds) external {
@@ -528,16 +633,28 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
         uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
         require(newRentDuration <= maxRentDuration, RentDurationTooLong(newRentDuration, maxRentDuration));
-        uint256 additionalRentFeeInFact = getMachinePrice(rentId2RentInfo[rentId].machineId, additionalRentSeconds);
+
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+
+        uint256 baseRentFee = getBaseMachinePrice(machineId, additionalRentSeconds);
+        uint256 extraRentFee = getExtraRentFee(machineId, additionalRentSeconds);
+        uint256 platformFee = (baseRentFee + extraRentFee) * platformFeeRate / 100;
+        uint256 additionalRentFeeInFact = baseRentFee + extraRentFee + platformFee;
         require(feeToken.balanceOf(msg.sender) >= additionalRentFeeInFact, BalanceNotEnough());
 
         // Update rent end time
         rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
 
         // Burn additional rent fee
-        feeToken.burnFrom(msg.sender, additionalRentFeeInFact);
-
+        feeToken.burnFrom(msg.sender, baseRentFee);
         emit BurnedFee(machineId, rentId, block.timestamp, additionalRentFeeInFact, msg.sender, 1);
+
+        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
+        feeInfo.baseFee += baseRentFee;
+        feeInfo.extraFee += extraRentFee;
+        feeInfo.platformFee += platformFee;
+
+        feeToken.transferFrom(msg.sender, address(this), platformFee + extraRentFee);
 
         // add machine burn info
         BurnedDetail memory burnedDetail = BurnedDetail({
@@ -568,12 +685,22 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
+        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[rentId];
+        delete rentId2FeeInfoInDLC[rentId];
         removeValueOfUintArray(rentId, renter2RentIds[rentInfo.renter]);
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
 
         stakeHolder2RentGPUInfo[machineHolder].rentingGPUCount -= 1;
         rentGPUInfo.rentingGPUCount -= 1;
+
+        if (feeInfo.extraFee > 0) {
+            feeToken.transfer(machineHolder, feeInfo.extraFee);
+            emit ExtraRentFeeTransfer(machineHolder, feeInfo.extraFee);
+        }
+        if (feeInfo.platformFee > 0) {
+            distributePlatformFee(machineId, feeInfo.platformFee);
+        }
 
         stakingContract.endRentMachine(machineId);
         machineId2LastRentEndBlock[machineId] = block.number;
@@ -825,5 +952,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function isInSlashing(string memory machineId) public view returns (bool) {
         return machineId2SlashInfo[machineId].paid == false;
+    }
+
+    function distributePlatformFee(string memory machineId, uint256 platformFee) internal {
+        (address[] memory beneficiaries, uint256[] memory rates,) = stakingContract.getMachineConfig(machineId);
+        for (uint8 i = 0; i < beneficiaries.length; i++) {
+            feeToken.transfer(beneficiaries[i], platformFee * rates[i] / 100);
+            emit PlatformFeeTransfer(beneficiaries[i], platformFee * rates[i] / 100);
+        }
     }
 }

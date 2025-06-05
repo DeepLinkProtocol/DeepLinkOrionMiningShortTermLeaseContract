@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Rent} from "../src/rent/Rent.sol";
+import {Rent2} from "../src/rent/Rent.sol";
 import {NFTStaking} from "../src/NFTStaking.sol";
 import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
@@ -13,7 +13,7 @@ import {Token} from "./MockRewardToken.sol";
 import "./MockERC1155.t.sol";
 
 contract RentTest is Test {
-    Rent public rent;
+    Rent2 public rent;
     NFTStaking public nftStaking;
     IPrecompileContract public precompileContract;
     Token public rewardToken;
@@ -39,12 +39,12 @@ contract RentTest is Test {
         nftStaking = NFTStaking(address(proxy1));
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(new Rent()), "");
-        rent = Rent(address(proxy));
+        rent = Rent2(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
             owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), 1
         );
-        Rent(address(proxy)).initialize(
+        Rent2(address(proxy)).initialize(
             owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 100000000000 * 1e18);
@@ -68,7 +68,13 @@ contract RentTest is Test {
         assertEq(nftStaking.getDailyRewardAmount(), 3000000 * 1e18);
     }
 
-    function stakeByOwner(string memory machineId, uint256 reserveAmount, uint256 stakeHours, address _owner) public {
+    function stakeByOwner(
+        string memory machineId,
+        uint256 reserveAmount,
+        uint256 stakeHours,
+        address _owner,
+        bool isPersonal
+    ) public {
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineInfo.selector),
@@ -95,17 +101,21 @@ contract RentTest is Test {
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
         uint256 totalCalcPointBefore = nftStaking.totalCalcPoint();
-        nftStaking.stake(_owner, machineId, nftTokens, nftTokensBalance, stakeHours);
+        nftStaking.stake(_owner, machineId, nftTokens, nftTokensBalance, stakeHours, isPersonal);
         assertEq(nftToken.balanceOf(_owner, 1), 0, "owner erc1155 failed");
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
         uint256 totalCalcPoint = nftStaking.totalCalcPoint();
 
-        assertEq(totalCalcPoint, totalCalcPointBefore + 100);
-        (uint256 accumulatedPerShare,) = nftStaking.rewardsPerCalcPoint();
-        (uint256 accumulated, uint256 lastAccumulatedPerShare) = nftStaking.machineId2StakeUnitRewards(machineId);
-        assertEq(accumulatedPerShare, lastAccumulatedPerShare);
-        assertEq(accumulated, 0);
+        if (isPersonal) {
+            assertEq(totalCalcPoint, totalCalcPointBefore + 100);
+            (uint256 accumulatedPerShare,) = nftStaking.rewardsPerCalcPoint();
+            (uint256 accumulated, uint256 lastAccumulatedPerShare) = nftStaking.machineId2StakeUnitRewards(machineId);
+            assertEq(accumulatedPerShare, lastAccumulatedPerShare);
+            assertEq(accumulated, 0);
+        } else {
+            assertEq(totalCalcPoint, totalCalcPointBefore);
+        }
     }
 
     function testStake() public {
@@ -121,7 +131,7 @@ contract RentTest is Test {
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = 1;
         vm.startPrank(stakeHolder);
-        stakeByOwner(machineId, 0, 72, stakeHolder);
+        stakeByOwner(machineId, 0, 72, stakeHolder, true);
         vm.stopPrank();
 
         //        (NFTStaking.StakeHolder[] memory topHolders,) = nftStaking.getTopStakeHolders(0, 10);
@@ -144,11 +154,12 @@ contract RentTest is Test {
         );
         vm.stopPrank();
 
-        // staking.stake(machineId2, 0, tokenIds0, 2);
-
         vm.prank(stakeHolder2);
-        stakeByOwner(machineId2, 0, 72, stakeHolder2);
+        stakeByOwner(machineId2, 0, 72, stakeHolder2, true);
         passDays(1);
+
+        bool blocked = nftStaking.machineIsBlocked(machineId2);
+        assert(!blocked);
 
         uint256 reward2 = nftStaking.getReward(machineId2);
         assertGt(reward2, 0, "machineId2 get reward lt 0  failed after staked 1 day");
@@ -195,7 +206,7 @@ contract RentTest is Test {
     function testUnStake() public {
         address stakeHolder = owner;
         string memory machineId = "machineId";
-        stakeByOwner(machineId, 100000, 48, stakeHolder);
+        stakeByOwner(machineId, 100000, 48, stakeHolder, true);
 
         passHours(48);
         vm.mockCall(
@@ -227,7 +238,7 @@ contract RentTest is Test {
         string memory machineId = "machineId";
 
         // First staking period
-        stakeByOwner(machineId, 100000, 72, stakeHolder);
+        stakeByOwner(machineId, 100000, 72, stakeHolder, true);
 
         // Pass some time to accumulate rewards but not the full staking period
         passHours(24);
@@ -261,7 +272,7 @@ contract RentTest is Test {
             abi.encode(true, true)
         );
 
-        stakeByOwner(machineId, 100000, 72, stakeHolder);
+        stakeByOwner(machineId, 100000, 72, stakeHolder, true);
 
         // Pass more time
         passHours(24);
@@ -397,7 +408,7 @@ contract RentTest is Test {
         string memory machineId = "machineId";
 
         // Setup staking
-        stakeByOwner(machineId, 100000 ether, 72, stakeHolder);
+        stakeByOwner(machineId, 100000 ether, 72, stakeHolder, true);
 
         // Set reward start time to enable rewards
         vm.prank(owner);
@@ -467,5 +478,59 @@ contract RentTest is Test {
         (uint256 totalFinal,,, uint256 claimedFinal) = nftStaking.machineId2LockedRewardDetail(machineId);
 
         assertEq(totalFinal, claimedFinal);
+    }
+
+    function testNonePersonalMachineStake() public {
+        address stakeHolder = owner;
+
+        string memory machineId = "machineId";
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 1;
+        vm.startPrank(stakeHolder);
+        stakeByOwner(machineId, 0, 72, stakeHolder, false);
+        vm.stopPrank();
+
+        passDays(1);
+
+        vm.startPrank(stakeHolder);
+        assertEq(nftStaking.getReward(machineId), 0, "none personal machine stake should not get reward by default");
+
+        string[] memory machineIds = new string[](1);
+        machineIds[0] = machineId;
+
+        nftStaking.validateMachineIds(machineIds, true);
+        passDays(1);
+
+        assertGt(nftStaking.getReward(machineId), 0, "none personal machine stake should  get reward after validate");
+
+        vm.stopPrank();
+    }
+
+    function testMachineGetNoRewardAfterBlocking() public {
+        address stakeHolder = owner;
+
+        string memory machineId = "machineId";
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = 1;
+        vm.startPrank(stakeHolder);
+        stakeByOwner(machineId, 0, 72, stakeHolder, true);
+        vm.stopPrank();
+
+        passDays(1);
+
+        vm.startPrank(stakeHolder);
+        assertGt(nftStaking.getReward(machineId), 0, "personal machine stake should get reward by default");
+
+        string[] memory machineIds = new string[](1);
+        machineIds[0] = machineId;
+
+        nftStaking.validateMachineIds(machineIds, false);
+        passDays(1);
+
+        assertEq(nftStaking.getReward(machineId), 0, "personal machine stake should  get no reward after blocking");
+
+        vm.stopPrank();
     }
 }

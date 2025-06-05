@@ -276,7 +276,6 @@ export function handleStaked(event: StakedEvent): void {
     machineInfo.blockNumber = event.block.number
     machineInfo.blockTimestamp = event.block.timestamp
     machineInfo.machineId = event.params.machineId
-    machineInfo.holder = event.params.stakeholder
     machineInfo.transactionHash = event.transaction.hash
     machineInfo.rentedGPUCount = BigInt.fromI32(0)
     machineInfo.totalReservedAmount = BigInt.fromI32(0)
@@ -297,6 +296,8 @@ export function handleStaked(event: StakedEvent): void {
   machineInfo.isStaking = true
   machineInfo.online = true
   machineInfo.registered = true
+
+  machineInfo.holder = event.params.stakeholder
 
   let stakeholder = StakeHolder.load(Bytes.fromHexString(event.params.stakeholder.toHexString()))
   if (stakeholder == null) {
@@ -434,9 +435,6 @@ export function handleUnstaked(event: UnstakedEvent): void {
     gpuTypeValue.count = gpuTypeValue.count.minus(BigInt.fromI32(1))
     gpuTypeValue.save()
   }
-
-
-
 }
 
 export function handleAddStakeHours(event: AddedStakeHoursEvent): void {

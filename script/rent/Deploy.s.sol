@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Script} from "forge-std/Script.sol";
-import {Rent} from "../../src/rent/Rent.sol";
+import {Rent2} from "../../src/rent/Rent.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {console} from "forge-std/Test.sol";
@@ -49,7 +49,7 @@ contract Deploy is Script {
         proxy = Upgrades.deployUUPSProxy(
             "Rent.sol:Rent",
             abi.encodeCall(
-                Rent.initialize, (msg.sender, precompileContract, stakingProxy, dbcAIProxy, rewardTokenContract)
+                Rent2.initialize, (msg.sender, precompileContract, stakingProxy, dbcAIProxy, rewardTokenContract)
             )
         );
         return (proxy, logic);
