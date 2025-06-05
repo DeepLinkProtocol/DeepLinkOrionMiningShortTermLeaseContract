@@ -112,7 +112,7 @@
   - `staked`: 质押NFT成功事件
 
 ### `validateMachineIds(string[] memory machineIds, bool isValid) external`
-- 描述：对机器列表进行验证 为验证通过的机器视为加入黑名单 无在线奖励并且不可租用 网吧模式机器质押后默认为在黑名单中 质押后需要及时验证 仅管理员可调用
+- 描述：对机器列表进行验证 未验证通过的机器视为加入黑名单 无在线奖励并且不可租用 网吧模式机器质押后默认为在黑名单中 质押后需要及时验证 仅管理员可调用
 - 参数：
   - `machineIds`: 机器ID列表
   - `isValid`: 是否有效 true:有效 false：无效(黑名单)
