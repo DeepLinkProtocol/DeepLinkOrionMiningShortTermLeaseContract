@@ -47,6 +47,8 @@ dataSources:
           handler: handleRenewRent
         - event: ExitStakingForOffline(string,address)
           handler: handleExitStakingForOffline
+        - event: EndRentMachineFee(indexed address,string,uint256,uint256)
+          handler: handleEndRentMachineFee
       file: ./src/nft-staking.ts
 
 

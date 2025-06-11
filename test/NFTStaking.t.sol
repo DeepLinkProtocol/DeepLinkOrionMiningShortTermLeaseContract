@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Rent2} from "../src/rent/Rent.sol";
+import {Rent} from "../src/rent/Rent.sol";
 import {NFTStaking} from "../src/NFTStaking.sol";
 import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
@@ -13,7 +13,7 @@ import {Token} from "./MockRewardToken.sol";
 import "./MockERC1155.t.sol";
 
 contract RentTest is Test {
-    Rent2 public rent;
+    Rent public rent;
     NFTStaking public nftStaking;
     IPrecompileContract public precompileContract;
     Token public rewardToken;
@@ -39,12 +39,12 @@ contract RentTest is Test {
         nftStaking = NFTStaking(address(proxy1));
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(new Rent()), "");
-        rent = Rent2(address(proxy));
+        rent = Rent(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
             owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), 1
         );
-        Rent2(address(proxy)).initialize(
+        Rent(address(proxy)).initialize(
             owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 100000000000 * 1e18);
@@ -101,7 +101,7 @@ contract RentTest is Test {
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
         uint256 totalCalcPointBefore = nftStaking.totalCalcPoint();
-        nftStaking.stake(_owner, machineId, nftTokens, nftTokensBalance, stakeHours, isPersonal);
+        nftStaking.stakeV2(_owner, machineId, nftTokens, nftTokensBalance, stakeHours, isPersonal);
         assertEq(nftToken.balanceOf(_owner, 1), 0, "owner erc1155 failed");
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();

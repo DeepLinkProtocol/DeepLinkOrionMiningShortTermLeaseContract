@@ -19,6 +19,7 @@ type StakeHolder @entity {
   rentedGPUCount: BigInt! # uint256
   totalReservedAmount: BigInt! # uint256
   burnedRentFee: BigInt! # uint256
+  extraRentFee: BigInt! # uint256
   totalClaimedRewardAmount: BigInt! # uint256
   totalReleasedRewardAmount: BigInt! # uint256
   blockNumber: BigInt!
@@ -39,6 +40,7 @@ type MachineInfo @entity {
   rentedGPUCount: BigInt! # uint256
   totalReservedAmount: BigInt! # uint256
   burnedRentFee: BigInt! # uint256
+  extraRentFee: BigInt! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!

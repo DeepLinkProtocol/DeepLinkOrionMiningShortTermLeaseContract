@@ -121,14 +121,14 @@
 ### `setMaxExtraRentFeeInUSDPerMinutes(uint256 feeInUSD) external`
 - 描述：设置网吧模式机器的最大额外租用费用 算工设置的额外租用费用不能大于这个值 仅管理员可调用
 - 参数：
-  - `feeInUSD`: 最大额外租用费用(USD) 1 = 1 USD
+  - `feeInUSD`: 最大额外租用费用 1000000 = 1 USD
 - 返回值：无
 
 ### `setExtraRentFeeInUSDPerMinutes(string calldata machineId, uint256 feeInUSD) external`
 - 描述：设置网吧模式机器的额外租用费用 仅算工可调用
 - 参数：
  - `machineId`: 机器 ID
-  - `feeInUSD`: 额外租用费用(USD) 1 = 1 USD
+  - `feeInUSD`: 额外租用费用(USD) 1000000 = 1 USD
 - 返回值：无
 
 ### `getMachineExtraRentFee(string memory machineId) external view returns (uint256 fee)`
@@ -136,7 +136,7 @@
 - 参数：
 - `machineId`: 机器 ID
 - 返回值：
-  - `fee`: 额外租用费用(USD) 1 = 1 USD
+  - `fee`: 额外租用费用(USD) 1000000 = 1 USD
 
 #### `setGlobalConfig(uint256 platformFeeRate_, BeneficiaryInfo[] calldata globalBeneficiaryInfos_)`
 

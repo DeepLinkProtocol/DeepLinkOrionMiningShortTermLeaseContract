@@ -147,6 +147,7 @@ contract NFTStaking is
 
     event PaySlash(string machineId, address renter, uint256 slashAmount);
     event RentMachine(address indexed machineOwner, string machineId, uint256 rentFee);
+    event EndRentMachineFee(address indexed machineOwner, string machineId, uint256 baseRentFee, uint256 extraRentFee);
     event EndRentMachine(address indexed machineOwner, string machineId, uint256 nextCanRentTime);
     event ReportMachineFault(string machineId, address renter);
     event RewardsPerCalcPointUpdate(uint256 accumulatedPerShareBefore, uint256 accumulatedPerShareAfter);
@@ -469,7 +470,6 @@ contract NFTStaking is
 
         uint8 gpuCount = 1;
         if (!statedMachinesMap[machineId]) {
-            //            stakedMachineIds.push(machineId);
             statedMachinesMap[machineId] = true;
             totalGpuCount += gpuCount;
         }
@@ -498,11 +498,7 @@ contract NFTStaking is
             nextRenterCanRentAt: currentTime
         });
 
-        if (isPersonalMachine) {
-            _joinStaking(machineId, calcPoint, 0);
-        } else {
-            machineId2MachineStatus[machineId] = MachineStatus.Blocking;
-        }
+        _joinStaking(machineId, calcPoint, 0);
         _tryInitMachineLockRewardInfo(machineId, currentTime);
 
         holder2MachineIds[stakeholder].push(machineId);
@@ -593,7 +589,7 @@ contract NFTStaking is
     }
 
     function setMaxExtraRentFeeInUSDPerMinutes(uint256 feeInUSD) external onlyDLCClientWallet {
-        maxExtraRentFeeInUSDPerMinutes = feeInUSD * 10e6;
+        maxExtraRentFeeInUSDPerMinutes = feeInUSD;
     }
 
     function getMachineExtraRentFee(string memory machineId) external view returns (uint256) {
@@ -833,6 +829,12 @@ contract NFTStaking is
         _unStake(machineId, stakeInfo.holder);
     }
 
+    function forceUnStake(string calldata machineId) external onlyOwner {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        _claim(machineId);
+        _unStake(machineId, stakeInfo.holder);
+    }
+
     function unStakeByHolder(string calldata machineId) public nonReentrant {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(msg.sender == stakeInfo.holder, NotStakeHolder(machineId, msg.sender));
@@ -903,7 +905,7 @@ contract NFTStaking is
         return rewardStartGPUThreshold > totalGpuCount ? rewardStartGPUThreshold - totalGpuCount : 0;
     }
 
-    function rentMachine(string calldata machineId, uint256 rentFee) external onlyRentContract {
+    function rentMachine(string calldata machineId) external onlyRentContract {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         stakeInfo.isRentedByUser = true;
 
@@ -915,11 +917,14 @@ contract NFTStaking is
         if (!machineId2Rented[machineId]) {
             machineId2Rented[machineId] = true;
         }
-        //        NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
-        emit RentMachine(stakeInfo.holder, machineId, rentFee);
+        // rentFee move to RentMachineFee event, so set 0 in current RentMachine event
+        emit RentMachine(stakeInfo.holder, machineId, 0);
     }
 
-    function endRentMachine(string calldata machineId) external onlyRentContract {
+    function endRentMachine(string calldata machineId, uint256 baseRentFee, uint256 extraRentFee)
+        external
+        onlyRentContract
+    {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(stakeInfo.isRentedByUser, MachineNotRented());
         stakeInfo.isRentedByUser = false;
@@ -939,6 +944,7 @@ contract NFTStaking is
         //        NFTStakingState.subRentedGPUCount(stakeInfo.holder, machineId);
 
         emit EndRentMachine(stakeInfo.holder, machineId, stakeInfo.nextRenterCanRentAt);
+        emit EndRentMachineFee(stakeInfo.holder, machineId, baseRentFee, extraRentFee);
     }
 
     function reportMachineFault(string calldata machineId, address renter) public onlyRentContract {

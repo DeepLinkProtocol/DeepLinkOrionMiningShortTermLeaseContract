@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Rent2} from "../src/rent/Rent.sol";
+import {Rent} from "../src/rent/Rent.sol";
 import {NFTStaking} from "../src/NFTStaking.sol";
 import {IPrecompileContract} from "../src/interface/IPrecompileContract.sol";
 import {IDBCAIContract} from "../src/interface/IDBCAIContract.sol";
@@ -14,7 +14,7 @@ import {Token} from "./MockRewardToken.sol";
 import "./MockERC1155.t.sol";
 
 contract RentTest is Test {
-    Rent2 public rent;
+    Rent public rent;
     NFTStaking public nftStaking;
     IPrecompileContract public precompileContract;
     Token public rewardToken;
@@ -38,12 +38,12 @@ contract RentTest is Test {
         nftStaking = NFTStaking(address(proxy1));
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(new Rent()), "");
-        rent = Rent2(address(proxy));
+        rent = Rent(address(proxy));
 
         NFTStaking(address(proxy1)).initialize(
             owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), 1
         );
-        Rent2(address(proxy)).initialize(
+        Rent(address(proxy)).initialize(
             owner, address(precompileContract), address(nftStaking), address(dbcAIContract), address(rewardToken)
         );
         deal(address(rewardToken), address(this), 10000000 * 1e18);
@@ -94,7 +94,7 @@ contract RentTest is Test {
 
         // end machine
         vm.startPrank(admins[0]);
-        vm.expectRevert(abi.encodeWithSelector(Rent2.RentNotEnd.selector));
+        vm.expectRevert(abi.encodeWithSelector(Rent.RentNotEnd.selector));
         rent.endRentMachine(machineId);
 
         passHours(1);
@@ -282,7 +282,7 @@ contract RentTest is Test {
         uint256 balanceOfRenter = rewardToken.balanceOf(address(this));
 
         vm.prank(address(dbcAIContract));
-        rent.notify(Rent2.NotifyType.MachineOffline, machineId);
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
         assertEq(nftStaking.totalReservedAmount(), 0);
         assertEq(nftStaking.totalCalcPoint(), 0);
         assertEq(rent.canRent(machineId), false);
@@ -310,7 +310,7 @@ contract RentTest is Test {
         assertEq(nftStaking.isStaking(machineId), true);
 
         vm.prank(address(dbcAIContract));
-        rent.notify(Rent2.NotifyType.MachineOffline, machineId);
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
         assertEq(nftStaking.totalCalcPoint(), 0);
         assertEq(rent.canRent(machineId), false);
         assertEq(nftStaking.isStaking(machineId), true);
@@ -320,7 +320,7 @@ contract RentTest is Test {
         assertEq(reward, 0);
 
         vm.prank(address(dbcAIContract));
-        rent.notify(Rent2.NotifyType.MachineOnline, machineId);
+        rent.notify(Rent.NotifyType.MachineOnline, machineId);
         assertEq(nftStaking.totalCalcPoint(), 100);
         assertEq(rent.canRent(machineId), true);
         assertEq(nftStaking.isStakingButOffline(machineId), false);
@@ -439,7 +439,7 @@ contract RentTest is Test {
         uint256[] memory nftTokensBalance = new uint256[](1);
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
-        nftStaking.stake(owner, machineId, nftTokens, nftTokensBalance, stakeHours, isPersonal);
+        nftStaking.stakeV2(owner, machineId, nftTokens, nftTokensBalance, stakeHours, isPersonal);
         nftStaking.addDLCToStake(machineId, reserveAmount);
         vm.stopPrank();
         uint256 totalCalcPointBeforeRent = nftStaking.totalCalcPoint();

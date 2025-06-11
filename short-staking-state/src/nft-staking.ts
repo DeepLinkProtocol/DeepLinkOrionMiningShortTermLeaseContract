@@ -3,6 +3,8 @@ import {
   AddedStakeHours as AddedStakeHoursEvent,
   Claimed as ClaimedEvent,
   EndRentMachine as EndRentMachineEvent,
+  EndRentMachineFee as EndRentMachineFeeEvent,
+
   Initialized as InitializedEvent,
   OwnershipTransferred as OwnershipTransferredEvent,
   PaySlash as PaySlashEvent,
@@ -142,6 +144,37 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   stateSummary.save()
 }
 
+
+export function handleEndRentMachineFee(event: EndRentMachineFeeEvent): void {
+  let id = Bytes.fromUTF8(event.params.machineId.toString());
+  let machineInfo = MachineInfo.load(id)
+  if (machineInfo == null) {
+    return
+  }
+
+  machineInfo.burnedRentFee = machineInfo.burnedRentFee.plus(event.params.baseRentFee)
+  machineInfo.extraRentFee = machineInfo.burnedRentFee.plus(event.params.extraRentFee)
+
+  machineInfo.save()
+
+  let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()))
+  if (stakeholder == null) {
+    return
+  }
+
+  stakeholder.burnedRentFee = stakeholder.burnedRentFee.plus(event.params.baseRentFee)
+  stakeholder.extraRentFee = stakeholder.burnedRentFee.plus(event.params.extraRentFee)
+  stakeholder.save()
+
+  let stateSummary = StateSummary.load(Bytes.empty())
+  if (stateSummary == null) {
+    return
+  }
+
+  stateSummary.totalBurnedRentFee = stateSummary.totalBurnedRentFee.plus(event.params.baseRentFee)
+  stateSummary.save()
+}
+
 export function handlePaySlash(event: PaySlashEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
   let machineInfo = MachineInfo.load(id)
@@ -194,7 +227,7 @@ export function handlePaySlash(event: PaySlashEvent): void {
   payRecord.save()
 }
 
-
+// rentFee 字段改动 移到其他事件中 为了兼容之前的数据 合约测在更新后 此字段为0 但是graph仍需对其计数
 export function handleRentMachine(event: RentMachineEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString())
   let machineInfo = MachineInfo.load(id)
