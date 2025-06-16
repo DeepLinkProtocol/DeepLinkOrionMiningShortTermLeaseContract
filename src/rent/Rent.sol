@@ -144,6 +144,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     );
     event PayBackFee(string machineId, uint256 rentId, address renter, uint256 amount);
     event PayToContractOnRent(uint256 rentId, address renter, uint256 totalRentFee);
+    event RentFee(uint256 rentId, address renter, uint256 baseRentFee, uint256 extraRentFee, uint256 platformFee);
+
     event RenterPayExtraRentFee(uint256 rentId, address renter, uint256 amount);
     event ApprovedReport(string machineId, address admin);
     event RefusedReport(string machineId, address admin);
@@ -610,12 +612,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         machineId2RentId[machineId] = lastRentId;
         renter2RentIds[renter].push(lastRentId);
 
-        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
+        FeeInfo memory feeInfo;
         feeInfo.baseFee = baseRentFee;
         feeInfo.extraFee = extraRentFee;
         feeInfo.platformFee = platformFee;
+        rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
         feeToken.transferFrom(msg.sender, address(this), totalRentFee);
+        emit RentFee(lastRentId, msg.sender, baseRentFee,extraRentFee,platformFee);
         emit PayToContractOnRent(lastRentId, msg.sender, totalRentFee);
 
         // burn rent fee
@@ -676,10 +680,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // Update rent end time
         rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
 
-        // Burn additional rent fee
-        feeToken.burnFrom(msg.sender, baseRentFee);
-        emit BurnedFee(machineId, rentId, block.timestamp, additionalRentFeeInFact, msg.sender, 1);
-
         FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
         feeInfo.baseFee += baseRentFee;
         feeInfo.extraFee += extraRentFee;
@@ -718,8 +718,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
-        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[rentId];
-        delete rentId2FeeInfoInDLC[rentId];
+        FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
         removeValueOfUintArray(rentId, renter2RentIds[rentInfo.renter]);
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
@@ -746,6 +745,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         if (feeInfo.baseFee > 0) {
+            feeToken.approve(address(this), feeInfo.baseFee);
             feeToken.burnFrom(address(this), feeInfo.baseFee);
             emit BurnedFee(machineId, lastRentId, block.timestamp, feeInfo.baseFee, rentInfo.renter, 1);
             totalBurnedAmount += feeInfo.baseFee;
@@ -761,6 +761,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         stakingContract.endRentMachine(machineId, feeInfo.baseFee, feeInfo.platformFee);
         machineId2LastRentEndBlock[machineId] = block.number;
+        delete rentId2FeeInfoInDLC[rentId];
         emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
 

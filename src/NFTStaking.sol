@@ -1386,6 +1386,13 @@ contract NFTStaking is
         machineId2BeneficiaryInfos[machineId] = machineBeneficiaryInfos_;
     }
 
+    function clearMachineConfig(string calldata machineId)
+        external
+        onlyDLCClientWallet
+    {
+        delete machineId2BeneficiaryInfos[machineId];
+    }
+
     function getMachineConfig(string memory machineId)
         public
         view
