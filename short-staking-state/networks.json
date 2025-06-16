@@ -1,0 +1,8 @@
+{
+  "deepbrainchain-mainnet": {
+    "NFTStaking": {
+      "address": "0x6268Aba94D0d0e4FB917cC02765f631f309a7388",
+      "startBlock": 1337000
+    }
+  }
+}

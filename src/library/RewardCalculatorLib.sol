@@ -49,6 +49,7 @@ library RewardCalculatorLib {
         RewardsPerShare memory rewardsPerToken_
     ) internal pure returns (UserRewards memory) {
         if (userRewardsIn.lastAccumulatedPerShare == rewardsPerToken_.lastUpdated) return userRewardsIn;
+
         UserRewards memory userRewardsOut = UserRewards(userRewardsIn.accumulated, rewardsPerToken_.accumulatedPerShare);
         userRewardsOut.accumulated = calculatePendingUserRewards(
             userShares, userRewardsIn.lastAccumulatedPerShare, rewardsPerToken_.accumulatedPerShare

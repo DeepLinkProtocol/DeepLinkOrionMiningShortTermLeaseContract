@@ -1,0 +1,78 @@
+specVersion: 1.2.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: NFTStaking
+    network: deepbrainchain-mainnet
+    source:
+      address: "0x6268Aba94D0d0e4FB917cC02765f631f309a7388"
+      abi: NFTStaking
+      startBlock: 1265285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - StateSummary
+        - StakeHolder
+        - MachineInfo
+      abis:
+        - name: NFTStaking
+          file: ./abis/NFTStaking.json
+      eventHandlers:
+        - event: MoveToReserveAmount(string,address,uint256)
+          handler: handleMoveToReserveAmount
+        - event: Claimed(indexed address,string,uint256,uint256,uint256,bool)
+          handler: handleClaimed
+        - event: PaySlash(string,address,uint256)
+          handler: handlePaySlash
+        - event: ReserveDLC(string,uint256)
+          handler: handleReserveDLC
+        - event: Staked(indexed address,string,uint256,uint256,uint256)
+          handler: handleStaked
+        - event: Unstaked(indexed address,string,uint256)
+          handler: handleUnstaked
+        - event: RentMachine(indexed address,string,uint256)
+          handler: handleRentMachine
+        - event: EndRentMachine(indexed address,string,uint256)
+          handler: handleEndRentMachine
+        - event: StakedGPUType(string,string)
+          handler: handleStakedGPUType
+        - event: AddedStakeHours(indexed address,string,uint256)
+          handler: handleAddStakeHours
+        - event: RenewRent(string,address,uint256)
+          handler: handleRenewRent
+        - event: ExitStakingForOffline(string,address)
+          handler: handleExitStakingForOffline
+        - event: EndRentMachineFee(indexed address,string,uint256,uint256)
+          handler: handleEndRentMachineFee
+      file: ./src/nft-staking.ts
+
+
+
+  - kind: ethereum
+    name: Rent
+    network: deepbrainchain-mainnet
+    source:
+      address: "0xda9efdff9ca7b7065b7706406a1a79c0e483815a"
+      abi: Rent
+      startBlock: 1265285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - StateSummary
+        - StakeHolder
+        - MachineInfo
+      abis:
+        - name: Rent
+          file: ./abis/Rent.json
+      eventHandlers:
+        - event: SlashMachineOnOffline(indexed address,string,indexed address,uint256,uint256,uint256,uint8)
+          handler: handleSlashMachineOnOffline
+
+      file: ./src/rent.ts

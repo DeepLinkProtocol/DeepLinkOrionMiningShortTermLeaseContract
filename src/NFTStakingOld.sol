@@ -320,7 +320,7 @@ contract OldNFTStaking is
         }
 
         _joinStaking(machineId, stakeInfo.calcPoint, amount + stakeInfo.reservedAmount);
-        NFTStakingState.addReserveAmount(machineId, stakeInfo.holder, amount);
+        //        NFTStakingState.addReserveAmount(machineId, stakeInfo.holder, amount);
         emit reserveDLC(machineId, amount);
     }
 
@@ -394,7 +394,7 @@ contract OldNFTStaking is
         _joinStaking(machineId, calcPoint, 0);
         _tryInitMachineLockRewardInfo(machineId, currentTime);
 
-        NFTStakingState.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
+        //        NFTStakingState.addOrUpdateStakeHolder(stakeholder, machineId, calcPoint, gpuCount, true);
         holder2MachineIds[stakeholder].push(machineId);
         //        dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, true);
         stakedMachineIds.push(machineId);
@@ -475,10 +475,10 @@ contract OldNFTStaking is
         uint256 moveToReserveAmount = 0;
         if (canClaimAmount > 0 && (_isStaking || slashed)) {
             if (stakeInfo.reservedAmount < BASE_RESERVE_AMOUNT) {
-                (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
-                    tryMoveReserve(machineId, canClaimAmount, stakeInfo);
-                canClaimAmount = leftAmountCanClaim;
-                moveToReserveAmount = _moveToReserveAmount;
+                //                (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
+                //                    tryMoveReserve(machineId, canClaimAmount, stakeInfo);
+                //                canClaimAmount = leftAmountCanClaim;
+                //                moveToReserveAmount = _moveToReserveAmount;
             }
         }
 
@@ -488,14 +488,14 @@ contract OldNFTStaking is
             payToRenterForSlashing(machineId, stakeInfo, lastSlashInfo.renter, true);
             approvedReportInfos.pop();
             paidSlash = true;
-            NFTStakingState.subReserveAmount(msg.sender, machineId, BASE_RESERVE_AMOUNT);
+            //            NFTStakingState.subReserveAmount(msg.sender, machineId, BASE_RESERVE_AMOUNT);
         }
 
         if (stakeInfo.reservedAmount < BASE_RESERVE_AMOUNT && _isStaking) {
-            (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
-                tryMoveReserve(machineId, canClaimAmount, stakeInfo);
-            canClaimAmount = leftAmountCanClaim;
-            moveToReserveAmount = _moveToReserveAmount;
+            //            (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
+            //                tryMoveReserve(machineId, canClaimAmount, stakeInfo);
+            //            canClaimAmount = leftAmountCanClaim;
+            //            moveToReserveAmount = _moveToReserveAmount;
         }
 
         if (canClaimAmount > 0) {
@@ -506,9 +506,9 @@ contract OldNFTStaking is
         totalDistributedRewardAmount += totalRewardAmount;
         stakeInfo.claimedAmount += totalRewardAmount;
         stakeInfo.lastClaimAtTimestamp = currentTimestamp;
-        NFTStakingState.addClaimedRewardAmount(
-            msg.sender, machineId, rewardAmount + _dailyReleaseAmount, totalRewardAmount
-        );
+        //        NFTStakingState.addClaimedRewardAmount(
+        //            msg.sender, machineId, rewardAmount + _dailyReleaseAmount, totalRewardAmount
+        //        );
 
         if (lockedAmount > 0) {
             machineId2LockedRewardDetail[machineId].totalAmount += lockedAmount;
@@ -560,25 +560,25 @@ contract OldNFTStaking is
         _claim(machineId);
     }
 
-    function tryMoveReserve(string memory machineId, uint256 canClaimAmount, StakeInfo storage stakeInfo)
-        internal
-        returns (uint256 moveToReserveAmount, uint256 leftAmountCanClaim)
-    {
-        uint256 leftAmountShouldReserve = BASE_RESERVE_AMOUNT - stakeInfo.reservedAmount;
-        if (canClaimAmount >= leftAmountShouldReserve) {
-            canClaimAmount -= leftAmountShouldReserve;
-            moveToReserveAmount = leftAmountShouldReserve;
-        } else {
-            moveToReserveAmount = canClaimAmount;
-            canClaimAmount = 0;
-        }
-
-        // the amount should be transfer to reserve
-        totalReservedAmount += moveToReserveAmount;
-        stakeInfo.reservedAmount += moveToReserveAmount;
-        NFTStakingState.addReserveAmount(machineId, stakeInfo.holder, moveToReserveAmount);
-        return (moveToReserveAmount, canClaimAmount);
-    }
+    //    function tryMoveReserve(string memory machineId, uint256 canClaimAmount, StakeInfo storage stakeInfo)
+    //        internal
+    //        returns (uint256 moveToReserveAmount, uint256 leftAmountCanClaim)
+    //    {
+    //        uint256 leftAmountShouldReserve = BASE_RESERVE_AMOUNT - stakeInfo.reservedAmount;
+    //        if (canClaimAmount >= leftAmountShouldReserve) {
+    //            canClaimAmount -= leftAmountShouldReserve;
+    //            moveToReserveAmount = leftAmountShouldReserve;
+    //        } else {
+    //            moveToReserveAmount = canClaimAmount;
+    //            canClaimAmount = 0;
+    //        }
+    //
+    //        // the amount should be transfer to reserve
+    //        totalReservedAmount += moveToReserveAmount;
+    //        stakeInfo.reservedAmount += moveToReserveAmount;
+    ////        NFTStakingState.addReserveAmount(machineId, stakeInfo.holder, moveToReserveAmount);
+    //        return (moveToReserveAmount, canClaimAmount);
+    //    }
 
     function calculateReleaseRewardAndUpdate(string memory machineId)
         internal
@@ -669,7 +669,7 @@ contract OldNFTStaking is
         removeStakingMachineFromHolder(stakeholder, machineId);
         totalStakingGpuCount -= Math.min(stakeInfo.gpuCount, 0);
 
-        NFTStakingState.removeMachine(stakeInfo.holder, machineId);
+        //        NFTStakingState.removeMachine(stakeInfo.holder, machineId);
         //        dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
         emit unStaked(stakeholder, machineId);
     }
@@ -712,7 +712,7 @@ contract OldNFTStaking is
         if (!machineId2Rented[machineId]) {
             machineId2Rented[machineId] = true;
         }
-        NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
+        //        NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
         emit RentMachine(machineId);
     }
 
@@ -726,9 +726,9 @@ contract OldNFTStaking is
 
         uint256 newCalcPoint = (stakeInfo.calcPoint * 10) / 13;
         _joinStaking(machineId, newCalcPoint, stakeInfo.reservedAmount);
-        NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
+        //        NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, newCalcPoint, 0, false);
 
-        NFTStakingState.subRentedGPUCount(stakeInfo.holder, machineId);
+        //        NFTStakingState.subRentedGPUCount(stakeInfo.holder, machineId);
 
         emit EndRentMachine(machineId);
     }

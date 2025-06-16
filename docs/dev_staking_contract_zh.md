@@ -11,11 +11,11 @@
 ### `stake(address stakeholder, string calldata machineId, uint256[] calldata nftTokenIds,uint256[] calldata nftTokenIdBalances, uint256 stakeHours) public nonReentrant`
 - 描述：质押nft 只能被管理员钱包调用
 = 参数：
-    - `stakeholder`: 质押人钱包地址 
-    - `machineId`: 机器 ID
-    - `nftTokenIds`: NFT Token ID 数组
-    - `nftTokenIdBalances`: NFT Token ID 数量数组
-    - `stakeHours`: 质押时长（小时）
+      - `stakeholder`: 质押人钱包地址 
+      - `machineId`: 机器 ID
+      - `nftTokenIds`: NFT Token ID 数组
+      - `nftTokenIdBalances`: NFT Token ID 数量数组
+      - `stakeHours`: 质押时长（小时） 
 - 返回值：无
 - 事件：
     - `staked`: 质押NFT成功事件
@@ -96,3 +96,62 @@
     - `reservedAmount`: 质押金额
     - `isOnline`: 机器是否在线
     - `isRegistered`: 机器是否注册
+
+
+### `stakeV2(address stakeholder, string calldata machineId, uint256[] calldata nftTokenIds,uint256[] calldata nftTokenIdBalances, uint256 stakeHours, bool isPersonal) public nonReentrant`
+- 描述：质押nft 只能被管理员钱包调用
+  = 参数：
+  - `stakeholder`: 质押人钱包地址
+  - `machineId`: 机器 ID
+  - `nftTokenIds`: NFT Token ID 数组
+  - `nftTokenIdBalances`: NFT Token ID 数量数组
+  - `stakeHours`: 质押时长（小时）
+  - `isPersonal`: 是否为私人模式 true：私人模式， false：网吧模式
+- 返回值：无
+- 事件：
+  - `staked`: 质押NFT成功事件
+
+### `validateMachineIds(string[] memory machineIds, bool isValid) external`
+- 描述：对机器列表进行验证 未验证通过的机器视为加入黑名单 无在线奖励并且不可租用 网吧模式机器质押后默认为在黑名单中 质押后需要及时验证 仅管理员可调用
+- 参数：
+  - `machineIds`: 机器ID列表
+  - `isValid`: 是否有效 true:有效 false：无效(黑名单)
+- 返回值：无
+
+### `setMaxExtraRentFeeInUSDPerMinutes(uint256 feeInUSD) external`
+- 描述：设置网吧模式机器的最大额外租用费用 算工设置的额外租用费用不能大于这个值 仅管理员可调用
+- 参数：
+  - `feeInUSD`: 最大额外租用费用 1000000 = 1 USD
+- 返回值：无
+
+### `setExtraRentFeeInUSDPerMinutes(string calldata machineId, uint256 feeInUSD) external`
+- 描述：设置网吧模式机器的额外租用费用 仅算工可调用
+- 参数：
+ - `machineId`: 机器 ID
+  - `feeInUSD`: 额外租用费用(USD) 1000000 = 1 USD
+- 返回值：无
+
+### `getMachineExtraRentFee(string memory machineId) external view returns (uint256 fee)`
+- 描述：获取机器的额外租用费用
+- 参数：
+- `machineId`: 机器 ID
+- 返回值：
+  - `fee`: 额外租用费用(USD) 1000000 = 1 USD
+
+#### `setGlobalConfig(uint256 platformFeeRate_, BeneficiaryInfo[] calldata globalBeneficiaryInfos_)`
+
+- 描述：设置全局配置
+- 参数：
+  - `platformFeeRate_`: 平台费率
+  - `globalBeneficiaryInfos_`: 全局收益分配配置
+- 权限：仅管理员可调用
+
+#### `setMachineConfig(string calldata machineId, BeneficiaryInfo[] calldata machineBeneficiaryInfos_)`
+
+- 描述：设置单个机器的收益分配配置(优先级高于全局配置)
+- 参数：
+  - `machineId`: 机器 ID
+  - `machineBeneficiaryInfos_`: 机器特定的收益分配配置
+- 权限：仅管理员可调用
+
+

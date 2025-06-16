@@ -378,9 +378,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId);
 
-        stakingContract.setBurnedRentFee(machineHolder, machineId, rentFeeInFact);
-        stakingContract.addRentedGPUCount(machineHolder, machineId);
-
         emit RentMachine(lastRentId, machineId, block.timestamp + rentSeconds, 1, msg.sender, rentFeeInFact);
     }
 
@@ -428,7 +425,6 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // update total burned amount
         totalBurnedAmount += additionalRentFeeInFact;
 
-        stakingContract.setBurnedRentFee(machineHolder, machineId, additionalRentFeeInFact);
         emit RenewRent(rentId, additionalRentSeconds, additionalRentFeeInFact, msg.sender);
     }
 
@@ -446,7 +442,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         stakeHolder2RentGPUInfo[machineHolder].rentingGPUCount -= 1;
         rentGPUInfo.rentingGPUCount -= 1;
 
-        stakingContract.endRentMachine(machineId);
+        stakingContract.endRentMachine(machineId,0,0);
         machineId2LastRentEndBlock[machineId] = block.number;
         emit EndRentMachine(rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
@@ -615,46 +611,25 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
 
-        (, uint256 calcPoint,,,, uint256 reservedAmount,, bool isRegistered) = stakingContract.getMachineInfo(machineId);
-
-        (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
-
-        if (tp == NotifyType.MachineRegister) {
-            if (calcPoint == 0) {
-                // staked before
-                stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
-                emit MachineRegister(machineId, calcPointInFact);
-            }
-        } else if (tp == NotifyType.MachineUnregister) {
-            stakingContract.joinStaking(machineId, 0, reservedAmount);
-            emit MachineUnregister(machineId, calcPoint);
-        } else if (tp == NotifyType.MachineOffline) {
+        if (tp == NotifyType.MachineOffline) {
             uint256 rentId = machineId2RentId[machineId];
             RentInfo memory rentInfo = rentId2RentInfo[rentId];
-            if (isRegistered) {
-                if (rentInfo.renter != address(0)) {
-                    SlashInfo memory slashInfo = newSlashInfo(
-                        rentInfo.stakeHolder,
-                        rentInfo.machineId,
-                        SLASH_AMOUNT,
-                        rentInfo.rentStatTime,
-                        rentInfo.rentEndTime,
-                        block.timestamp - rentInfo.rentStatTime,
-                        SlashType.Offline,
-                        rentInfo.renter
-                    );
-                    addSlashInfoAndReport(slashInfo);
-                    emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter, rentInfo.machineId, SLASH_AMOUNT);
-                } else {
-                    stakingContract.joinStaking(machineId, 0, reservedAmount);
-                    emit RemoveCalcPointOnOffline(machineId);
-                }
-            }
-        } else if (tp == NotifyType.MachineOnline) {
-            if (calcPoint == 0) {
-                // staked before
-                stakingContract.joinStaking(machineId, calcPointInFact, reservedAmount);
-                emit AddBackCalcPointOnOnline(machineId, calcPointInFact);
+            if (rentInfo.renter != address(0)) {
+                SlashInfo memory slashInfo = newSlashInfo(
+                    rentInfo.stakeHolder,
+                    rentInfo.machineId,
+                    SLASH_AMOUNT,
+                    rentInfo.rentStatTime,
+                    rentInfo.rentEndTime,
+                    block.timestamp - rentInfo.rentStatTime,
+                    SlashType.Offline,
+                    rentInfo.renter
+                );
+                addSlashInfoAndReport(slashInfo);
+                emit SlashMachineOnOffline(rentInfo.stakeHolder, rentInfo.renter, rentInfo.machineId, SLASH_AMOUNT);
+            } else {
+                stakingContract.unStake(machineId);
+                emit RemoveCalcPointOnOffline(machineId);
             }
         }
         return true;
