@@ -939,10 +939,8 @@ contract NFTStaking is
         calcPoint = calcPoint * getNFTCount(stakeInfo.tokenIdBalances);
 
         _joinStaking(machineId, calcPoint, stakeInfo.reservedAmount);
-        //        NFTStakingState.addOrUpdateStakeHolder(stakeInfo.holder, machineId, calcPoint, 0, false);
 
-        //        NFTStakingState.subRentedGPUCount(stakeInfo.holder, machineId);
-
+        delete machineId2BeneficiaryInfos[machineId];
         emit EndRentMachine(stakeInfo.holder, machineId, stakeInfo.nextRenterCanRentAt);
         emit EndRentMachineFee(stakeInfo.holder, machineId, baseRentFee, extraRentFee);
     }
@@ -1386,10 +1384,7 @@ contract NFTStaking is
         machineId2BeneficiaryInfos[machineId] = machineBeneficiaryInfos_;
     }
 
-    function clearMachineConfig(string calldata machineId)
-        external
-        onlyDLCClientWallet
-    {
+    function clearMachineConfig(string calldata machineId) external onlyDLCClientWallet {
         delete machineId2BeneficiaryInfos[machineId];
     }
 

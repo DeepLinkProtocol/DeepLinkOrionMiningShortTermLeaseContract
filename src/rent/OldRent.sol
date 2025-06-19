@@ -442,7 +442,7 @@ contract OldRent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         stakeHolder2RentGPUInfo[machineHolder].rentingGPUCount -= 1;
         rentGPUInfo.rentingGPUCount -= 1;
 
-        stakingContract.endRentMachine(machineId,0,0);
+        stakingContract.endRentMachine(machineId, 0, 0);
         machineId2LastRentEndBlock[machineId] = block.number;
         emit EndRentMachine(rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
