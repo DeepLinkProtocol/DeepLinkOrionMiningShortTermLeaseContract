@@ -48,7 +48,8 @@ export function handleClaimed(event: ClaimedEvent): void {
   }
 
 
-  stakeholder.totalReleasedRewardAmount = stakeholder.totalReleasedRewardAmount.plus(event.params.moveToUserWalletAmount.plus(event.params.moveToReservedAmount))
+  const claimedAmount = event.params.moveToUserWalletAmount.plus(event.params.moveToReservedAmount)
+  stakeholder.totalReleasedRewardAmount = stakeholder.totalReleasedRewardAmount.plus(claimedAmount)
   stakeholder.totalClaimedRewardAmount = stakeholder.totalClaimedRewardAmount.plus(event.params.totalRewardAmount)
 
   stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.plus(event.params.moveToReservedAmount)
@@ -72,6 +73,8 @@ export function handleClaimed(event: ClaimedEvent): void {
 
 
   machineInfo.claimTimes = machineInfo.claimTimes.plus(BigInt.fromI32(1))
+  machineInfo.totalClaimedRewardAmount = machineInfo.totalClaimedRewardAmount.plus(claimedAmount)
+  machineInfo.save()
 }
 
 export function handleMoveToReserveAmount(event: MoveToReserveAmountEvent): void {
@@ -316,6 +319,8 @@ export function handleStaked(event: StakedEvent): void {
     machineInfo.isRented = false
     machineInfo.gpuType = ""
     machineInfo.claimTimes = BigInt.fromI32(0)
+    machineInfo.extraRentFee = BigInt.fromI32(0)
+    machineInfo.totalClaimedRewardAmount = BigInt.fromI32(0)
   }
 
   machineInfo.totalGPUCount = BigInt.fromI32(1)
@@ -349,6 +354,7 @@ export function handleStaked(event: StakedEvent): void {
     stakeholder.burnedRentFee = BigInt.fromI32(0)
     stakeholder.totalReleasedRewardAmount = BigInt.fromI32(0)
     stakeholder.totalClaimedRewardAmount = BigInt.fromI32(0)
+    stakeholder.extraRentFee = BigInt.fromI32(0)
   }
 
 

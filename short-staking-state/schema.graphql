@@ -44,6 +44,7 @@ type MachineInfo @entity {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
+  totalClaimedRewardAmount: BigInt! # uint256
 
   stakeEndTimestamp: BigInt! # uint256
   stakeEndTime: String! # string
