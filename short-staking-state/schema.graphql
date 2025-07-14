@@ -31,7 +31,7 @@ type StakeHolder @entity {
 type MachineInfo @entity {
   id: Bytes!
   holder: Bytes! # address
-  holderRef: StakeHolder! @belongsTo(field: "holder")  # ‌:ml-citation{ref="1,2" data="citationList"}
+  holderRef: StakeHolder! @belongsTo(field: "holder")
   machineId: String!
   totalCalcPoint: BigInt! # uint256
   totalCalcPointWithNFT: BigInt! # uint256
@@ -44,13 +44,14 @@ type MachineInfo @entity {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
-
+  totalClaimedRewardAmount: BigInt! # uint256
   stakeEndTimestamp: BigInt! # uint256
   stakeEndTime: String! # string
   nextCanRentTimestamp: BigInt! # uint256
   nextCanRentTime: String! # string
-  isRented : Boolean!
+  isRented: Boolean!
   isStaking: Boolean!
+  isSlashed: Boolean!
   online: Boolean!
   registered: Boolean!
   gpuType: String!
@@ -75,8 +76,35 @@ type AddStakeHour @entity {
   transactionHash: Bytes!
 }
 
-
 type MachineOfflineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  isActive: Boolean!
+}
+
+type RecoverRewardingForBlockingRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type StopRewardingForBlockingRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineReOnlineRecord @entity {
   id: Bytes!
   machineId: String!
   holder: Bytes! # address
@@ -108,10 +136,11 @@ type HolderPaidSlashRecord @entity {
   transactionHash: Bytes!
 }
 
-type LatestPaidSlashRecord @entity {
+type PaidSlashRecord @entity {
   id: Bytes!
+  machineId: String!
   holder: Bytes! # address
-  paid: Boolean!
+  slashAmount: BigInt! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
@@ -144,4 +173,71 @@ type claimedReward @entity {
 
   transactionHash: Bytes!
   blocktimestamp: BigInt!
+}
+
+type MachineUnregisterRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  isActive: Boolean!
+}
+
+type MachineRegisterRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineReportedRecord @entity {
+  id: Bytes!
+  machineId: String!
+  offlineBlockTimestamp: BigInt!
+  reOnlineBlockTimestamp: BigInt!
+  offlineTransactionHash: Bytes!
+  reOnlineTransactionHash: Bytes!
+  unStakeBlockTimestamp: BigInt!
+  unStakeTransactionHash: Bytes!
+  finishedByEndStake: Boolean!
+  finishedByReOnline: Boolean!
+  offlineDuration: BigInt!
+}
+
+type RentingRecord @entity {
+  id: Bytes! # machineId
+  machineOwner: Bytes! # address
+  rentId: BigInt! # uint256
+  machineId: String!
+  isActive: Boolean!
+  transactionHash: Bytes!
+}
+
+type RentMachineRecord @entity {
+  id: Bytes! # machineId
+  machineOwner: Bytes! # address
+  rentId: BigInt! # uint256
+  machineId: String!
+  rentEndTime: BigInt! # uint256
+  renter: Bytes! # address
+  gogoing: Boolean! #
+  rentBlockTimestamp: BigInt!
+  rentTransactionHash: Bytes!
+  endRentBlockTimestamp: BigInt!
+  endRentTransactionHash: Bytes!
+}
+
+type RentRenewal @entity {
+  id: Bytes! # transaction hash
+  machineOwner: Bytes! # address
+  machineId: String!
+  rentId: BigInt! # uint256
+  additionalRentSeconds: BigInt! # uint256
+  additionalRentFee: BigInt! # uint256
+  renter: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
 }

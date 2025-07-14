@@ -47,11 +47,21 @@ dataSources:
           handler: handleRenewRent
         - event: ExitStakingForOffline(string,address)
           handler: handleExitStakingForOffline
+        - event: RecoverRewarding(string,address)
+          handler: handleReOnline
         - event: EndRentMachineFee(indexed address,string,uint256,uint256)
           handler: handleEndRentMachineFee
+        - event: ExitStakingForBlocking(string,address)
+          handler: handleExitStakingForBlocking
+        - event: RecoverRewardingForBlocking(string,address)
+          handler: handleRecoverRewardingForBlocking
+        - event: MachineUnregistered(string)
+          handler: handleMachineUnregister
+        - event: MachineRegistered(string)
+          handler: handleMachineRegister
+          
+          
       file: ./src/nft-staking.ts
-
-
 
   - kind: ethereum
     name: Rent
@@ -68,10 +78,17 @@ dataSources:
         - StateSummary
         - StakeHolder
         - MachineInfo
+        - RentRenewal
       abis:
         - name: Rent
           file: ./abis/Rent.json
       eventHandlers:
+        - event: RentMachine(indexed address,uint256,string,uint256,address,uint256)
+          handler: handleRentMachine
+        - event: RenewRent(indexed address,string,uint256,uint256,uint256,address)
+          handler: handleRenewRent
+        - event: EndRentMachine(address,uint256,string,uint256,address)
+          handler: handleEndRentMachine  
         - event: SlashMachineOnOffline(indexed address,string,indexed address,uint256,uint256,uint256,uint8)
           handler: handleSlashMachineOnOffline
 

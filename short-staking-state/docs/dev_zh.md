@@ -53,7 +53,8 @@
         blockNumber: BigInt!
         blockTimestamp: BigInt!
         transactionHash: Bytes!
-        
+        totalClaimedRewardAmount: BigInt! # 已领取奖励
+        extraRentFee: BigInt! # 额外租金
         stakeEndTimestamp: BigInt! # uint256 质押结束时间戳（秒）
         nextCanRentTimestamp: BigInt! # uint256 下次可租用时间戳（秒）
         isStaking: Boolean! # 是否处于质押状态
