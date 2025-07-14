@@ -41,4 +41,5 @@ interface IStakingContract {
         returns (address[] memory beneficiaries, uint256[] memory rates, uint256 palateFormFeeRate);
 
     function isPersonalMachine(string memory machineId) external view returns (bool);
+    function updateMachineRegisterStatus(string memory machineId,bool registered ) external;
 }

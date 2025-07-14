@@ -19,7 +19,7 @@ local-testnet = { key = "abc", url = "http://localhost:7545", chain = "5777" }
 
 
 [rpc_endpoints]
-dbc-mainnet = "https://rpc.dbcwallet.io"
+dbc-mainnet = "https://rpc2.dbcwallet.io"
 dbc-testnet = "https://rpc-testnet.dbcwallet.io"
 bsc-testnet = "https://data-seed-prebsc-1-s3.binance.org:8545"
 local-testnet = { key = "abc", url = "http://localhost:7545", chain = "5777" }

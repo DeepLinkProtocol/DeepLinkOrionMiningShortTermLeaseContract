@@ -19,7 +19,7 @@ deploy-staking-mainnet:
 
 verify-staking-mainnet:
 	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL $STAKING_PROXY  src/NFTStaking.sol:NFTStaking
-	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0xB12CF05AA6f8299Db436e7f0512867F3351d9E86 src/NFTStaking.sol:NFTStaking
+	source .env && forge verify-contract --chain 19880818  --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x558E132b734E1002233914E9f9cbBA526f316E9e src/NFTStaking.sol:NFTStaking
 
 
 upgrade-staking-mainnet:
@@ -42,11 +42,11 @@ deploy-rent-mainnet:
 
 verify-rent-mainnet:
 	source .env && forge verify-contract --chain 19880818 --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL $RENT_PROXY  src/rent/Rent.sol:Rent
-	source .env && forge verify-contract --chain 19880818 --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x73c5F47B43F606922E5a359923305a50dEafc718  src/rent/Rent.sol:Rent
+	source .env && forge verify-contract --chain 19880818 --compiler-version v0.8.26 --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL 0x64C04f9f41788F5b6E27E64be2Fca883e49bb190  src/rent/Rent.sol:Rent
 
 upgrade-rent-mainnet:
 	source .env && forge script script/rent/Upgrade.s.sol:Upgrade --rpc-url dbc-mainnet --broadcast --verify --verifier blockscout --verifier-url $MAIN_NET_VERIFIER_URL --force --skip-simulation --legacy
-
+	source .env && forge script script/rent/Upgrade.s.sol:Upgrade --rpc-url dbc-mainnet --broadcast 
 
 
 remapping:

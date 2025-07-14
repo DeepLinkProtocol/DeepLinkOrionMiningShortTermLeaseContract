@@ -129,6 +129,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address renter,
         uint256 rentFee
     );
+    event EndRentMachine(
+        address machineOnwer, 
+        uint256 rentId, 
+        string machineId, 
+        uint256 rentEndTime, 
+        address renter
+    );
+
     event RenewRent(
         address indexed machineOnwer,
         string machineId,
@@ -138,7 +146,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address renter
     );
     event ExtraRentFeeTransfer(address indexed machineOnwer, uint256 rentId, uint256 amount);
-    event EndRentMachine(address machineOnwer, uint256 rentId, string machineId, uint256 rentEndTime, address renter);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
     event BurnedFee(
         string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
@@ -314,6 +321,54 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return lastRentId;
     }
 
+    function resonFoCanNotRent(string calldata machineId) public view returns (string memory reson) {
+        if (!inRentWhiteList(machineId)) {
+            return "not in rent whitelist";
+        }
+        if (isRented(machineId)) {
+            return "is rented";
+        }
+        if (!stakingContract.isStaking(machineId)) {
+            return "not in staking";
+        }
+
+        if (stakingContract.machineIsBlocked(machineId)) {
+            return "is blocked(in blacklist)";
+        }
+
+        if (stakingContract.isStakingButOffline(machineId)) {
+            return "is staking but offline";
+        }
+
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        if (rewardEndAt == stakingContract.getRewardDuration()) {
+            return "not enough staking duration";
+        }
+
+        (, ,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
+            stakingContract.getMachineInfo(machineId);
+    
+        if (!isOnline){
+            return "is offline";
+        }
+        if (!isRegistered){
+            return "not registered";
+        }
+
+
+        if (nextRenterCanRentAt > block.timestamp || nextRenterCanRentAt == 0) {
+            // not reach the start rent block number yet
+            return "can not rent before next renter can rent time";
+        }
+        if (endAtTimestamp > 0) {
+            if (!(endAtTimestamp > block.timestamp && endAtTimestamp - block.timestamp > 1 hours)){
+                return "machine staking time less than 1 hours";
+            }
+        }
+
+        return "";
+    }
+
     function canRent(string calldata machineId) public view returns (bool) {
         if (!inRentWhiteList(machineId)) {
             return false;
@@ -338,9 +393,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             return false;
         }
 
-        (, uint256 calcPoint,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
+        (,,, uint256 endAtTimestamp, uint256 nextRenterCanRentAt,, bool isOnline, bool isRegistered) =
             stakingContract.getMachineInfo(machineId);
-        if (!isOnline || !isRegistered || isRented(machineId) || calcPoint == 0) {
+        if (!isOnline || !isRegistered) {
             return false;
         }
 
@@ -484,25 +539,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit RentFee(lastRentId, msg.sender, baseRentFee, extraRentFee, platformFee);
         emit PayToContractOnRent(lastRentId, msg.sender, totalRentFee);
 
-        // burn rent fee
-        //        feeToken.burnFrom(payer, baseRentFee);
-        //        emit BurnedFee(machineId, lastRentId, block.timestamp, baseRentFee, renter, 1);
-        //        totalBurnedAmount += baseRentFee;
-
-        // add machine burn info
-        //        BurnedDetail memory burnedDetail =
-        //            BurnedDetail({rentId: lastRentId, burnTime: block.timestamp, burnDLCAmount: baseRentFee, renter: renter});
-
-        stakeHolder2RentGPUInfo[machineHolder].rentedGPUCount += 1;
-        stakeHolder2RentGPUInfo[machineHolder].rentingGPUCount += 1;
-        rentGPUInfo.rentedGPUCount += 1;
-        rentGPUInfo.rentingGPUCount += 1;
-
-        stakeHolder2RentFee[machineHolder] += baseRentFee;
-        //        BurnedInfo storage burnedInfo = machineId2BurnedInfo[machineId];
-        //        burnedInfo.details.push(burnedDetail);
-        //        burnedInfo.totalBurnedAmount += baseRentFee;
-
         // notify staking contract renting machine action happened
         stakingContract.rentMachine(machineId);
 
@@ -562,23 +598,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         feeToken.transferFrom(msg.sender, address(this), platformFee + extraRentFee + baseRentFee);
 
-        // add machine burn info
-        BurnedDetail memory burnedDetail = BurnedDetail({
-            rentId: rentId,
-            burnTime: block.timestamp,
-            burnDLCAmount: additionalRentFeeInFact,
-            renter: renter
-        });
-
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
-        stakeHolder2RentFee[machineHolder] += additionalRentFeeInFact;
-        BurnedInfo storage burnedInfo = machineId2BurnedInfo[machineId];
-        burnedInfo.details.push(burnedDetail);
-        burnedInfo.totalBurnedAmount += additionalRentFeeInFact;
-
         // update total burned amount
-        totalBurnedAmount += additionalRentFeeInFact;
         stakingContract.renewRentMachine(machineId, additionalRentFeeInFact);
         emit RenewRent(machineHolder, machineId, rentId, additionalRentSeconds, additionalRentFeeInFact, renter);
     }
@@ -756,10 +778,6 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return 0;
     }
 
-    function getBurnedRentFeeByStakeHolder(address stakeHolder) public view returns (uint256) {
-        return stakeHolder2RentFee[stakeHolder];
-    }
-
     function getTotalBurnedRentFee() public view returns (uint256) {
         return totalBurnedAmount;
     }
@@ -824,7 +842,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                     rentInfo.stakeHolder,
                     rentInfo.machineId,
                     rentInfo.renter,
-                    SLASH_AMOUNT,
+                    1000 ether,
                     rentInfo.rentStatTime,
                     rentInfo.rentEndTime,
                     SlashType.Offline
@@ -836,10 +854,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         } else if (tp == NotifyType.MachineOnline && stakingContract.isStakingButOffline(machineId)) {
             stakingContract.recoverRewarding(machineId);
             emit AddCalcPointOnline(machineId);
+        }else if (tp == NotifyType.MachineUnregister) {
+            stakingContract.updateMachineRegisterStatus(machineId,false);
+        }else if (tp == NotifyType.MachineRegister) {
+            stakingContract.updateMachineRegisterStatus(machineId,true);
         }
         return true;
     }
-
     function getSlashInfosByMachineId(string memory machineId, uint256 pageNumber, uint256 pageSize)
         external
         view

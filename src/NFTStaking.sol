@@ -155,7 +155,12 @@ contract NFTStaking is
     event RenewRent(string machineId, address holder, uint256 rentFee);
     event AfterAddHoursEndTime(string machineId, uint256 endTimestamp);
     event ExitStakingForOffline(string machineId, address holder);
+    event ExitStakingForBlocking(string machineId, address holder);
+
     event RecoverRewarding(string machineId, address holder);
+    event RecoverRewardingForBlocking(string machineId, address holder);
+    event MachineUnregistered(string machineId);
+    event MachineRegistered(string machineId);
     // error
 
     error CallerNotRentContract();
@@ -260,7 +265,7 @@ contract NFTStaking is
         );
 
         require((stakeHours >= 2), InvalidStakeHours());
-        require((stakeHours <= 72), InvalidStakeHours());
+        require((stakeHours <= 144), InvalidStakeHours());
 
         require(!rewardEnd(), RewardEnd());
         (bool isOnline, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
@@ -385,10 +390,10 @@ contract NFTStaking is
             MachineStatus oldStatus = machineId2MachineStatus[machineId];
             if (isValid && oldStatus == MachineStatus.Blocking) {
                 machineId2MachineStatus[machineId] = MachineStatus.Normal;
-                _recoverRewarding(machineId);
+                _recoverRewarding(machineId,true);
             } else if (!isValid && oldStatus == MachineStatus.Normal) {
                 machineId2MachineStatus[machineId] = MachineStatus.Blocking;
-                _stopRewarding(machineId);
+                _stopRewarding(machineId,true);
             }
         }
     }
@@ -1093,18 +1098,24 @@ contract NFTStaking is
             calcPoint * ToolLib.LnUint256(reservedAmount > BASE_RESERVE_AMOUNT ? reservedAmount : BASE_RESERVE_AMOUNT);
     }
 
-    function _stopRewarding(string memory machineId) internal {
+
+
+    function _stopRewarding(string memory machineId, bool isBlocking) internal {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         _joinStaking(machineId, 0, stakeInfo.reservedAmount);
         //        stakeInfo.calcPoint = 0;
-        emit ExitStakingForOffline(machineId, stakeInfo.holder);
+        if (isBlocking) {
+            emit ExitStakingForBlocking(machineId, stakeInfo.holder);
+        }else{
+            emit ExitStakingForOffline(machineId, stakeInfo.holder);
+        }
     }
 
     function stopRewarding(string memory machineId) external onlyRentAddress {
-        _stopRewarding(machineId);
+        _stopRewarding(machineId, false);
     }
 
-    function _recoverRewarding(string memory machineId) internal {
+    function _recoverRewarding(string memory machineId, bool isBlocking) internal {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         if (stakeInfo.calcPoint != 0) {
             return;
@@ -1113,12 +1124,15 @@ contract NFTStaking is
         (, uint256 calcPoint,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
         calcPoint = calcPoint * stakeInfo.nftCount;
         _joinStaking(machineId, calcPoint, stakeInfo.reservedAmount);
-        //        stakeInfo.calcPoint = calcPoint;
-        emit RecoverRewarding(machineId, stakeInfo.holder);
+        if (isBlocking) {
+            emit RecoverRewardingForBlocking(machineId, stakeInfo.holder);
+        }else{
+            emit RecoverRewarding(machineId, stakeInfo.holder);
+        }
     }
 
     function recoverRewarding(string memory machineId) public onlyRentAddress {
-        _recoverRewarding(machineId);
+        _recoverRewarding(machineId,false);
     }
 
     function _joinStaking(string memory machineId, uint256 calcPoint, uint256 reserveAmount) internal {
@@ -1306,6 +1320,14 @@ contract NFTStaking is
     function setMachineToPersonal(string[] calldata machineIds) external onlyDLCClientWallet {
         for (uint256 i = 0; i < machineIds.length; i++) {
             machineId2Personal[machineIds[i]] = true;
+        }
+    }
+
+    function updateMachineRegisterStatus(string memory machineId,bool registered) external onlyRentAddress {
+        if (registered){
+            emit MachineRegistered(machineId);
+        }else{
+            emit MachineUnregistered(machineId);
         }
     }
 }
