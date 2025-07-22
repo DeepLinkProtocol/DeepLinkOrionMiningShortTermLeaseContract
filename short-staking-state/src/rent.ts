@@ -40,6 +40,7 @@ export function handleRentMachine(event: RentMachineEvent): void {
   record.rentTransactionHash = event.transaction.hash;
   record.endRentBlockTimestamp = BigInt.zero();
   record.endRentTransactionHash = Bytes.fromHexString("0x");
+  record.extraRentFee = BigInt.zero();
   record.save();
 }
 

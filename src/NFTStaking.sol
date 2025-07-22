@@ -326,17 +326,17 @@ contract NFTStaking is
 
     function setPhase(uint8 _phase) external onlyOwner {
         require(_phase >= 1 && _phase <= 3, "Invalid phase");
-        require(rewardEnd(), "Current phaseReward not end");
+        // require(rewardEnd(), "Current phaseReward not end");
         phase = _phase;
 
         if (phase == 1) {
             initRewardAmount = 180_000_000 ether;
         }
         if (phase == 2) {
-            initRewardAmount = 240_000_000 ether;
+            initRewardAmount = 180_000_000 ether + 240_000_000 ether;
         }
         if (phase == 3) {
-            initRewardAmount = 580_000_000 ether;
+            initRewardAmount = 180_000_000 ether + 240_000_000 ether + 580_000_000 ether;
         }
 
         dailyRewardAmount = initRewardAmount / 60;
@@ -937,7 +937,7 @@ contract NFTStaking is
         if (stakeInfo.nftCount > 0) {
             stakeInfo.isRentedByUser = false;
 
-            // 50 blocks
+            // 30 blocks
             stakeInfo.nextRenterCanRentAt = 300 + block.timestamp;
             if (block.timestamp > stakeInfo.endAtTimestamp - 1 hours) {
                 stakeInfo.nextRenterCanRentAt = 0;

@@ -41,6 +41,7 @@ import {
   MachineRegisterRecord,
   MachineReportedRecord,
   RentMachineRecord,
+  RentingRecord,
 } from "../generated/schema";
 
 export function handleClaimed(event: ClaimedEvent): void {
@@ -181,7 +182,6 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(
     BigInt.fromI32(1)
   );
-  stateSummary.save();
 }
 
 export function handleEndRentMachineFee(event: EndRentMachineFeeEvent): void {
@@ -199,6 +199,19 @@ export function handleEndRentMachineFee(event: EndRentMachineFeeEvent): void {
   );
 
   machineInfo.save();
+
+  let rentingRecord = RentingRecord.load(id);
+  if (rentingRecord == null) {
+    return;
+  }
+
+  const rid = rentingRecord.transactionHash;
+  let record = RentMachineRecord.load(rid);
+  if (record == null) {
+    return;
+  }
+  record.extraRentFee = event.params.extraRentFee;
+  record.save();
 
   let stakeholder = StakeHolder.load(
     Bytes.fromHexString(machineInfo.holder.toHexString())

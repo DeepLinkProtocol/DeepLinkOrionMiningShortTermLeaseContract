@@ -217,16 +217,17 @@ type RentingRecord @entity {
 
 type RentMachineRecord @entity {
   id: Bytes! # machineId
-  machineOwner: Bytes! # address
-  rentId: BigInt! # uint256
-  machineId: String!
-  rentEndTime: BigInt! # uint256
-  renter: Bytes! # address
-  gogoing: Boolean! #
-  rentBlockTimestamp: BigInt!
-  rentTransactionHash: Bytes!
-  endRentBlockTimestamp: BigInt!
-  endRentTransactionHash: Bytes!
+  machineOwner: Bytes! # address 机器所有者(算工)
+  rentId: BigInt! # uint256 租用id
+  machineId: String! # 机器id
+  rentEndTime: BigInt! # uint256  租用时设置的结束时间戳
+  renter: Bytes! # address # 租用人地址
+  gogoing: Boolean! # 是否在租用中 true: 租用中 否：租用已经结束
+  rentBlockTimestamp: BigInt! # 租用开始时间戳
+  rentTransactionHash: Bytes! # 租用交易hash
+  endRentBlockTimestamp: BigInt! # 实际的租用结束时间戳（提前退租导致与预期租用时间不一样）
+  endRentTransactionHash: Bytes! # 租用结束交易hash
+  extraRentFee: BigInt! # uint256 额外租金
 }
 
 type RentRenewal @entity {
