@@ -341,7 +341,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
-        if (rewardEndAt == stakingContract.getRewardDuration()) {
+        if (rewardEndAt == stakingContract.getRewardDuration() || rewardEndAt < block.timestamp) {
             return "not enough staking duration";
         }
 
@@ -390,6 +390,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
         if (rewardEndAt == stakingContract.getRewardDuration()) {
+            return false;
+        }
+        if (rewardEndAt < block.timestamp) {
             return false;
         }
 
@@ -498,6 +501,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 rewardDuration = stakingContract.getRewardDuration();
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
         require(rewardEndAt > rewardDuration, RewardNotStart());
+        require(rewardEndAt > block.timestamp, RewardNotStart());
         uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, rewardDuration);
         require(rentSeconds <= maxRentDuration, RentDurationTooLong(rentSeconds, maxRentDuration));
         machine2ProxyRented[machineId] = msg.sender != renter;
@@ -655,7 +659,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             distributePlatformFee(rentId, machineId, feeInfo.platformFee);
         }
 
-        stakingContract.endRentMachine(machineId, feeInfo.baseFee, feeInfo.platformFee);
+        stakingContract.endRentMachine(machineId, feeInfo.baseFee, feeInfo.extraFee);
         machineId2LastRentEndBlock[machineId] = block.number;
         delete rentId2FeeInfoInDLC[rentId];
         emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
