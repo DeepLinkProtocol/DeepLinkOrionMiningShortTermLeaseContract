@@ -1,6 +1,5 @@
 ### Network : DeepBrainChain Testnet
 
-### Contract: 
 #### mainnet:
     staking: 0x6268aba94d0d0e4fb917cc02765f631f309a7388
     rent: 0xda9efdff9ca7b7065b7706406a1a79c0e483815a

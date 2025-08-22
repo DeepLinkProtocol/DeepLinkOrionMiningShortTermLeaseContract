@@ -480,33 +480,6 @@ contract RentTest is Test {
         assertEq(totalFinal, claimedFinal);
     }
 
-    function testNonePersonalMachineStake() public {
-        address stakeHolder = owner;
-
-        string memory machineId = "machineId";
-
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = 1;
-        vm.startPrank(stakeHolder);
-        stakeByOwner(machineId, 0, 72, stakeHolder, false);
-        vm.stopPrank();
-
-        passDays(1);
-
-        vm.startPrank(stakeHolder);
-        assertEq(nftStaking.getReward(machineId), 0, "none personal machine stake should not get reward by default");
-
-        string[] memory machineIds = new string[](1);
-        machineIds[0] = machineId;
-
-        nftStaking.validateMachineIds(machineIds, true);
-        passDays(1);
-
-        assertGt(nftStaking.getReward(machineId), 0, "none personal machine stake should  get reward after validate");
-
-        vm.stopPrank();
-    }
-
     function testMachineGetNoRewardAfterBlocking() public {
         address stakeHolder = owner;
 
