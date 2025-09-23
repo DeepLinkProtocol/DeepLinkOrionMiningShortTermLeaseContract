@@ -321,11 +321,20 @@ contract NFTStaking is
         if (phase == 2) {
             return REWARD_DURATION * 2;
         }
-        return REWARD_DURATION * 3;
+        if (phase == 3) {
+            return REWARD_DURATION * 3;
+        }
+        if (phase == 4) {
+            return REWARD_DURATION * 4;
+        }
+        if (phase == 5) {
+            return REWARD_DURATION * 5;
+        }
+        return 0;
     }
 
     function setPhase(uint8 _phase) external onlyOwner {
-        require(_phase >= 1 && _phase <= 3, "Invalid phase");
+        require(_phase >= 1 && _phase <= 5, "Invalid phase");
         // require(rewardEnd(), "Current phaseReward not end");
         phase = _phase;
 
@@ -333,10 +342,10 @@ contract NFTStaking is
             initRewardAmount = 180_000_000 ether;
         }
         if (phase == 2) {
-            initRewardAmount = 180_000_000 ether + 240_000_000 ether;
+            initRewardAmount =  240_000_000 ether;
         }
-        if (phase == 3) {
-            initRewardAmount = 180_000_000 ether + 240_000_000 ether + 580_000_000 ether;
+        if (phase == 3 || phase == 4 || phase == 5) {
+            initRewardAmount =  580_000_000 ether;
         }
 
         dailyRewardAmount = initRewardAmount / 60;
@@ -1051,10 +1060,6 @@ contract NFTStaking is
     }
 
     function getDailyRewardAmount() public view returns (uint256) {
-        uint256 remainingSupply = initRewardAmount - totalDistributedRewardAmount;
-        if (dailyRewardAmount > remainingSupply) {
-            return remainingSupply;
-        }
         return dailyRewardAmount;
     }
 
