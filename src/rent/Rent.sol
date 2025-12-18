@@ -120,6 +120,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(string => bool) public rentWhitelist;
     mapping(address => bool) public adminsToSetRentWhiteList;
     mapping(string => bool) public machine2ProxyRented;
+    mapping(string => address) public machine2ProxyRentPayer;
+    struct TokenPriceInfo{
+        uint256 price;
+        uint256 timestamp;
+    }
+    TokenPriceInfo public tokenPriceInfo;
 
     event RentMachine(
         address indexed machineOnwer,
@@ -151,6 +157,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
     );
     event PayBackFee(string machineId, uint256 rentId, address renter, uint256 amount);
+    event PayBackPointFee(string machineId, uint256 rentId, address renter, uint256 amount);
+    event RentTime(uint256 totalRentSenconds, uint256 usedRentSeconds);
     event PayToContractOnRent(uint256 rentId, address renter, uint256 totalRentFee);
     event RentFee(uint256 rentId, address renter, uint256 baseRentFee, uint256 extraRentFee, uint256 platformFee);
 
@@ -190,6 +198,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error RenTimeCannotOverMachineUnstakeTime();
     error MachineCanNotRentWithin100BlocksAfterLastRent();
     error BalanceNotEnough();
+    error PointNotEnough();
     error RentEnd();
     error RentNotEnd();
     error NotRenter();
@@ -251,7 +260,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function _authorizeUpgrade(address newImplementation) internal view override {
         require(newImplementation != address(0), ZeroAddress());
-        require(msg.sender == canUpgradeAddress, CanNotUpgrade(msg.sender));
+        require(msg.sender == owner(), CanNotUpgrade(msg.sender));
     }
 
     function setCanUpgradeAddress(address addr) external onlyOwner {
@@ -427,39 +436,89 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return (endAt - block.timestamp / 1 hours, _reservedAmount, rentFee);
     }
 
-    function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+    function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256){
         uint256 baseMachinePrice = getBaseMachinePrice(machineId, rentSeconds);
         uint256 extraRentFee = getExtraRentFee(machineId, rentSeconds);
         (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
         uint256 platformFee = (baseMachinePrice + extraRentFee) * platformFeeRate / 100;
-        return baseMachinePrice + extraRentFee + platformFee;
+        uint256 totalFee = baseMachinePrice + extraRentFee + platformFee;
+        return totalFee;
     }
 
-    function getBaseMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+    function getMachinePriceV2(string memory machineId, uint256 rentSeconds) public view returns (uint256){
+        uint256 baseMachinePrice = getBaseMachinePrice(machineId, rentSeconds);
+        uint256 extraRentFee = getExtraRentFee(machineId, rentSeconds);
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+        uint256 platformFee = (baseMachinePrice + extraRentFee) * platformFeeRate / 100;
+        uint256 totalFee = baseMachinePrice + platformFee;
+        return totalFee;
+    }
+
+    function getMachinePriceInUSD(string memory machineId, uint256 rentSeconds) public view returns  ( uint256 totalFee, uint256 baseMachinePrice, uint256 extraRentFee, uint256 platformFee) {
+        baseMachinePrice = getBaseMachinePriceInUSD(machineId, rentSeconds);
+        extraRentFee = getExtraRentFeeInUSD(machineId, rentSeconds);
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+        platformFee = (baseMachinePrice + extraRentFee) * platformFeeRate / 100;
+        totalFee = baseMachinePrice + extraRentFee + platformFee;
+        return (totalFee, baseMachinePrice, extraRentFee, platformFee);
+    }
+
+    function getBaseMachinePriceInUSD(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
         (, uint256 calcPointInFact,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
         require(calcPointInFact > 0, ZeroCalcPoint());
 
         // calcPont factor : 10000 ; ONE_CALC_POINT_USD_VALUE_PER_MONTH factor: 10000
         uint256 totalFactor = FACTOR * FACTOR;
-        uint256 dlcUSDPrice = oracle.getTokenPriceInUSD(10, address(feeToken));
 
         uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPointInFact * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
             / 60 / 60 / totalFactor;
         rentFeeUSD = rentFeeUSD * 6 / 10; // 60% of the total rent fee
+        return rentFeeUSD;
+    }
+
+    function setTokenPriceInUSD(uint256 price) external  {
+        require(price > 0, "invalid price");
+        require(msg.sender == address(0xf050e9C7425A9f6F7496F5dd287F9A3575751Fc6), "has no permission");
+        tokenPriceInfo.price = price;
+        tokenPriceInfo.timestamp = block.timestamp;
+    }
+
+    function getTokenPrice() internal view returns (uint256) {
+        if (tokenPriceInfo.timestamp > 0&& tokenPriceInfo.price > 0){
+            return tokenPriceInfo.price;
+        }
+        return oracle.getTokenPriceInUSD(10, address(feeToken));
+    }
+
+    function getBaseMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+
+        uint256 rentFeeUSD = getBaseMachinePriceInUSD(machineId,rentSeconds);
+        uint256 dlcUSDPrice = getTokenPrice();
+
         uint256 baseRentFeeUSD = 1e18 * rentFeeUSD / dlcUSDPrice;
         return baseRentFeeUSD;
     }
 
-    function getExtraRentFee(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+    function getExtraRentFeeInUSD(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
         uint256 rentMinutes = rentSeconds / 60;
 
         uint256 fee = stakingContract.getMachineExtraRentFee(machineId) * rentMinutes;
         if (fee == 0) {
             return 0;
         }
-        uint256 dlcUSDPrice = oracle.getTokenPriceInUSD(10, address(feeToken));
-        uint256 baseRentFeeUSD = 1e18 * fee / dlcUSDPrice;
-        return baseRentFeeUSD;
+
+        return fee;
+    }
+
+    function getExtraRentFeeInPoint(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        return getExtraRentFeeInUSD(machineId, rentSeconds) * 1e18 *1000 / 1e6  ;
+    }
+
+    function getExtraRentFee(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        uint256 dlcUSDPrice = getTokenPrice();
+        uint256 fee = getExtraRentFeeInUSD(machineId, rentSeconds);
+        uint256 baseRentFeeDLC = 1e18 * fee / dlcUSDPrice;
+        return baseRentFeeDLC;
     }
 
     function inRentWhiteList(string calldata machineId) public view returns (bool) {
@@ -486,6 +545,16 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _rentMachine(msg.sender, msg.sender, machineId, rentSeconds);
     }
 
+    function rentMachineV2(string calldata machineId, uint256 rentSeconds) external {
+        _rentMachineV2(msg.sender, msg.sender, machineId, rentSeconds);
+    }
+
+    function rentProxyMachineV2(address renter, string calldata machineId, uint256 rentSeconds) external {
+        require(msg.sender != renter, RenterAndPayerIsSame());
+        _rentMachineV2(msg.sender, renter, machineId, rentSeconds);
+    }
+
+
     function rentProxyMachine(address renter, string calldata machineId, uint256 rentSeconds) external {
         require(msg.sender != renter, RenterAndPayerIsSame());
         _rentMachine(msg.sender, renter, machineId, rentSeconds);
@@ -493,7 +562,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function _rentMachine(address payer, address renter, string calldata machineId, uint256 rentSeconds) internal {
         require(inRentWhiteList(machineId), NotValidMachineId());
-        require(rentSeconds >= 10 minutes && rentSeconds <= 2 hours, InvalidRentDuration(rentSeconds));
+        require(rentSeconds >= 10 minutes && rentSeconds <= 10 hours, InvalidRentDuration(rentSeconds));
         require(canRent(machineId), MachineCanNotRent());
 
         (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
@@ -504,7 +573,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(rewardEndAt > block.timestamp, RewardNotStart());
         uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, rewardDuration);
         require(rentSeconds <= maxRentDuration, RentDurationTooLong(rentSeconds, maxRentDuration));
-        machine2ProxyRented[machineId] = msg.sender != renter;
+        bool isProxyRent = msg.sender != renter;
+        require(msg.sender == payer, "invalid payer");
+        machine2ProxyRented[machineId] = isProxyRent;
+        if (isProxyRent){
+            machine2ProxyRentPayer[machineId] = payer;
+        }
 
         uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
         if (lastRentEndBlock != 0) {
@@ -539,7 +613,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         feeInfo.platformFee = platformFee;
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
-        feeToken.transferFrom(msg.sender, address(this), totalRentFee);
+        feeToken.transferFrom(payer, address(this), totalRentFee);
         emit RentFee(lastRentId, msg.sender, baseRentFee, extraRentFee, platformFee);
         emit PayToContractOnRent(lastRentId, msg.sender, totalRentFee);
 
@@ -549,6 +623,76 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, renter, baseRentFee);
     }
 
+    function _rentMachineV2(address payer, address renter, string calldata machineId, uint256 rentSeconds) internal {
+        require(inRentWhiteList(machineId), NotValidMachineId());
+        require(rentSeconds >= 10 minutes && rentSeconds <= 10 hours, InvalidRentDuration(rentSeconds));
+        require(canRent(machineId), MachineCanNotRent());
+
+        (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
+        require(block.timestamp + rentSeconds < endAtTimestamp, RenTimeCannotOverMachineUnstakeTime());
+        uint256 rewardDuration = stakingContract.getRewardDuration();
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        require(rewardEndAt > rewardDuration, RewardNotStart());
+        require(rewardEndAt > block.timestamp, RewardNotStart());
+        uint256 maxRentDuration = Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, rewardDuration);
+        require(rentSeconds <= maxRentDuration, RentDurationTooLong(rentSeconds, maxRentDuration));
+        bool isProxyRent = msg.sender != renter;
+        require(msg.sender == payer, "invalid payer");
+        machine2ProxyRented[machineId] = isProxyRent;
+        if (isProxyRent){
+            machine2ProxyRentPayer[machineId] = payer;
+        }
+
+        uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
+        if (lastRentEndBlock != 0) {
+            require(block.number > lastRentEndBlock + 30, MachineCanNotRentWithin100BlocksAfterLastRent());
+        }
+
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+
+        uint256 baseRentFee = getBaseMachinePrice(machineId, rentSeconds);
+        uint256 extraRentFee = getExtraRentFee(machineId, rentSeconds);
+        uint256 extraRentFeeInPoint = getExtraRentFeeInPoint(machineId, rentSeconds);
+
+        uint256 platformFee = (baseRentFee + extraRentFee) * platformFeeRate / 100;
+        uint256 totalRentFee = baseRentFee + platformFee;
+        require(feeToken.balanceOf(payer) >= totalRentFee, BalanceNotEnough());
+        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        require(pointToken.balanceOf(payer) >= extraRentFeeInPoint, PointNotEnough());
+
+        uint256 _now = block.timestamp;
+
+        // save rent info
+        lastRentId = getNextRentId();
+        rentId2RentInfo[lastRentId] = RentInfo({
+            stakeHolder: machineHolder,
+            machineId: machineId,
+            rentStatTime: _now,
+            rentEndTime: _now + rentSeconds,
+            renter: renter
+        });
+        machineId2RentId[machineId] = lastRentId;
+        renter2RentIds[renter].push(lastRentId);
+
+        FeeInfo memory feeInfo;
+        feeInfo.baseFee = baseRentFee;
+        feeInfo.extraFee = extraRentFeeInPoint;
+        feeInfo.platformFee = platformFee;
+        rentId2FeeInfoInDLC[lastRentId] = feeInfo;
+
+        feeToken.transferFrom(payer, address(this), totalRentFee);
+        pointToken.transferFrom(payer, address(this), extraRentFeeInPoint);
+
+        emit RentFee(lastRentId, msg.sender, baseRentFee, extraRentFee, platformFee);
+        emit PayToContractOnRent(lastRentId, msg.sender, totalRentFee);
+
+        // notify staking contract renting machine action happened
+        stakingContract.rentMachine(machineId);
+
+        emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, renter, baseRentFee);
+    }
+
+
     function proxyRenewRent(address renter, string memory machineId, uint256 additionalRentSeconds) external {
         _renewRent(renter, machineId, additionalRentSeconds);
     }
@@ -557,20 +701,28 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _renewRent(msg.sender, machineId, additionalRentSeconds);
     }
 
+    function proxyRenewRentV2(address renter, string memory machineId, uint256 additionalRentSeconds) external {
+        _renewRentV2(renter, machineId, additionalRentSeconds);
+    }
+
+    function renewRentV2(string memory machineId, uint256 additionalRentSeconds) external {
+        _renewRentV2(msg.sender, machineId, additionalRentSeconds);
+    }
+
     function _renewRent(address renter, string memory machineId, uint256 additionalRentSeconds) internal {
         uint256 rentId = machineId2RentId[machineId];
         require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, RentEnd());
         require(rentId2RentInfo[rentId].renter == renter, NotRenter());
         require(isRented(machineId), MachineNotRented());
         require(
-            additionalRentSeconds >= 10 minutes && additionalRentSeconds <= 2 hours,
+            additionalRentSeconds >= 10 minutes && additionalRentSeconds <= 10 hours,
             InvalidRentDuration(additionalRentSeconds)
         );
 
         (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
         uint256 maxRentDuration =
-            Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, stakingContract.getRewardDuration());
+                            Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, stakingContract.getRewardDuration());
 
         require(
             rentId2RentInfo[rentId].rentEndTime + additionalRentSeconds < endAtTimestamp,
@@ -609,13 +761,147 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit RenewRent(machineHolder, machineId, rentId, additionalRentSeconds, additionalRentFeeInFact, renter);
     }
 
+
+    function _renewRentV2(address renter, string memory machineId, uint256 additionalRentSeconds) internal {
+        uint256 rentId = machineId2RentId[machineId];
+        require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, RentEnd());
+        require(rentId2RentInfo[rentId].renter == renter, NotRenter());
+        require(isRented(machineId), MachineNotRented());
+        require(
+            additionalRentSeconds >= 10 minutes && additionalRentSeconds <= 10 hours,
+            InvalidRentDuration(additionalRentSeconds)
+        );
+
+        (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
+        (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        uint256 maxRentDuration =
+            Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, stakingContract.getRewardDuration());
+
+        require(
+            rentId2RentInfo[rentId].rentEndTime + additionalRentSeconds < endAtTimestamp,
+            RenTimeCannotOverMachineUnstakeTime()
+        );
+
+        if (msg.sender != renter) {
+            require(machine2ProxyRented[machineId] == true, NotProxyRentingMachine());
+        }
+
+        uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
+        require(newRentDuration <= maxRentDuration, RentDurationTooLong(newRentDuration, maxRentDuration));
+
+        (,, uint256 platformFeeRate) = stakingContract.getMachineConfig(machineId);
+
+        uint256 baseRentFee = getBaseMachinePrice(machineId, additionalRentSeconds);
+        uint256 extraRentFee = getExtraRentFee(machineId, additionalRentSeconds);
+        uint256 platformFee = (baseRentFee + extraRentFee) * platformFeeRate / 100;
+        uint256 extraRentFeeInPoint = getExtraRentFeeInPoint(machineId, additionalRentSeconds);
+
+        uint256 additionalRentFeeInFact = baseRentFee + platformFee;
+        require(feeToken.balanceOf(msg.sender) >= additionalRentFeeInFact, BalanceNotEnough());
+
+        // Update rent end time
+        rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
+
+        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
+        feeInfo.baseFee += baseRentFee;
+        feeInfo.extraFee += extraRentFeeInPoint;
+        feeInfo.platformFee += platformFee;
+
+        feeToken.transferFrom(msg.sender, address(this), platformFee + extraRentFee + baseRentFee);
+        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        pointToken.transferFrom(msg.sender, address(this), extraRentFeeInPoint);
+        (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
+
+        // update total burned amount
+        stakingContract.renewRentMachine(machineId, additionalRentFeeInFact);
+        emit RenewRent(machineHolder, machineId, rentId, additionalRentSeconds, additionalRentFeeInFact, renter);
+    }
+
+    function endRentMachineV2(string calldata machineId) external {
+        uint256 rentId = machineId2RentId[machineId];
+        RentInfo memory rentInfo = rentId2RentInfo[rentId];
+        bool isProxyRenting = machine2ProxyRented[machineId];
+        address payer = machine2ProxyRentPayer[machineId];
+        if (msg.sender != rentInfo.renter && msg.sender != payer) {
+            require(rentInfo.rentEndTime <= block.timestamp, RentNotEnd());
+        } else {
+            if (isProxyRenting){
+                require(payer != address(0), "proxy rent payer is zero address");
+            }else{
+                payer = msg.sender;
+            }
+        }
+        machine2ProxyRented[machineId] == false;
+        require(rentInfo.rentEndTime > 0, RentingNotExist());
+
+        (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
+
+        FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
+
+        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        uint256 _now = block.timestamp;
+        if (_now < rentInfo.rentEndTime) {
+            uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
+            uint256 usdDuration = _now - rentInfo.rentStatTime;
+
+            uint256 totalRentDLCFee = feeInfo.baseFee  + feeInfo.platformFee;
+
+            feeInfo.baseFee = feeInfo.baseFee * usdDuration / rentDuration;
+            uint256 usedExtraRentFee = feeInfo.extraFee * usdDuration / rentDuration;
+            uint256 paybackExtraFee = feeInfo.extraFee - usedExtraRentFee;
+            feeInfo.extraFee = feeInfo.extraFee * usdDuration / rentDuration;
+            feeInfo.platformFee = feeInfo.platformFee * usdDuration / rentDuration;
+
+            uint256 payBackDLCFee = totalRentDLCFee - feeInfo.baseFee - feeInfo.platformFee;
+            if (payBackDLCFee > 0) {
+                feeToken.transfer(payer, payBackDLCFee);
+                emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+            }
+            if (feeInfo.extraFee > 0) {
+                pointToken.transfer(payer, paybackExtraFee);
+                emit PayBackPointFee(machineId, rentId, payer, paybackExtraFee);
+            }
+
+            emit RentTime(rentDuration,usdDuration);
+        }
+
+        if (feeInfo.baseFee > 0) {
+            feeToken.approve(address(this), feeInfo.baseFee);
+            feeToken.burnFrom(address(this), feeInfo.baseFee);
+            emit BurnedFee(machineId, lastRentId, block.timestamp, feeInfo.baseFee, rentInfo.renter, 1);
+            totalBurnedAmount += feeInfo.baseFee;
+        }
+
+        if (feeInfo.extraFee > 0) {
+            pointToken.transfer(machineHolder, feeInfo.extraFee);
+            emit ExtraRentFeeTransfer(machineHolder, lastRentId, feeInfo.extraFee);
+        }
+        if (feeInfo.platformFee > 0) {
+            distributePlatformFee(rentId, machineId, feeInfo.platformFee);
+        }
+
+        stakingContract.endRentMachine(machineId, feeInfo.baseFee, feeInfo.extraFee);
+        machineId2LastRentEndBlock[machineId] = block.number;
+        delete rentId2FeeInfoInDLC[rentId];
+        emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
+    }
+
+
     function endRentMachine(string calldata machineId) external {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
-        if (msg.sender != rentInfo.renter) {
+        bool isProxyRenting = machine2ProxyRented[machineId];
+        address payer = machine2ProxyRentPayer[machineId];
+        if (msg.sender != rentInfo.renter && msg.sender != payer) {
             require(rentInfo.rentEndTime <= block.timestamp, RentNotEnd());
         } else {
-            require(machine2ProxyRented[machineId] == false, ProxyRentCanNotEndByRenter());
+            if (isProxyRenting){
+                require(payer != address(0), "proxy rent payer is zero address");
+            }else{
+                payer = msg.sender;
+            }
         }
         machine2ProxyRented[machineId] == false;
         require(rentInfo.rentEndTime > 0, RentingNotExist());
@@ -639,8 +925,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
             uint256 payBackFee = totalRentFee - feeInfo.baseFee - feeInfo.extraFee - feeInfo.platformFee;
             if (payBackFee > 0) {
-                feeToken.transfer(rentInfo.renter, payBackFee);
-                emit PayBackFee(machineId, rentId, rentInfo.renter, payBackFee);
+                feeToken.transfer(payer, payBackFee);
+                emit PayBackFee(machineId, rentId, payer, payBackFee);
             }
         }
 
