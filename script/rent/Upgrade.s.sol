@@ -5,6 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 //import  {Options} from  "openzeppelin-foundry-upgrades/Options.sol";
 import "forge-std/console.sol";
+import "../../src/rent/Rent.sol";
 
 contract Upgrade is Script {
     function run() public {
@@ -24,7 +25,13 @@ contract Upgrade is Script {
         address rentProxy = vm.envAddress("RENT_PROXY");
         console.log("Rent Proxy Address:", rentProxy);
 
+        // 升级合约
         Upgrades.upgradeProxy(rentProxy, "Rent.sol:Rent", "");
+        console.log("Upgrade completed");
+
+        // 调用 reinitialize 初始化 ReentrancyGuard
+        Rent(rentProxy).reinitialize();
+        console.log("Reinitialize completed");
 
         vm.stopBroadcast();
     }

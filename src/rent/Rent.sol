@@ -4,18 +4,19 @@ pragma solidity ^0.8.20;
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "../interface/IStakingContract.sol";
 import "../interface/IRewardToken.sol";
 import "../interface/IRentContract.sol";
 import "../interface/IPrecompileContract.sol";
-import "forge-std/console.sol";
 import "../interface/IDBCAIContract.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../interface/IOracle.sol";
 
 /// @custom:oz-upgrades-from OldRent
-contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
     uint256 public constant REPORT_RESERVE_AMOUNT = 10_000 ether;
     uint256 public constant SLASH_AMOUNT = 10_000 ether;
@@ -183,6 +184,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     event AddBackCalcPointOnOnline(string machineId, uint256 calcPoint);
     event PlatformFeeTransfer(address indexed machineOnwer, uint256 rentId, uint256 amount);
+    event TokenPriceUpdated(uint256 oldPrice, uint256 newPrice, uint256 timestamp);
 
     error NotApproveAdmin();
     error ZeroCalcPoint();
@@ -250,6 +252,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ) public initializer {
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
         feeToken = IRewardToken(_feeToken);
         precompileContract = IPrecompileContract(_precompileContract);
         stakingContract = IStakingContract(_stakingContract);
@@ -258,20 +261,29 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         canUpgradeAddress = msg.sender;
     }
 
+    /// @notice Reinitialize function for upgrading from previous versions
+    /// @dev This function should be called after upgrading to initialize ReentrancyGuard
+    function reinitialize() public reinitializer(2) {
+        __ReentrancyGuard_init();
+    }
+
     function _authorizeUpgrade(address newImplementation) internal view override {
         require(newImplementation != address(0), ZeroAddress());
         require(msg.sender == owner(), CanNotUpgrade(msg.sender));
     }
 
     function setCanUpgradeAddress(address addr) external onlyOwner {
+        require(addr != address(0), ZeroAddress());
         canUpgradeAddress = addr;
     }
 
     function setDBCAIContract(address addr) external onlyOwner {
+        require(addr != address(0), ZeroAddress());
         dbcAIContract = IDBCAIContract(addr);
     }
 
     function setOracle(address addr) external onlyOwner {
+        require(addr != address(0), ZeroAddress());
         oracle = IOracle(addr);
     }
 
@@ -286,6 +298,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function setStakingContract(address addr) external onlyOwner {
+        require(addr != address(0), ZeroAddress());
         stakingContract = IStakingContract(addr);
     }
 
@@ -479,8 +492,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function setTokenPriceInUSD(uint256 price) external  {
         require(price > 0, "invalid price");
         require(msg.sender == address(0xf050e9C7425A9f6F7496F5dd287F9A3575751Fc6), "has no permission");
+        uint256 oldPrice = tokenPriceInfo.price;
         tokenPriceInfo.price = price;
         tokenPriceInfo.timestamp = block.timestamp;
+        emit TokenPriceUpdated(oldPrice, price, block.timestamp);
     }
 
     function getTokenPrice() internal view returns (uint256) {
@@ -613,7 +628,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         feeInfo.platformFee = platformFee;
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
-        feeToken.transferFrom(payer, address(this), totalRentFee);
+        SafeERC20.safeTransferFrom(feeToken, payer, address(this), totalRentFee);
         emit RentFee(lastRentId, msg.sender, baseRentFee, extraRentFee, platformFee);
         emit PayToContractOnRent(lastRentId, msg.sender, totalRentFee);
 
@@ -680,8 +695,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         feeInfo.platformFee = platformFee;
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
-        feeToken.transferFrom(payer, address(this), totalRentFee);
-        pointToken.transferFrom(payer, address(this), extraRentFeeInPoint);
+        SafeERC20.safeTransferFrom(feeToken, payer, address(this), totalRentFee);
+        SafeERC20.safeTransferFrom(pointToken, payer, address(this), extraRentFeeInPoint);
 
         emit RentFee(lastRentId, msg.sender, baseRentFee, extraRentFee, platformFee);
         emit PayToContractOnRent(lastRentId, msg.sender, totalRentFee);
@@ -747,12 +762,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // Update rent end time
         rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
 
-        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
+        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[rentId];
         feeInfo.baseFee += baseRentFee;
         feeInfo.extraFee += extraRentFee;
         feeInfo.platformFee += platformFee;
 
-        feeToken.transferFrom(msg.sender, address(this), platformFee + extraRentFee + baseRentFee);
+        SafeERC20.safeTransferFrom(feeToken, msg.sender, address(this), platformFee + extraRentFee + baseRentFee);
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
@@ -802,14 +817,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // Update rent end time
         rentId2RentInfo[rentId].rentEndTime += additionalRentSeconds;
 
-        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[lastRentId];
+        FeeInfo storage feeInfo = rentId2FeeInfoInDLC[rentId];
         feeInfo.baseFee += baseRentFee;
         feeInfo.extraFee += extraRentFeeInPoint;
         feeInfo.platformFee += platformFee;
 
-        feeToken.transferFrom(msg.sender, address(this), platformFee + extraRentFee + baseRentFee);
+        SafeERC20.safeTransferFrom(feeToken, msg.sender, address(this), platformFee + baseRentFee);
         IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
-        pointToken.transferFrom(msg.sender, address(this), extraRentFeeInPoint);
+        SafeERC20.safeTransferFrom(pointToken, msg.sender, address(this), extraRentFeeInPoint);
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
         // update total burned amount
@@ -817,7 +832,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit RenewRent(machineHolder, machineId, rentId, additionalRentSeconds, additionalRentFeeInFact, renter);
     }
 
-    function endRentMachineV2(string calldata machineId) external {
+    function endRentMachineV2(string calldata machineId) external nonReentrant {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
         bool isProxyRenting = machine2ProxyRented[machineId];
@@ -831,40 +846,52 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 payer = msg.sender;
             }
         }
-        machine2ProxyRented[machineId] == false;
+        machine2ProxyRented[machineId] = false;
         require(rentInfo.rentEndTime > 0, RentingNotExist());
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
         FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
-        delete rentId2RentInfo[rentId];
-        delete machineId2RentId[machineId];
 
         IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+
+        // 计算实际可用的 Point Token（取记录值和实际余额的较小值）
+        uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
+
         uint256 _now = block.timestamp;
+        uint256 paybackExtraFee = 0;
         if (_now < rentInfo.rentEndTime) {
             uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
-            uint256 usdDuration = _now - rentInfo.rentStatTime;
+            uint256 usedDuration = _now - rentInfo.rentStatTime;
 
-            uint256 totalRentDLCFee = feeInfo.baseFee  + feeInfo.platformFee;
+            uint256 totalRentDLCFee = feeInfo.baseFee + feeInfo.platformFee;
 
-            feeInfo.baseFee = feeInfo.baseFee * usdDuration / rentDuration;
-            uint256 usedExtraRentFee = feeInfo.extraFee * usdDuration / rentDuration;
-            uint256 paybackExtraFee = feeInfo.extraFee - usedExtraRentFee;
-            feeInfo.extraFee = feeInfo.extraFee * usdDuration / rentDuration;
-            feeInfo.platformFee = feeInfo.platformFee * usdDuration / rentDuration;
+            // 使用乘法优先避免精度损失: (value * usedDuration) / rentDuration
+            uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
+            uint256 usedExtraRentFee = (availablePointToken * usedDuration) / rentDuration;
+            uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
 
-            uint256 payBackDLCFee = totalRentDLCFee - feeInfo.baseFee - feeInfo.platformFee;
+            paybackExtraFee = availablePointToken - usedExtraRentFee;
+            uint256 payBackDLCFee = totalRentDLCFee - usedBaseFee - usedPlatformFee;
+
+            feeInfo.baseFee = usedBaseFee;
+            feeInfo.extraFee = usedExtraRentFee;
+            feeInfo.platformFee = usedPlatformFee;
+
             if (payBackDLCFee > 0) {
-                feeToken.transfer(payer, payBackDLCFee);
+                SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
                 emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
             }
-            if (feeInfo.extraFee > 0) {
-                pointToken.transfer(payer, paybackExtraFee);
+            if (paybackExtraFee > 0) {
+                SafeERC20.safeTransfer(pointToken, payer, paybackExtraFee);
                 emit PayBackPointFee(machineId, rentId, payer, paybackExtraFee);
             }
 
-            emit RentTime(rentDuration,usdDuration);
+            emit RentTime(rentDuration, usedDuration);
+        } else {
+            // 租期已结束，全部可用的 extraFee 给 machineHolder
+            feeInfo.extraFee = availablePointToken;
         }
 
         if (feeInfo.baseFee > 0) {
@@ -875,7 +902,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         if (feeInfo.extraFee > 0) {
-            pointToken.transfer(machineHolder, feeInfo.extraFee);
+            SafeERC20.safeTransfer(pointToken, machineHolder, feeInfo.extraFee);
             emit ExtraRentFeeTransfer(machineHolder, lastRentId, feeInfo.extraFee);
         }
         if (feeInfo.platformFee > 0) {
@@ -884,12 +911,16 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         stakingContract.endRentMachine(machineId, feeInfo.baseFee, feeInfo.extraFee);
         machineId2LastRentEndBlock[machineId] = block.number;
+
+        // 状态删除放在最后
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
         delete rentId2FeeInfoInDLC[rentId];
         emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
 
 
-    function endRentMachine(string calldata machineId) external {
+    function endRentMachine(string calldata machineId) external nonReentrant {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
         bool isProxyRenting = machine2ProxyRented[machineId];
@@ -903,29 +934,33 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 payer = msg.sender;
             }
         }
-        machine2ProxyRented[machineId] == false;
+        machine2ProxyRented[machineId] = false;
         require(rentInfo.rentEndTime > 0, RentingNotExist());
 
         (address machineHolder,) = getMachineHolderAndCalcPoint(machineId);
 
         FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
-        delete rentId2RentInfo[rentId];
-        delete machineId2RentId[machineId];
 
         uint256 _now = block.timestamp;
         if (_now < rentInfo.rentEndTime) {
             uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
-            uint256 usdDuration = _now - rentInfo.rentStatTime;
+            uint256 usedDuration = _now - rentInfo.rentStatTime;
 
             uint256 totalRentFee = feeInfo.baseFee + feeInfo.extraFee + feeInfo.platformFee;
 
-            feeInfo.baseFee = feeInfo.baseFee * usdDuration / rentDuration;
-            feeInfo.extraFee = feeInfo.extraFee * usdDuration / rentDuration;
-            feeInfo.platformFee = feeInfo.platformFee * usdDuration / rentDuration;
+            // 使用乘法优先避免精度损失
+            uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
+            uint256 usedExtraFee = (feeInfo.extraFee * usedDuration) / rentDuration;
+            uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
 
-            uint256 payBackFee = totalRentFee - feeInfo.baseFee - feeInfo.extraFee - feeInfo.platformFee;
+            uint256 payBackFee = totalRentFee - usedBaseFee - usedExtraFee - usedPlatformFee;
+
+            feeInfo.baseFee = usedBaseFee;
+            feeInfo.extraFee = usedExtraFee;
+            feeInfo.platformFee = usedPlatformFee;
+
             if (payBackFee > 0) {
-                feeToken.transfer(payer, payBackFee);
+                SafeERC20.safeTransfer(feeToken, payer, payBackFee);
                 emit PayBackFee(machineId, rentId, payer, payBackFee);
             }
         }
@@ -938,7 +973,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
 
         if (feeInfo.extraFee > 0) {
-            feeToken.transfer(machineHolder, feeInfo.extraFee);
+            SafeERC20.safeTransfer(feeToken, machineHolder, feeInfo.extraFee);
             emit ExtraRentFeeTransfer(machineHolder, lastRentId, feeInfo.extraFee);
         }
         if (feeInfo.platformFee > 0) {
@@ -947,6 +982,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         stakingContract.endRentMachine(machineId, feeInfo.baseFee, feeInfo.extraFee);
         machineId2LastRentEndBlock[machineId] = block.number;
+
+        // 状态删除放在最后
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
         delete rentId2FeeInfoInDLC[rentId];
         emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
@@ -1203,8 +1242,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function distributePlatformFee(uint256 rentId, string memory machineId, uint256 platformFee) internal {
         (address[] memory beneficiaries, uint256[] memory rates,) = stakingContract.getMachineConfig(machineId);
         for (uint8 i = 0; i < beneficiaries.length; i++) {
-            feeToken.transfer(beneficiaries[i], platformFee * rates[i] / 100);
-            emit PlatformFeeTransfer(beneficiaries[i], rentId, platformFee * rates[i] / 100);
+            uint256 amount = platformFee * rates[i] / 100;
+            SafeERC20.safeTransfer(feeToken, beneficiaries[i], amount);
+            emit PlatformFeeTransfer(beneficiaries[i], rentId, amount);
         }
     }
 }
