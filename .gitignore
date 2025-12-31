@@ -1,0 +1,26 @@
+# Env files (NEVER commit private keys!)
+.env
+.env.*
+!.env.example
+
+# Foundry
+cache/
+out/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Broadcast (contains deployment tx data)
+broadcast/
+
+# Sensitive
+*.pem
+*.key
