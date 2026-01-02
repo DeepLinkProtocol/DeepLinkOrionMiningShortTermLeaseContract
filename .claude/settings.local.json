@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git check-ignore:*)",
+      "Bash(where forge:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nchore: add .gitignore to protect sensitive files\n\n- Ignore .env files (prevent private key leaks)\n- Ignore cache/ and out/ directories\n- Ignore broadcast/ deployment data\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git submodule:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(forge update:*)",
+      "Bash(git diff:*)",
+      "Bash(forge script --help:*)",
+      "Bash(curl:*)",
+      "Bash(for i in {1..10})",
+      "Bash(do echo \"Slot $i:\")",
+      "Bash(done)",
+      "Bash(cat:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: add deployment guide and update contract addresses\n\n- Add deployment_guide.md with complete upgrade instructions\n- Update contract_address.md with new implementation address\n- Add UpgradeManual.s.sol for manual contract upgrades\n- Update .env.example with better documentation\n- Set evm_version to london in foundry.toml\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(forge build:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
