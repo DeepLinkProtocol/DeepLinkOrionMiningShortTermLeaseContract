@@ -358,7 +358,7 @@ contract NFTStaking is
         rewardStartGPUThreshold = _threshold;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
+    function _authorizeUpgrade(address newImplementation) internal view override {
         require(newImplementation != address(0), ZeroAddress());
         require(msg.sender == canUpgradeAddress, CanNotUpgrade(msg.sender));
     }

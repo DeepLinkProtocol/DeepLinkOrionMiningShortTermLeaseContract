@@ -270,7 +270,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
     function _authorizeUpgrade(address newImplementation) internal view override {
         require(newImplementation != address(0), ZeroAddress());
-        require(msg.sender == owner(), CanNotUpgrade(msg.sender));
+        require(msg.sender == canUpgradeAddress, CanNotUpgrade(msg.sender));
     }
 
     function setCanUpgradeAddress(address addr) external onlyOwner {
@@ -1388,12 +1388,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
 
-    /// @notice 管理员强制清理不一致的租赁状态
+    /// @notice 强制清理不一致的租赁状态
     /// @dev 用于修复 Rent 合约有租赁记录但 Staking 合约 isRentedByUser 为 false 的情况
-    function forceCleanupRentInfo(string calldata machineId) external onlyOwner {
+    /// @dev 只有租赁到期后才能调用
+    function forceCleanupRentInfo(string calldata machineId) external {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
         require(rentInfo.renter != address(0), "no rent info to cleanup");
+        require(block.timestamp >= rentInfo.rentEndTime, "rent not expired");
 
         machineId2LastRentEndBlock[machineId] = block.number;
         delete rentId2RentInfo[rentId];
