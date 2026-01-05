@@ -42,4 +42,5 @@ interface IStakingContract {
 
     function isPersonalMachine(string memory machineId) external view returns (bool);
     function updateMachineRegisterStatus(string memory machineId,bool registered ) external;
+    function endRentMachineWhenMachineOfflineAfterRentEnd(string calldata machineId) external;
 }

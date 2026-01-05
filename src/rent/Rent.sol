@@ -158,6 +158,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
     );
     event PayBackFee(string machineId, uint256 rentId, address renter, uint256 amount);
+    event PayBackExtraFee(string machineId, uint256 rentId, address renter, uint256 amount);
     event PayBackPointFee(string machineId, uint256 rentId, address renter, uint256 amount);
     event RentTime(uint256 totalRentSenconds, uint256 usedRentSeconds);
     event PayToContractOnRent(uint256 rentId, address renter, uint256 totalRentFee);
@@ -526,7 +527,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function getExtraRentFeeInPoint(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
-        return getExtraRentFeeInUSD(machineId, rentSeconds) * 1e18 *1000 / 1e6  ;
+        // Reorder to avoid overflow: (feeUSD * 1e18 * 1000) / 1e6 = feeUSD * 1e15
+        // But do division first to prevent overflow: feeUSD * 1e18 / 1e6 * 1000 = feeUSD * 1e15
+        uint256 feeUSD = getExtraRentFeeInUSD(machineId, rentSeconds);
+        return feeUSD * 1e15;
     }
 
     function getExtraRentFee(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
@@ -736,8 +740,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
         (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        uint256 minEndTime = Math.min(endAtTimestamp, rewardEndAt);
+        require(minEndTime > block.timestamp, "machine or reward period expired");
         uint256 maxRentDuration =
-                            Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, stakingContract.getRewardDuration());
+                            Math.min(minEndTime - block.timestamp, stakingContract.getRewardDuration());
 
         require(
             rentId2RentInfo[rentId].rentEndTime + additionalRentSeconds < endAtTimestamp,
@@ -789,8 +795,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
         (,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
         (,, uint256 rewardEndAt) = stakingContract.getGlobalState();
+        uint256 minEndTime = Math.min(endAtTimestamp, rewardEndAt);
+        require(minEndTime > block.timestamp, "machine or reward period expired");
         uint256 maxRentDuration =
-            Math.min(Math.min(endAtTimestamp, rewardEndAt) - block.timestamp, stakingContract.getRewardDuration());
+            Math.min(minEndTime - block.timestamp, stakingContract.getRewardDuration());
 
         require(
             rentId2RentInfo[rentId].rentEndTime + additionalRentSeconds < endAtTimestamp,
@@ -1173,6 +1181,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 rentInfo.renter != address(0) && block.timestamp <= rentInfo.rentEndTime
                     && block.timestamp > rentInfo.rentStatTime
             ) {
+                // 租赁进行中机器离线，触发 slash 流程 + 按比例退费 + 清理状态
                 SlashInfo memory slashInfo = newSlashInfo(
                     rentInfo.stakeHolder,
                     rentInfo.machineId,
@@ -1184,6 +1193,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                     rentInfo.renter
                 );
                 addSlashInfoAndReport(slashInfo);
+
+                // 按比例退费并清理租赁状态
+                _terminateRentOnSlash(machineId, rentId, rentInfo);
+
                 emit SlashMachineOnOffline(
                     rentInfo.stakeHolder,
                     rentInfo.machineId,
@@ -1193,6 +1206,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                     rentInfo.rentEndTime,
                     SlashType.Offline
                 );
+            } else if (rentInfo.renter != address(0) && block.timestamp > rentInfo.rentEndTime) {
+                // 租赁已过期但未清理，强制清理租赁状态并处理费用
+                _cleanupExpiredRentOnOffline(machineId, rentId, rentInfo);
             } else {
                 stakingContract.stopRewarding(machineId);
                 emit RemoveCalcPointOnOffline(machineId);
@@ -1254,6 +1270,138 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
     function isInSlashing(string memory machineId) public view returns (bool) {
         return machineId2SlashInfo[machineId].paid == false;
+    }
+
+    /// @notice 租赁进行中机器离线时，终止租赁并按比例退费给用户
+    /// @dev Slash 流程调用此函数，按已用时间计算费用，剩余退还给租户
+    function _terminateRentOnSlash(string memory machineId, uint256 rentId, RentInfo memory rentInfo) internal {
+        FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
+
+        // 计算已用时间比例
+        uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
+        uint256 usedDuration = block.timestamp - rentInfo.rentStatTime;
+
+        // 防止除零
+        if (rentDuration == 0) {
+            rentDuration = 1;
+        }
+
+        // 计算各费用的已用部分
+        uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
+        uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
+
+        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+        uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
+        uint256 usedExtraFee = (availablePointToken * usedDuration) / rentDuration;
+
+        // 计算退还金额
+        uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee);
+        uint256 payBackExtraFee = availablePointToken - usedExtraFee;
+
+        // 获取付款人（代理租用或租户自己）
+        address payer = machine2ProxyRented[machineId] ? machine2ProxyRentPayer[machineId] : rentInfo.renter;
+        if (payer == address(0)) {
+            payer = rentInfo.renter;
+        }
+
+        // 退还 DLC 给付款人
+        if (payBackDLCFee > 0) {
+            SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+            emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+        }
+
+        // 退还 Point Token 给付款人
+        if (payBackExtraFee > 0) {
+            SafeERC20.safeTransfer(pointToken, payer, payBackExtraFee);
+            emit PayBackExtraFee(machineId, rentId, payer, payBackExtraFee);
+        }
+
+        // 销毁已用的 baseFee
+        if (usedBaseFee > 0) {
+            feeToken.approve(address(this), usedBaseFee);
+            feeToken.burnFrom(address(this), usedBaseFee);
+            emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
+            totalBurnedAmount += usedBaseFee;
+        }
+
+        // 已用的 extraFee 转给机器持有者
+        if (usedExtraFee > 0) {
+            SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, usedExtraFee);
+            emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
+        }
+
+        // 已用的 platformFee 分配给平台
+        if (usedPlatformFee > 0) {
+            distributePlatformFee(rentId, machineId, usedPlatformFee);
+        }
+
+        // 清理 Rent 合约状态
+        machineId2LastRentEndBlock[machineId] = block.number;
+        machine2ProxyRented[machineId] = false;
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
+        delete rentId2FeeInfoInDLC[rentId];
+
+        emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, block.timestamp, rentInfo.renter);
+    }
+
+    /// @notice 当机器离线且租赁已过期时，清理租赁状态并处理费用
+    /// @dev 租赁已过期（用户已使用完），费用正常分配给机器持有者
+    function _cleanupExpiredRentOnOffline(string memory machineId, uint256 rentId, RentInfo memory rentInfo) internal {
+        FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
+
+        // 销毁 baseFee
+        if (feeInfo.baseFee > 0) {
+            feeToken.approve(address(this), feeInfo.baseFee);
+            feeToken.burnFrom(address(this), feeInfo.baseFee);
+            emit BurnedFee(machineId, rentId, block.timestamp, feeInfo.baseFee, rentInfo.renter, 1);
+            totalBurnedAmount += feeInfo.baseFee;
+        }
+
+        // extraFee 转给机器持有者（租赁已完成，不退还）
+        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        if (feeInfo.extraFee > 0) {
+            uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+            uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
+            if (availablePointToken > 0) {
+                SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, availablePointToken);
+                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, availablePointToken);
+            }
+        }
+
+        // platformFee 分配给平台
+        if (feeInfo.platformFee > 0) {
+            distributePlatformFee(rentId, machineId, feeInfo.platformFee);
+        }
+
+        // 通知 Staking 合约清理状态
+        stakingContract.endRentMachineWhenMachineOfflineAfterRentEnd(machineId);
+
+        // 清理 Rent 合约状态
+        machineId2LastRentEndBlock[machineId] = block.number;
+        machine2ProxyRented[machineId] = false;
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
+        delete rentId2FeeInfoInDLC[rentId];
+
+        emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
+    }
+
+    /// @notice 管理员强制清理不一致的租赁状态
+    /// @dev 用于修复 Rent 合约有租赁记录但 Staking 合约 isRentedByUser 为 false 的情况
+    function forceCleanupRentInfo(string calldata machineId) external onlyOwner {
+        uint256 rentId = machineId2RentId[machineId];
+        RentInfo memory rentInfo = rentId2RentInfo[rentId];
+        require(rentInfo.renter != address(0), "no rent info to cleanup");
+
+        machineId2LastRentEndBlock[machineId] = block.number;
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
+        delete rentId2FeeInfoInDLC[rentId];
+        machine2ProxyRented[machineId] = false;
+
+        emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
 
     function distributePlatformFee(uint256 rentId, string memory machineId, uint256 platformFee) internal {

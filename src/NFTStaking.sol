@@ -330,11 +330,14 @@ contract NFTStaking is
         if (phase == 5) {
             return REWARD_DURATION * 5;
         }
+        if (phase == 6) {
+            return REWARD_DURATION * 7;  // 300天 + 120天 = 420天
+        }
         return 0;
     }
 
     function setPhase(uint8 _phase) external onlyOwner {
-        require(_phase >= 1 && _phase <= 5, "Invalid phase");
+        require(_phase >= 1 && _phase <= 6, "Invalid phase");
         // require(rewardEnd(), "Current phaseReward not end");
         phase = _phase;
 
@@ -344,7 +347,7 @@ contract NFTStaking is
         if (phase == 2) {
             initRewardAmount =  240_000_000 ether;
         }
-        if (phase == 3 || phase == 4 || phase == 5) {
+        if (phase == 3 || phase == 4 || phase == 5 || phase == 6) {
             initRewardAmount =  580_000_000 ether;
         }
 
@@ -962,6 +965,20 @@ contract NFTStaking is
         emit EndRentMachineFee(stakeInfo.holder, machineId, baseRentFee, extraRentFee);
     }
 
+    /// @notice 当机器离线且租赁已过期时，清理租赁状态
+    /// @dev 用于处理租赁过期但未调用 endRentMachine 导致的状态不一致
+    function endRentMachineWhenMachineOfflineAfterRentEnd(string calldata machineId) external onlyRentContract {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        machineId2Rented[machineId] = false;
+        if (stakeInfo.isRentedByUser) {
+            stakeInfo.isRentedByUser = false;
+        }
+        // 停止奖励（机器已离线）
+        _stopRewarding(machineId, false);
+        delete machineId2BeneficiaryInfos[machineId];
+        emit EndRentMachine(stakeInfo.holder, machineId, 0);
+    }
+
     function reportMachineFault(string calldata machineId, address renter) public onlyRentContract {
         if (!rewardStart()) {
             return;
@@ -975,6 +992,11 @@ contract NFTStaking is
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         emit ReportMachineFault(machineId, renter);
         tryPaySlashOnReport(stakeInfo, machineId, renter);
+
+        // 清理租赁状态（Rent 合约会同时清理自己的状态）
+        machineId2Rented[machineId] = false;
+        stakeInfo.isRentedByUser = false;
+        delete machineId2BeneficiaryInfos[machineId];
 
         _claim(machineId);
         _unStake(machineId, stakeInfo.holder);
