@@ -1010,6 +1010,18 @@ contract NFTStaking is
         }
     }
 
+    /// @notice 强制清理租赁状态（当 Rent 合约无记录但 isRentedByUser 仍为 true 时使用）
+    /// @dev 任何人可调用，但需要 Rent 合约确认该机器无租赁记录
+    function forceCleanupRentStatus(string calldata machineId) external {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        require(stakeInfo.isRentedByUser == true, "not rented");
+        require(!rentContract.isRented(machineId), "still rented in Rent contract");
+
+        stakeInfo.isRentedByUser = false;
+        machineId2Rented[machineId] = false;
+        delete machineId2BeneficiaryInfos[machineId];
+    }
+
     function isStakingButOffline(string calldata machineId) external view returns (bool) {
         StakeInfo memory stakeInfo = machineId2StakeInfos[machineId];
         return stakeInfo.calcPoint == 0 && stakeInfo.nftCount > 0;
