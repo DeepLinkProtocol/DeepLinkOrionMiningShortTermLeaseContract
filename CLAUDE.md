@@ -275,6 +275,7 @@ machineId2Rented[machineId] // 全局租赁标记
 | endRentMachine MachineNotRented | Rent/Staking 状态不一致 | 添加 `_cleanupExpiredRentOnOffline()` |
 | 租赁中离线不退费 | Slash 只惩罚不清算 | 添加 `_terminateRentOnSlash()` |
 | Slash 后状态不一致 | `_unStake()` 不清理租赁状态 | 在 `reportMachineFault()` 中清理 |
+| V1 租用退租时错误转 DLP | `endRentMachine` 把 V1 的 DLC extraFee 当成 Point Token 处理 | 在 `FeeInfo` 添加 `isV2` 字段区分 V1/V2 租用类型 |
 
 ### 管理员修复函数
 

@@ -114,6 +114,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 baseFee;
         uint256 extraFee;
         uint256 platformFee;
+        bool isV2;  // true: extraFee 是 Point Token; false: extraFee 是 DLC
     }
 
     IOracle public oracle;
@@ -630,6 +631,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         feeInfo.baseFee = baseRentFee;
         feeInfo.extraFee = extraRentFee;
         feeInfo.platformFee = platformFee;
+        feeInfo.isV2 = false;  // V1: extraFee 是 DLC
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
         SafeERC20.safeTransferFrom(feeToken, payer, address(this), totalRentFee);
@@ -697,6 +699,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         feeInfo.baseFee = baseRentFee;
         feeInfo.extraFee = extraRentFeeInPoint;
         feeInfo.platformFee = platformFee;
+        feeInfo.isV2 = true;  // V2: extraFee 是 Point Token
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
         SafeERC20.safeTransferFrom(feeToken, payer, address(this), totalRentFee);
@@ -949,58 +952,98 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
         FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
 
-        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
-        uint256 pointTokenBalance = pointToken.balanceOf(address(this));
-
-        // 计算实际可用的 Point Token（取记录值和实际余额的较小值）
-        uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
-
         uint256 _now = block.timestamp;
-        uint256 paybackExtraFee = 0;
-        if (_now < rentInfo.rentEndTime) {
-            uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
-            uint256 usedDuration = _now - rentInfo.rentStatTime;
 
-            uint256 totalRentDLCFee = feeInfo.baseFee + feeInfo.platformFee;
+        // V1 租用: extraFee 是 DLC; V2 租用: extraFee 是 Point Token
+        if (feeInfo.isV2) {
+            // V2: extraFee 是 Point Token
+            IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+            uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+            uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
 
-            // 使用乘法优先避免精度损失: (value * usedDuration) / rentDuration
-            uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
-            uint256 usedExtraRentFee = (availablePointToken * usedDuration) / rentDuration;
-            uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
+            if (_now < rentInfo.rentEndTime) {
+                uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
+                uint256 usedDuration = _now - rentInfo.rentStatTime;
 
-            paybackExtraFee = availablePointToken - usedExtraRentFee;
-            uint256 payBackDLCFee = totalRentDLCFee - usedBaseFee - usedPlatformFee;
+                uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
+                uint256 usedExtraRentFee = (availablePointToken * usedDuration) / rentDuration;
+                uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
 
-            feeInfo.baseFee = usedBaseFee;
-            feeInfo.extraFee = usedExtraRentFee;
-            feeInfo.platformFee = usedPlatformFee;
+                uint256 paybackExtraFee = availablePointToken - usedExtraRentFee;
+                uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee);
 
-            if (payBackDLCFee > 0) {
-                SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
-                emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+                feeInfo.baseFee = usedBaseFee;
+                feeInfo.extraFee = usedExtraRentFee;
+                feeInfo.platformFee = usedPlatformFee;
+
+                if (payBackDLCFee > 0) {
+                    SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+                    emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+                }
+                if (paybackExtraFee > 0) {
+                    SafeERC20.safeTransfer(pointToken, payer, paybackExtraFee);
+                    emit PayBackPointFee(machineId, rentId, payer, paybackExtraFee);
+                }
+
+                emit RentTime(rentDuration, usedDuration);
+            } else {
+                feeInfo.extraFee = availablePointToken;
             }
-            if (paybackExtraFee > 0) {
-                SafeERC20.safeTransfer(pointToken, payer, paybackExtraFee);
-                emit PayBackPointFee(machineId, rentId, payer, paybackExtraFee);
+
+            // 销毁 baseFee
+            if (feeInfo.baseFee > 0) {
+                feeToken.approve(address(this), feeInfo.baseFee);
+                feeToken.burnFrom(address(this), feeInfo.baseFee);
+                emit BurnedFee(machineId, rentId, block.timestamp, feeInfo.baseFee, rentInfo.renter, 1);
+                totalBurnedAmount += feeInfo.baseFee;
             }
 
-            emit RentTime(rentDuration, usedDuration);
+            // extraFee (Point Token) 转给机器持有者
+            if (feeInfo.extraFee > 0) {
+                SafeERC20.safeTransfer(pointToken, machineHolder, feeInfo.extraFee);
+                emit ExtraRentFeeTransfer(machineHolder, rentId, feeInfo.extraFee);
+            }
         } else {
-            // 租期已结束，全部可用的 extraFee 给 machineHolder
-            feeInfo.extraFee = availablePointToken;
+            // V1: extraFee 是 DLC
+            if (_now < rentInfo.rentEndTime) {
+                uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
+                uint256 usedDuration = _now - rentInfo.rentStatTime;
+
+                uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
+                uint256 usedExtraRentFee = (feeInfo.extraFee * usedDuration) / rentDuration;
+                uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
+
+                uint256 paybackExtraFee = feeInfo.extraFee - usedExtraRentFee;
+                uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee) + paybackExtraFee;
+
+                feeInfo.baseFee = usedBaseFee;
+                feeInfo.extraFee = usedExtraRentFee;
+                feeInfo.platformFee = usedPlatformFee;
+
+                if (payBackDLCFee > 0) {
+                    SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+                    emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+                }
+
+                emit RentTime(rentDuration, usedDuration);
+            }
+
+            // 销毁 baseFee
+            if (feeInfo.baseFee > 0) {
+                feeToken.approve(address(this), feeInfo.baseFee);
+                feeToken.burnFrom(address(this), feeInfo.baseFee);
+                emit BurnedFee(machineId, rentId, block.timestamp, feeInfo.baseFee, rentInfo.renter, 1);
+                totalBurnedAmount += feeInfo.baseFee;
+            }
+
+            // extraFee (DLC) 转给机器持有者
+            if (feeInfo.extraFee > 0) {
+                SafeERC20.safeTransfer(feeToken, machineHolder, feeInfo.extraFee);
+                emit ExtraRentFeeTransfer(machineHolder, rentId, feeInfo.extraFee);
+            }
         }
 
-        if (feeInfo.baseFee > 0) {
-            feeToken.approve(address(this), feeInfo.baseFee);
-            feeToken.burnFrom(address(this), feeInfo.baseFee);
-            emit BurnedFee(machineId, lastRentId, block.timestamp, feeInfo.baseFee, rentInfo.renter, 1);
-            totalBurnedAmount += feeInfo.baseFee;
-        }
-
-        if (feeInfo.extraFee > 0) {
-            SafeERC20.safeTransfer(pointToken, machineHolder, feeInfo.extraFee);
-            emit ExtraRentFeeTransfer(machineHolder, lastRentId, feeInfo.extraFee);
-        }
+        // platformFee 分配
         if (feeInfo.platformFee > 0) {
             distributePlatformFee(rentId, machineId, feeInfo.platformFee);
         }
@@ -1290,45 +1333,75 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
         uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
 
-        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
-        uint256 pointTokenBalance = pointToken.balanceOf(address(this));
-        uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
-        uint256 usedExtraFee = (availablePointToken * usedDuration) / rentDuration;
-
-        // 计算退还金额
-        uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee);
-        uint256 payBackExtraFee = availablePointToken - usedExtraFee;
-
         // 获取付款人（代理租用或租户自己）
         address payer = machine2ProxyRented[machineId] ? machine2ProxyRentPayer[machineId] : rentInfo.renter;
         if (payer == address(0)) {
             payer = rentInfo.renter;
         }
 
-        // 退还 DLC 给付款人
-        if (payBackDLCFee > 0) {
-            SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
-            emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
-        }
+        if (feeInfo.isV2) {
+            // V2: extraFee 是 Point Token
+            IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+            uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+            uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
+            uint256 usedExtraFee = (availablePointToken * usedDuration) / rentDuration;
 
-        // 退还 Point Token 给付款人
-        if (payBackExtraFee > 0) {
-            SafeERC20.safeTransfer(pointToken, payer, payBackExtraFee);
-            emit PayBackExtraFee(machineId, rentId, payer, payBackExtraFee);
-        }
+            // 计算退还金额
+            uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee);
+            uint256 payBackExtraFee = availablePointToken - usedExtraFee;
 
-        // 销毁已用的 baseFee
-        if (usedBaseFee > 0) {
-            feeToken.approve(address(this), usedBaseFee);
-            feeToken.burnFrom(address(this), usedBaseFee);
-            emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
-            totalBurnedAmount += usedBaseFee;
-        }
+            // 退还 DLC 给付款人
+            if (payBackDLCFee > 0) {
+                SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+                emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+            }
 
-        // 已用的 extraFee 转给机器持有者
-        if (usedExtraFee > 0) {
-            SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, usedExtraFee);
-            emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
+            // 退还 Point Token 给付款人
+            if (payBackExtraFee > 0) {
+                SafeERC20.safeTransfer(pointToken, payer, payBackExtraFee);
+                emit PayBackExtraFee(machineId, rentId, payer, payBackExtraFee);
+            }
+
+            // 销毁已用的 baseFee
+            if (usedBaseFee > 0) {
+                feeToken.approve(address(this), usedBaseFee);
+                feeToken.burnFrom(address(this), usedBaseFee);
+                emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
+                totalBurnedAmount += usedBaseFee;
+            }
+
+            // 已用的 extraFee (Point Token) 转给机器持有者
+            if (usedExtraFee > 0) {
+                SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, usedExtraFee);
+                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
+            }
+        } else {
+            // V1: extraFee 是 DLC
+            uint256 usedExtraFee = (feeInfo.extraFee * usedDuration) / rentDuration;
+            uint256 payBackExtraFee = feeInfo.extraFee - usedExtraFee;
+
+            // 计算退还金额 (DLC)
+            uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee) + payBackExtraFee;
+
+            // 退还 DLC 给付款人
+            if (payBackDLCFee > 0) {
+                SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+                emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+            }
+
+            // 销毁已用的 baseFee
+            if (usedBaseFee > 0) {
+                feeToken.approve(address(this), usedBaseFee);
+                feeToken.burnFrom(address(this), usedBaseFee);
+                emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
+                totalBurnedAmount += usedBaseFee;
+            }
+
+            // 已用的 extraFee (DLC) 转给机器持有者
+            if (usedExtraFee > 0) {
+                SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, usedExtraFee);
+                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
+            }
         }
 
         // 已用的 platformFee 分配给平台
@@ -1360,13 +1433,20 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         }
 
         // extraFee 转给机器持有者（租赁已完成，不退还）
-        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
         if (feeInfo.extraFee > 0) {
-            uint256 pointTokenBalance = pointToken.balanceOf(address(this));
-            uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
-            if (availablePointToken > 0) {
-                SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, availablePointToken);
-                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, availablePointToken);
+            if (feeInfo.isV2) {
+                // V2: extraFee 是 Point Token
+                IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+                uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+                uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
+                if (availablePointToken > 0) {
+                    SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, availablePointToken);
+                    emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, availablePointToken);
+                }
+            } else {
+                // V1: extraFee 是 DLC
+                SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, feeInfo.extraFee);
+                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, feeInfo.extraFee);
             }
         }
 
