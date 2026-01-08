@@ -114,7 +114,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 baseFee;
         uint256 extraFee;
         uint256 platformFee;
-        bool isV2;  // true: extraFee 是 Point Token; false: extraFee 是 DLC
+        bool isV1;  // true: extraFee 是 DLC (V1); false: extraFee 是 Point Token (V2，默认值，兼容旧数据)
     }
 
     IOracle public oracle;
@@ -631,7 +631,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         feeInfo.baseFee = baseRentFee;
         feeInfo.extraFee = extraRentFee;
         feeInfo.platformFee = platformFee;
-        feeInfo.isV2 = false;  // V1: extraFee 是 DLC
+        feeInfo.isV1 = true;  // V1: extraFee 是 DLC
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
         SafeERC20.safeTransferFrom(feeToken, payer, address(this), totalRentFee);
@@ -699,7 +699,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         feeInfo.baseFee = baseRentFee;
         feeInfo.extraFee = extraRentFeeInPoint;
         feeInfo.platformFee = platformFee;
-        feeInfo.isV2 = true;  // V2: extraFee 是 Point Token
+        // feeInfo.isV1 默认为 false，表示 V2: extraFee 是 Point Token
         rentId2FeeInfoInDLC[lastRentId] = feeInfo;
 
         SafeERC20.safeTransferFrom(feeToken, payer, address(this), totalRentFee);
@@ -955,8 +955,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 _now = block.timestamp;
 
         // V1 租用: extraFee 是 DLC; V2 租用: extraFee 是 Point Token
-        if (feeInfo.isV2) {
-            // V2: extraFee 是 Point Token
+        if (!feeInfo.isV1) {
+            // V2 (或旧数据默认): extraFee 是 Point Token
             IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
             uint256 pointTokenBalance = pointToken.balanceOf(address(this));
             uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
@@ -1004,7 +1004,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit ExtraRentFeeTransfer(machineHolder, rentId, feeInfo.extraFee);
             }
         } else {
-            // V1: extraFee 是 DLC
+            // V1 (isV1 = true): extraFee 是 DLC
             if (_now < rentInfo.rentEndTime) {
                 uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
                 uint256 usedDuration = _now - rentInfo.rentStatTime;
@@ -1339,8 +1339,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             payer = rentInfo.renter;
         }
 
-        if (feeInfo.isV2) {
-            // V2: extraFee 是 Point Token
+        if (!feeInfo.isV1) {
+            // V2 (或旧数据默认): extraFee 是 Point Token
             IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
             uint256 pointTokenBalance = pointToken.balanceOf(address(this));
             uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
@@ -1376,7 +1376,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
             }
         } else {
-            // V1: extraFee 是 DLC
+            // V1 (isV1 = true): extraFee 是 DLC
             uint256 usedExtraFee = (feeInfo.extraFee * usedDuration) / rentDuration;
             uint256 payBackExtraFee = feeInfo.extraFee - usedExtraFee;
 
@@ -1434,8 +1434,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
         // extraFee 转给机器持有者（租赁已完成，不退还）
         if (feeInfo.extraFee > 0) {
-            if (feeInfo.isV2) {
-                // V2: extraFee 是 Point Token
+            if (!feeInfo.isV1) {
+                // V2 (或旧数据默认): extraFee 是 Point Token
                 IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
                 uint256 pointTokenBalance = pointToken.balanceOf(address(this));
                 uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
