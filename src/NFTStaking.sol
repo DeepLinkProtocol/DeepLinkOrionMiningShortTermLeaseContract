@@ -853,6 +853,52 @@ contract NFTStaking is
         _unStake(machineId, stakeInfo.holder);
     }
 
+    /// @notice 强制清理质押记录（跳过 _claim，用于 slash 后 calcPoint=0 导致 _claim 溢出的情况）
+    function forceCleanupStakeInfo(string calldata machineId) external onlyOwner {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        require(stakeInfo.holder != address(0), "no stake info");
+        address stakeholder = stakeInfo.holder;
+
+        // 归还 NFT（如果合约中还持有）
+        if (stakeInfo.nftTokenIds.length > 0) {
+            try nftToken.safeBatchTransferFrom(
+                address(this), stakeholder, stakeInfo.nftTokenIds, stakeInfo.tokenIdBalances, "transfer"
+            ) {} catch {}
+        }
+
+        // 归还 reservedAmount
+        uint256 reservedAmount = stakeInfo.reservedAmount;
+        if (reservedAmount > 0) {
+            stakeInfo.reservedAmount = 0;
+            totalReservedAmount = totalReservedAmount > reservedAmount ? totalReservedAmount - reservedAmount : 0;
+            try rewardToken.transfer(stakeholder, reservedAmount) {} catch {}
+        }
+
+        // 清理 totalCalcPoint / totalAdjustUnit
+        if (stakeInfo.calcPoint > 0) {
+            uint256 oldLnReserved = ToolLib.LnUint256(
+                reservedAmount > BASE_RESERVE_AMOUNT ? reservedAmount : BASE_RESERVE_AMOUNT
+            );
+            uint256 shares = stakeInfo.calcPoint * oldLnReserved;
+            totalAdjustUnit = totalAdjustUnit > shares ? totalAdjustUnit - shares : 0;
+            totalCalcPoint = totalCalcPoint > stakeInfo.calcPoint ? totalCalcPoint - stakeInfo.calcPoint : 0;
+        }
+
+        // 清理 holder 列表
+        removeStakingMachineFromHolder(stakeholder, machineId);
+        if (totalStakingGpuCount > 0) {
+            totalStakingGpuCount -= 1;
+        }
+
+        // 清理 stakeInfo
+        delete machineId2StakeInfos[machineId];
+
+        // 通知链上注册表
+        try dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false) {} catch {}
+
+        emit Unstaked(stakeholder, machineId, reservedAmount);
+    }
+
     function unStakeByHolder(string calldata machineId) public nonReentrant {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(msg.sender == stakeInfo.holder, NotStakeHolder(machineId, msg.sender));
@@ -1012,6 +1058,7 @@ contract NFTStaking is
 
     /// @notice 强制清理租赁状态（当 Rent 合约无记录但 isRentedByUser 仍为 true 时使用）
     /// @dev 任何人可调用，但需要 Rent 合约确认该机器无租赁记录
+    ///      对齐 endRentMachine 的完整清理逻辑：重置 nextRenterCanRentAt + 恢复挖矿算力
     function forceCleanupRentStatus(string calldata machineId) external {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(stakeInfo.isRentedByUser == true, "not rented");
@@ -1019,7 +1066,22 @@ contract NFTStaking is
 
         stakeInfo.isRentedByUser = false;
         machineId2Rented[machineId] = false;
+
+        // 设置 5 分钟冷却期（与 endRentMachine 一致）
+        stakeInfo.nextRenterCanRentAt = 300 + block.timestamp;
+        if (block.timestamp > stakeInfo.endAtTimestamp - 1 hours) {
+            stakeInfo.nextRenterCanRentAt = 0;
+        }
+
+        // 恢复挖矿算力（与 endRentMachine 一致）
+        if (stakeInfo.nftCount > 0) {
+            (, uint256 calcPoint,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
+            calcPoint = calcPoint * getNFTCount(stakeInfo.tokenIdBalances);
+            _joinStaking(machineId, calcPoint, stakeInfo.reservedAmount);
+        }
+
         delete machineId2BeneficiaryInfos[machineId];
+        emit EndRentMachine(stakeInfo.holder, machineId, stakeInfo.nextRenterCanRentAt);
     }
 
     function isStakingButOffline(string calldata machineId) external view returns (bool) {
@@ -1269,7 +1331,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 1;
+        return 3;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
