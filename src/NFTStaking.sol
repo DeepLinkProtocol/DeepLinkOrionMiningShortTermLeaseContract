@@ -1084,6 +1084,13 @@ contract NFTStaking is
         emit EndRentMachine(stakeInfo.holder, machineId, stakeInfo.nextRenterCanRentAt);
     }
 
+    /// @notice 管理员修复 nextRenterCanRentAt（处理异常值 0 或过大导致 canRent=false）
+    function fixNextRenterCanRentAt(string calldata machineId, uint256 value) external onlyOwner {
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        require(stakeInfo.holder != address(0), "no stake info");
+        stakeInfo.nextRenterCanRentAt = value;
+    }
+
     function isStakingButOffline(string calldata machineId) external view returns (bool) {
         StakeInfo memory stakeInfo = machineId2StakeInfos[machineId];
         return stakeInfo.calcPoint == 0 && stakeInfo.nftCount > 0;
@@ -1331,7 +1338,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 3;
+        return 4;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
