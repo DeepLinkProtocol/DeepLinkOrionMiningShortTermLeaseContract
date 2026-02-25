@@ -597,6 +597,13 @@ contract NFTStaking is
         require(block.timestamp < stakeInfo.endAtTimestamp, MachineNotStaked(machineId));
 
         stakeInfo.endAtTimestamp += additionSeconds;
+
+        // 修复：endRentMachine 在质押即将到期时将 nextRenterCanRentAt 设为 0（禁止新租赁），
+        // 增加时长后质押已续期，需将 nextRenterCanRentAt 恢复为可租状态
+        if (stakeInfo.nextRenterCanRentAt == 0 && !stakeInfo.isRentedByUser) {
+            stakeInfo.nextRenterCanRentAt = block.timestamp;
+        }
+
         emit AddedStakeHours(msg.sender, machineId, additionHours);
         emit AfterAddHoursEndTime(machineId, stakeInfo.endAtTimestamp);
     }
@@ -1338,7 +1345,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 4;
+        return 5;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
