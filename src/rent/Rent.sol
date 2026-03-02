@@ -448,7 +448,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             return (0, _reservedAmount, rentFee);
         }
 
-        return (endAt - block.timestamp / 1 hours, _reservedAmount, rentFee);
+        return ((endAt - block.timestamp) / 1 hours, _reservedAmount, rentFee);
     }
 
     function getMachinePrice(string memory machineId, uint256 rentSeconds) public view returns (uint256){
@@ -736,6 +736,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, RentEnd());
         require(rentId2RentInfo[rentId].renter == renter, NotRenter());
         require(isRented(machineId), MachineNotRented());
+        require(rentId2FeeInfoInDLC[rentId].isV1, "V1 renew on V2 rental forbidden");
         require(
             additionalRentSeconds >= 10 minutes && additionalRentSeconds <= 10 hours,
             InvalidRentDuration(additionalRentSeconds)
@@ -791,6 +792,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         require(rentId2RentInfo[rentId].rentEndTime > block.timestamp, RentEnd());
         require(rentId2RentInfo[rentId].renter == renter, NotRenter());
         require(isRented(machineId), MachineNotRented());
+        require(!rentId2FeeInfoInDLC[rentId].isV1, "V2 renew on V1 rental forbidden");
         require(
             additionalRentSeconds >= 10 minutes && additionalRentSeconds <= 10 hours,
             InvalidRentDuration(additionalRentSeconds)
@@ -1172,7 +1174,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 0;
+        return 3;
     }
 
     function getTotalBurnedRentFee() public view returns (uint256) {
@@ -1312,7 +1314,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function isInSlashing(string memory machineId) public view returns (bool) {
-        return machineId2SlashInfo[machineId].paid == false;
+        return machineId2SlashInfo[machineId].renter != address(0) && machineId2SlashInfo[machineId].paid == false;
     }
 
     /// @notice 租赁进行中机器离线时，终止租赁并按比例退费给用户
@@ -1476,6 +1478,22 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
         require(rentInfo.renter != address(0), "no rent info to cleanup");
         require(block.timestamp >= rentInfo.rentEndTime, "rent not expired");
+
+        machineId2LastRentEndBlock[machineId] = block.number;
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
+        delete rentId2FeeInfoInDLC[rentId];
+        machine2ProxyRented[machineId] = false;
+
+        emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
+    }
+
+    /// @notice 强制清理 v1 存储残留的租赁状态（跳过 rentEndTime 检查）
+    /// @dev v1→v2 升级后 RentInfo 结构体字段错位，rentEndTime 为天文数字导致 forceCleanupRentInfo 无法调用
+    function forceCleanupRentInfoByOwner(string calldata machineId) external onlyOwner {
+        uint256 rentId = machineId2RentId[machineId];
+        RentInfo memory rentInfo = rentId2RentInfo[rentId];
+        require(rentInfo.renter != address(0) || rentId != 0, "no rent info to cleanup");
 
         machineId2LastRentEndBlock[machineId] = block.number;
         delete rentId2RentInfo[rentId];
