@@ -129,6 +129,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
     TokenPriceInfo public tokenPriceInfo;
 
+    // v5: monthly rental flag — skip slash on offline, endRent clears it
+    mapping(string => bool) public machineId2IsMonthlyRent;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -574,6 +577,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         _rentMachineV2(msg.sender, renter, machineId, rentSeconds);
     }
 
+    function rentProxyMachineMonthly(address renter, string calldata machineId, uint256 pointAmount) external {
+        require(adminsToSetRentWhiteList[msg.sender], "not monthly rent admin");
+        require(msg.sender != renter, RenterAndPayerIsSame());
+        _rentMachineMonthly(msg.sender, renter, machineId, pointAmount);
+    }
 
     function rentProxyMachine(address renter, string calldata machineId, uint256 rentSeconds) external {
         require(msg.sender != renter, RenterAndPayerIsSame());
@@ -714,6 +722,54 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         emit RentMachine(machineHolder, lastRentId, machineId, block.timestamp + rentSeconds, renter, baseRentFee);
     }
 
+    function _rentMachineMonthly(address payer, address renter, string calldata machineId, uint256 pointAmount) internal {
+        uint256 rentSeconds = 30 days;
+        require(inRentWhiteList(machineId), NotValidMachineId());
+        require(canRent(machineId), MachineCanNotRent());
+
+        (address machineHolder,,, uint256 endAtTimestamp,,,,) = stakingContract.getMachineInfo(machineId);
+        require(block.timestamp + rentSeconds < endAtTimestamp, RenTimeCannotOverMachineUnstakeTime());
+
+        require(msg.sender == payer, "invalid payer");
+        machine2ProxyRented[machineId] = true;
+        machine2ProxyRentPayer[machineId] = payer;
+        machineId2IsMonthlyRent[machineId] = true;
+
+        uint256 lastRentEndBlock = machineId2LastRentEndBlock[machineId];
+        if (lastRentEndBlock != 0) {
+            require(block.number > lastRentEndBlock + 30, MachineCanNotRentWithin100BlocksAfterLastRent());
+        }
+
+        uint256 _now = block.timestamp;
+
+        lastRentId = getNextRentId();
+        rentId2RentInfo[lastRentId] = RentInfo({
+            stakeHolder: machineHolder,
+            machineId: machineId,
+            rentStatTime: _now,
+            rentEndTime: _now + rentSeconds,
+            renter: renter
+        });
+        machineId2RentId[machineId] = lastRentId;
+        renter2RentIds[renter].push(lastRentId);
+
+        // Monthly rental: platform deposits miner's share (5/6 of user payment) as Point tokens
+        // baseFee=0 (no DLC burn), platformFee=0, extraFee=pointAmount (Point → machineHolder on endRent)
+        // isV1=false by default → endRentMachine V2 path handles Point distribution correctly
+        FeeInfo memory feeInfo;
+        feeInfo.extraFee = pointAmount;
+        rentId2FeeInfoInDLC[lastRentId] = feeInfo;
+
+        if (pointAmount > 0) {
+            IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+            SafeERC20.safeTransferFrom(pointToken, payer, address(this), pointAmount);
+        }
+
+        // notify staking contract
+        stakingContract.rentMachine(machineId);
+
+        emit RentMachine(machineHolder, lastRentId, machineId, _now + rentSeconds, renter, 0);
+    }
 
     function proxyRenewRent(address renter, string memory machineId, uint256 additionalRentSeconds) external {
         _renewRent(renter, machineId, additionalRentSeconds);
@@ -928,6 +984,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         // 状态删除放在最后
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
         delete rentId2FeeInfoInDLC[rentId];
         emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
@@ -1056,6 +1113,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         // 状态删除放在最后
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
         delete rentId2FeeInfoInDLC[rentId];
         emit EndRentMachine(machineHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
     }
@@ -1174,7 +1232,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 3;
+        return 5;
     }
 
     function getTotalBurnedRentFee() public view returns (uint256) {
@@ -1226,7 +1284,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 rentInfo.renter != address(0) && block.timestamp <= rentInfo.rentEndTime
                     && block.timestamp > rentInfo.rentStatTime
             ) {
-                // 租赁进行中机器离线，触发 slash 流程 + 按比例退费 + 清理状态
+                // 包月租赁离线：不惩罚、不终止，仅停止挖矿奖励
+                if (machineId2IsMonthlyRent[machineId]) {
+                    stakingContract.stopRewarding(machineId);
+                    emit RemoveCalcPointOnOffline(machineId);
+                    return true;
+                }
+                // 非包月：触发 slash 流程 + 按比例退费 + 清理状态
                 SlashInfo memory slashInfo = newSlashInfo(
                     rentInfo.stakeHolder,
                     rentInfo.machineId,
@@ -1416,6 +1480,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         machine2ProxyRented[machineId] = false;
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
         delete rentId2FeeInfoInDLC[rentId];
 
         emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, block.timestamp, rentInfo.renter);
@@ -1465,6 +1530,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         machine2ProxyRented[machineId] = false;
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
         delete rentId2FeeInfoInDLC[rentId];
 
         emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
@@ -1473,7 +1539,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     /// @notice 强制清理不一致的租赁状态
     /// @dev 用于修复 Rent 合约有租赁记录但 Staking 合约 isRentedByUser 为 false 的情况
     /// @dev 只有租赁到期后才能调用
-    function forceCleanupRentInfo(string calldata machineId) external {
+    function forceCleanupRentInfo(string calldata machineId) external onlyOwner {
         uint256 rentId = machineId2RentId[machineId];
         RentInfo memory rentInfo = rentId2RentInfo[rentId];
         require(rentInfo.renter != address(0), "no rent info to cleanup");
@@ -1482,6 +1548,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         machineId2LastRentEndBlock[machineId] = block.number;
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
         delete rentId2FeeInfoInDLC[rentId];
         machine2ProxyRented[machineId] = false;
 
@@ -1498,6 +1565,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         machineId2LastRentEndBlock[machineId] = block.number;
         delete rentId2RentInfo[rentId];
         delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
         delete rentId2FeeInfoInDLC[rentId];
         machine2ProxyRented[machineId] = false;
 
