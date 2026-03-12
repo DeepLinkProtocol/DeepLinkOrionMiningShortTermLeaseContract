@@ -265,7 +265,7 @@ contract NFTStaking is
         );
 
         require((stakeHours >= 2), InvalidStakeHours());
-        require((stakeHours <= 144), InvalidStakeHours());
+        require((stakeHours <= 4320), InvalidStakeHours());
 
         require(!rewardEnd(), RewardEnd());
         (bool isOnline, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
@@ -590,6 +590,7 @@ contract NFTStaking is
 
     function addStakeHours(string memory machineId, uint256 additionHours) external {
         require(additionHours >= 2, InvalidStakeHours());
+        require(additionHours <= 4320, InvalidStakeHours());
         uint256 additionSeconds = additionHours * 1 hours;
 
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
@@ -845,8 +846,9 @@ contract NFTStaking is
             require(stakeInfo.startAtTimestamp > 0, MachineNotStaked(machineId));
             require(block.timestamp >= stakeInfo.endAtTimestamp, StakeNotEnd());
             require(!stakeInfo.isRentedByUser, MachineRentedByUser());
-            (, bool isRegistered) = dbcAIContract.getMachineState(machineId, PROJECT_NAME, STAKING_TYPE);
-            require(!isRegistered, MachineStillRegistered());
+            // isRegistered check removed: staking expiry (StakeNotEnd) is sufficient protection.
+            // _unStake() calls reportStakingStatus(false) to unregister automatically.
+            // Previous check caused NFT lock-up when Detection Node didn't unregister expired machines.
         } else {
             emit ExitStakingForOffline(machineId, stakeInfo.holder);
         }
@@ -1262,13 +1264,17 @@ contract NFTStaking is
         uint256 newLnReserved =
             ToolLib.LnUint256(reserveAmount > BASE_RESERVE_AMOUNT ? reserveAmount : BASE_RESERVE_AMOUNT);
 
-        totalAdjustUnit -= stakeInfo.calcPoint * oldLnReserved;
+        // Safe subtraction to prevent underflow (can happen after forceCleanupStakeInfo adjusts globals)
+        uint256 oldShares = stakeInfo.calcPoint * oldLnReserved;
+        totalAdjustUnit = totalAdjustUnit > oldShares ? totalAdjustUnit - oldShares : 0;
         totalAdjustUnit += calcPoint * newLnReserved;
 
         // update machine rewards
         _updateMachineRewards(machineId, machineShares);
 
-        totalCalcPoint = totalCalcPoint - stakeInfo.calcPoint + calcPoint;
+        totalCalcPoint = totalCalcPoint > stakeInfo.calcPoint
+            ? totalCalcPoint - stakeInfo.calcPoint + calcPoint
+            : calcPoint;
 
         stakeInfo.calcPoint = calcPoint;
         if (reserveAmount > stakeInfo.reservedAmount) {
@@ -1277,7 +1283,12 @@ contract NFTStaking is
             );
         }
         if (reserveAmount != stakeInfo.reservedAmount) {
-            totalReservedAmount = totalReservedAmount + reserveAmount - stakeInfo.reservedAmount;
+            if (reserveAmount >= stakeInfo.reservedAmount) {
+                totalReservedAmount = totalReservedAmount + reserveAmount - stakeInfo.reservedAmount;
+            } else {
+                uint256 diff = stakeInfo.reservedAmount - reserveAmount;
+                totalReservedAmount = totalReservedAmount > diff ? totalReservedAmount - diff : 0;
+            }
             stakeInfo.reservedAmount = reserveAmount;
         }
     }
@@ -1345,7 +1356,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 5;
+        return 7;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
