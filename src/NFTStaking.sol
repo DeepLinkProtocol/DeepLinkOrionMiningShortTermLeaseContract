@@ -945,7 +945,8 @@ contract NFTStaking is
         }
 
         //        NFTStakingState.removeMachine(stakeInfo.holder, machineId);
-        dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
+        // try-catch 防止跨合约重入导致 revert（dbcAI → Rent.notify → reportMachineFault → _unStake → dbcAI）
+        try dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false) {} catch {}
         emit Unstaked(stakeholder, machineId, reservedAmount);
     }
 
@@ -1356,7 +1357,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 7;
+        return 8;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
