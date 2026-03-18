@@ -244,12 +244,14 @@ contract RentTest is Test {
         //        assertEq(unlockTime,block.timestamp + 180 days);
 
         passHours(24);
-        //        uint256 balance1OfOwner = rewardToken.balanceOf(owner);
-        //        vm.startPrank(owner);
-        //        nftStaking.claim(machineId);
-        //        uint256 balance2OfOwner = rewardToken.balanceOf(owner);
-        //        vm.stopPrank();
-        //        assertGt(balance2OfOwner,balance1OfOwner);
+
+        // 新增：重新质押前必须先赔付未完成的惩罚
+        if (rent.hasUnpaidSlash(machineId)) {
+            vm.startPrank(owner);
+            rewardToken.approve(address(rent), rent.SLASH_AMOUNT());
+            rent.payPendingSlash(machineId);
+            vm.stopPrank();
+        }
 
         stakeByOwner(machineId, nftStaking.BASE_RESERVE_AMOUNT(), 2, true);
 

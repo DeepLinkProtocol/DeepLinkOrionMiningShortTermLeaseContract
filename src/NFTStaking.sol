@@ -191,6 +191,7 @@ contract NFTStaking is
     error MachineStillRegistered();
     error StakingInLongTerm();
     error IsStaking();
+    error MachineHasUnpaidSlash(string machineId);
     error InRenting();
     error RewardNotEnough();
     error IsPersonalMachine();
@@ -275,6 +276,10 @@ contract NFTStaking is
         if (longStakeContractAddress != address(0)) {
             require(!ILongStakeContract(longStakeContractAddress).isStaking(machineId), StakingInLongTerm());
         }
+        // try-catch: 兼容旧版 Rent 合约（无 hasUnpaidSlash 函数时跳过检查）
+        try rentContract.hasUnpaidSlash(machineId) returns (bool unpaid) {
+            require(!unpaid, MachineHasUnpaidSlash(machineId));
+        } catch {}
         _;
     }
 
@@ -1357,7 +1362,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 8;
+        return 9;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)

@@ -132,6 +132,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     // v5: monthly rental flag — skip slash on offline, endRent clears it
     mapping(string => bool) public machineId2IsMonthlyRent;
 
+    // v6: unpaid slash counter — O(1) check instead of O(n) array scan
+    mapping(string => uint256) public machineId2UnpaidSlashCount;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -220,6 +223,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     error RenterAndPayerIsSame();
     error ProxyRentCanNotEndByRenter();
     error NotProxyRentingMachine();
+    error NoUnpaidSlash();
+
+    event SlashPaidByStakeHolder(string machineId, address stakeHolder, address renter, uint256 amount);
 
     modifier onlyApproveAdmins() {
         bool found = false;
@@ -1173,6 +1179,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
     function addSlashInfoAndReport(SlashInfo memory slashInfo) internal {
         machineId2SlashInfos[slashInfo.machineId].push(slashInfo);
+        machineId2UnpaidSlashCount[slashInfo.machineId]++;
         stakingContract.reportMachineFault(slashInfo.machineId, slashInfo.renter);
     }
 
@@ -1232,7 +1239,40 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 5;
+        return 6;
+    }
+
+    /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
+    /// @param machineIds 已知有未赔付 slash 的 machineId 列表（由链下脚本扫描得出）
+    function initializeV6(string[] calldata machineIds) external reinitializer(6) {
+        for (uint256 i = 0; i < machineIds.length; i++) {
+            SlashInfo[] storage infos = machineId2SlashInfos[machineIds[i]];
+            uint256 count = 0;
+            for (uint256 j = 0; j < infos.length; j++) {
+                if (!infos[j].paid) {
+                    count++;
+                }
+            }
+            machineId2UnpaidSlashCount[machineIds[i]] = count;
+        }
+    }
+
+    function hasUnpaidSlash(string memory machineId) external view returns (bool) {
+        return machineId2UnpaidSlashCount[machineId] > 0;
+    }
+
+    function payPendingSlash(string calldata machineId) external nonReentrant {
+        require(machineId2UnpaidSlashCount[machineId] > 0, NoUnpaidSlash());
+        SlashInfo[] storage infos = machineId2SlashInfos[machineId];
+        for (uint256 i = 0; i < infos.length; i++) {
+            if (!infos[i].paid) {
+                SafeERC20.safeTransferFrom(IERC20(address(feeToken)), msg.sender, infos[i].renter, infos[i].slashAmount);
+                infos[i].paid = true;
+                machineId2UnpaidSlashCount[machineId]--;
+                emit SlashPaidByStakeHolder(machineId, msg.sender, infos[i].renter, infos[i].slashAmount);
+                emit PaidSlash(machineId);
+            }
+        }
     }
 
     function getTotalBurnedRentFee() public view returns (uint256) {
@@ -1372,6 +1412,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             }
             if (keccak256(abi.encodePacked(slashInfos[i].machineId)) == keccak256(abi.encodePacked(machineId))) {
                 slashInfos[i].paid = true;
+                if (machineId2UnpaidSlashCount[machineId] > 0) {
+                    machineId2UnpaidSlashCount[machineId]--;
+                }
                 emit PaidSlash(machineId);
             }
         }
