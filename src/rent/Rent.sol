@@ -1408,15 +1408,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         SlashInfo[] storage slashInfos = machineId2SlashInfos[machineId];
         for (uint256 i = 0; i < slashInfos.length; i++) {
             if (slashInfos[i].paid) {
-                return;
+                continue;
             }
-            if (keccak256(abi.encodePacked(slashInfos[i].machineId)) == keccak256(abi.encodePacked(machineId))) {
-                slashInfos[i].paid = true;
-                if (machineId2UnpaidSlashCount[machineId] > 0) {
-                    machineId2UnpaidSlashCount[machineId]--;
-                }
-                emit PaidSlash(machineId);
+            slashInfos[i].paid = true;
+            if (machineId2UnpaidSlashCount[machineId] > 0) {
+                machineId2UnpaidSlashCount[machineId]--;
             }
+            emit PaidSlash(machineId);
+            return;
         }
     }
 
