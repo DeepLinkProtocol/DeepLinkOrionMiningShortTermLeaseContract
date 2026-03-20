@@ -230,7 +230,7 @@ contract SlashPaymentTest is Test {
     // ========== 测试 version ==========
 
     function test_version() public view {
-        assertEq(rent.version(), 6);
+        assertEq(rent.version(), 7);
         assertEq(nftStaking.version(), 9);
     }
 
@@ -316,5 +316,88 @@ contract SlashPaymentTest is Test {
         vm.startPrank(address(dbcAIContract));
         rent.notify(Rent.NotifyType.MachineOffline, _machineId);
         vm.stopPrank();
+    }
+
+    // ========== 测试 machineId2LastSlashTimestamp ==========
+
+    function test_lastSlashTimestamp_zeroBeforeSlash() public view {
+        // 没有惩罚记录时应该为 0
+        assertEq(rent.machineId2LastSlashTimestamp(machineId), 0);
+    }
+
+    function test_lastSlashTimestamp_setOnSlash() public {
+        _stakeAndRent(machineId, renter1, 0);
+
+        // 推进时间确保 slash 发生在不同时间点
+        vm.warp(block.timestamp + 120);
+        vm.roll(vm.getBlockNumber() + 20);
+
+        uint256 expectedTimestamp = block.timestamp;
+        vm.startPrank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
+        vm.stopPrank();
+
+        uint256 lastSlash = rent.machineId2LastSlashTimestamp(machineId);
+        assertEq(lastSlash, expectedTimestamp, "lastSlashTimestamp should match block.timestamp at slash time");
+        assertTrue(lastSlash > 0, "lastSlashTimestamp should be non-zero");
+    }
+
+    function test_lastSlashTimestamp_updatesOnMultipleSlashes() public {
+        // 第一次惩罚
+        _stakeAndRent(machineId, renter1, 0);
+        vm.warp(block.timestamp + 60);
+        vm.roll(vm.getBlockNumber() + 10);
+
+        vm.startPrank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
+        vm.stopPrank();
+
+        uint256 firstSlashTime = rent.machineId2LastSlashTimestamp(machineId);
+        assertTrue(firstSlashTime > 0);
+
+        // 赔付后重新质押+租赁，触发第二次惩罚
+        vm.startPrank(owner);
+        rewardToken.approve(address(rent), rent.SLASH_AMOUNT());
+        rent.payPendingSlash(machineId);
+        vm.stopPrank();
+
+        // 赔付后 lastSlashTimestamp 应清零（机器恢复正常）
+        assertEq(rent.machineId2LastSlashTimestamp(machineId), 0, "payPendingSlash should clear lastSlashTimestamp");
+
+        // 推进时间，重新质押+租赁
+        passHours(2);
+        _stakeAndRent(machineId, renter2, 0);
+
+        // 第二次惩罚
+        vm.warp(block.timestamp + 120);
+        vm.roll(vm.getBlockNumber() + 20);
+        uint256 expectedSecondSlash = block.timestamp;
+
+        vm.startPrank(address(dbcAIContract));
+        rent.notify(Rent.NotifyType.MachineOffline, machineId);
+        vm.stopPrank();
+
+        uint256 secondSlashTime = rent.machineId2LastSlashTimestamp(machineId);
+        assertEq(secondSlashTime, expectedSecondSlash, "should update to second slash time");
+        assertTrue(secondSlashTime > firstSlashTime, "second slash should be after first");
+    }
+
+    function test_lastSlashTimestamp_independentPerMachine() public {
+        // 测试两台机器的惩罚状态互不影响
+        // 机器 1 惩罚
+        _stakeAndRent(machineId, renter1, 0);
+        _triggerOfflineSlash(machineId);
+
+        assertTrue(rent.machineId2LastSlashTimestamp(machineId) > 0, "machine1 should be slashed");
+        assertEq(rent.machineId2LastSlashTimestamp("otherMachine"), 0, "other machine unaffected");
+
+        // 赔付机器 1 → 清零
+        vm.startPrank(owner);
+        deal(address(rewardToken), owner, 1_000_000 * 1e18);
+        rewardToken.approve(address(rent), type(uint256).max);
+        rent.payPendingSlash(machineId);
+        vm.stopPrank();
+
+        assertEq(rent.machineId2LastSlashTimestamp(machineId), 0, "machine1 cleared after pay");
     }
 }

@@ -135,6 +135,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     // v6: unpaid slash counter — O(1) check instead of O(n) array scan
     mapping(string => uint256) public machineId2UnpaidSlashCount;
 
+    // v7: last slash timestamp — O(1) query for last penalty time
+    mapping(string => uint256) public machineId2LastSlashTimestamp;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -1180,6 +1183,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     function addSlashInfoAndReport(SlashInfo memory slashInfo) internal {
         machineId2SlashInfos[slashInfo.machineId].push(slashInfo);
         machineId2UnpaidSlashCount[slashInfo.machineId]++;
+        machineId2LastSlashTimestamp[slashInfo.machineId] = block.timestamp;
         stakingContract.reportMachineFault(slashInfo.machineId, slashInfo.renter);
     }
 
@@ -1239,7 +1243,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 6;
+        return 7;
     }
 
     /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
@@ -1272,6 +1276,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit SlashPaidByStakeHolder(machineId, msg.sender, infos[i].renter, infos[i].slashAmount);
                 emit PaidSlash(machineId);
             }
+        }
+        // 全部赔付后清零，表示机器恢复正常状态
+        if (machineId2UnpaidSlashCount[machineId] == 0) {
+            machineId2LastSlashTimestamp[machineId] = 0;
         }
     }
 
@@ -1413,6 +1421,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             slashInfos[i].paid = true;
             if (machineId2UnpaidSlashCount[machineId] > 0) {
                 machineId2UnpaidSlashCount[machineId]--;
+            }
+            // 全部赔付后清零，表示机器恢复正常状态
+            if (machineId2UnpaidSlashCount[machineId] == 0) {
+                machineId2LastSlashTimestamp[machineId] = 0;
             }
             emit PaidSlash(machineId);
             return;
