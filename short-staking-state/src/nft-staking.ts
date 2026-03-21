@@ -182,6 +182,7 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(
     BigInt.fromI32(1)
   );
+  stateSummary.save();
 }
 
 export function handleEndRentMachineFee(event: EndRentMachineFeeEvent): void {
@@ -194,7 +195,7 @@ export function handleEndRentMachineFee(event: EndRentMachineFeeEvent): void {
   machineInfo.burnedRentFee = machineInfo.burnedRentFee.plus(
     event.params.baseRentFee
   );
-  machineInfo.extraRentFee = machineInfo.burnedRentFee.plus(
+  machineInfo.extraRentFee = machineInfo.extraRentFee.plus(
     event.params.extraRentFee
   );
 
@@ -223,7 +224,7 @@ export function handleEndRentMachineFee(event: EndRentMachineFeeEvent): void {
   stakeholder.burnedRentFee = stakeholder.burnedRentFee.plus(
     event.params.baseRentFee
   );
-  stakeholder.extraRentFee = stakeholder.burnedRentFee.plus(
+  stakeholder.extraRentFee = stakeholder.extraRentFee.plus(
     event.params.extraRentFee
   );
   stakeholder.save();
@@ -291,6 +292,7 @@ export function handleRentMachine(event: RentMachineEvent): void {
   }
 
   machineInfo.isRented = true;
+  machineInfo.rentedGPUCount = BigInt.fromI32(1);
   const addedCalcPoint = machineInfo.totalCalcPointWithNFT
     .times(BigInt.fromI32(3))
     .div(BigInt.fromI32(10));
@@ -444,11 +446,9 @@ export function handleStaked(event: StakedEvent): void {
     stakeholder.extraRentFee = BigInt.fromI32(0);
   }
 
-  if (isNewMachine) {
-    stakeholder.totalGPUCount = stakeholder.totalGPUCount.plus(
-      BigInt.fromI32(1)
-    );
-  }
+  stakeholder.totalGPUCount = stakeholder.totalGPUCount.plus(
+    BigInt.fromI32(1)
+  );
   stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.plus(
     BigInt.fromI32(1)
   );
@@ -474,18 +474,16 @@ export function handleStaked(event: StakedEvent): void {
     stateSummary.totalReservedAmount = BigInt.fromI32(0);
     stateSummary.totalCalcPoint = BigInt.fromI32(0);
   }
-  if (isNewMachine) {
-    stateSummary.totalGPUCount = stateSummary.totalGPUCount.plus(
-      BigInt.fromI32(1)
-    );
-    stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(
-      machineInfo.totalCalcPoint
-    );
-  }
+  stateSummary.totalGPUCount = stateSummary.totalGPUCount.plus(
+    BigInt.fromI32(1)
+  );
+  stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(
+    machineInfo.totalCalcPoint
+  );
   stateSummary.totalStakingGPUCount = stateSummary.totalStakingGPUCount.plus(
     BigInt.fromI32(1)
   );
-  if (stakeholder.totalStakingGPUCount.toU32() == 1) {
+  if (stakeholder.totalStakingGPUCount.equals(BigInt.fromI32(1))) {
     stateSummary.totalCalcPointPoolCount =
       stateSummary.totalCalcPointPoolCount.plus(BigInt.fromI32(1));
   }
@@ -537,6 +535,9 @@ export function handleUnstaked(event: UnstakedEvent): void {
   stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.minus(
     BigInt.fromI32(1)
   );
+  stakeholder.totalGPUCount = stakeholder.totalGPUCount.minus(
+    BigInt.fromI32(1)
+  );
   stakeholder.totalCalcPoint = stakeholder.totalCalcPoint.minus(
     machineInfo.totalCalcPoint
   );
@@ -550,7 +551,13 @@ export function handleUnstaked(event: UnstakedEvent): void {
   stateSummary.totalStakingGPUCount = stateSummary.totalStakingGPUCount.minus(
     BigInt.fromU32(1)
   );
-  if (stakeholder.totalCalcPoint.toU32() == 0) {
+  stateSummary.totalGPUCount = stateSummary.totalGPUCount.minus(
+    BigInt.fromI32(1)
+  );
+  stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(
+    machineInfo.totalCalcPoint
+  );
+  if (stakeholder.totalStakingGPUCount.equals(BigInt.zero())) {
     stateSummary.totalCalcPointPoolCount =
       stateSummary.totalCalcPointPoolCount.minus(BigInt.fromI32(1));
   }
@@ -573,6 +580,7 @@ export function handleUnstaked(event: UnstakedEvent): void {
   machineInfo.fullTotalCalcPoint = BigInt.zero();
   machineInfo.totalCalcPointWithNFT = BigInt.zero();
   machineInfo.isStaking = false;
+  machineInfo.isRented = false;
 
   machineInfo.save();
 
@@ -580,7 +588,7 @@ export function handleUnstaked(event: UnstakedEvent): void {
   if (gpuTypeValue == null) {
     return;
   }
-  if (gpuTypeValue.count.toU32() >= 1) {
+  if (gpuTypeValue.count.gt(BigInt.zero())) {
     gpuTypeValue.count = gpuTypeValue.count.minus(BigInt.fromI32(1));
     gpuTypeValue.save();
   }
@@ -644,31 +652,10 @@ export function handleRenewRent(event: RenewRentEvent): void {
     return;
   }
 
-  machineInfo.burnedRentFee = machineInfo.burnedRentFee.plus(
-    event.params.rentFee
-  );
+  // NOTE: burnedRentFee 不在这里累加，统一由 EndRentMachineFee 处理
+  // RenewRent.rentFee = base+extra+platform（续租增量），
+  // EndRentMachineFee.baseRentFee = 累计总额（含所有续租），在这里加会导致双重计费
   machineInfo.save();
-
-  let stakeholder = StakeHolder.load(
-    Bytes.fromHexString(machineInfo.holder.toHexString())
-  );
-  if (stakeholder == null) {
-    return;
-  }
-
-  stakeholder.burnedRentFee = stakeholder.burnedRentFee.plus(
-    event.params.rentFee
-  );
-  stakeholder.save();
-
-  let stateSummary = StateSummary.load(Bytes.empty());
-  if (stateSummary == null) {
-    return;
-  }
-  stateSummary.totalBurnedRentFee = stateSummary.totalBurnedRentFee.plus(
-    event.params.rentFee
-  );
-  stateSummary.save();
 }
 
 export function handleExitStakingForOffline(

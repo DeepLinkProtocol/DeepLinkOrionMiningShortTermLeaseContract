@@ -47,6 +47,14 @@ export function handleRentMachine(event: RentMachineEvent): void {
 export function handleEndRentMachine(event: RentMachineEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
 
+  // Fix: Rent 合约的 forceCleanupRentInfo/forceCleanupRentInfoByOwner 只 emit Rent 的 EndRentMachine，
+  // 不会触发 NFTStaking 的 handler，需要在这里同步更新 MachineInfo.isRented
+  let machineInfo = MachineInfo.load(id);
+  if (machineInfo != null) {
+    machineInfo.isRented = false;
+    machineInfo.save();
+  }
+
   let rentingRecord = RentingRecord.load(id);
   if (rentingRecord == null) {
     return;
@@ -105,5 +113,6 @@ export function handleSlashMachineOnOffline(
     return;
   }
   machineInfo.isSlashed = true;
+  machineInfo.isRented = false;
   machineInfo.save();
 }
