@@ -1596,14 +1596,20 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, minerExtraFee);
             }
         } else {
-            // V1: extraFee 是 DLC
-            uint256 usedExtraFee = (feeInfo.extraFee * usedDuration) / rentDuration;
-            uint256 penaltyExtraFee = (feeInfo.extraFee * penaltyDuration) / rentDuration;
+            // V1: extraFee 是 DLC — 加余额保护防止 revert 导致整个 notify 阻塞
+            uint256 dlcBalance = feeToken.balanceOf(address(this));
+            uint256 availableDLC = feeInfo.extraFee > dlcBalance ? dlcBalance : feeInfo.extraFee;
+            uint256 usedExtraFee = (availableDLC * usedDuration) / rentDuration;
+            uint256 penaltyExtraFee = (availableDLC * penaltyDuration) / rentDuration;
             uint256 minerExtraFee = usedExtraFee > penaltyExtraFee ? usedExtraFee - penaltyExtraFee : 0;
 
             // 退给租户：未使用 + 惩罚（全 DLC）
             uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee)
-                + (feeInfo.extraFee - usedExtraFee) + penaltyExtraFee;
+                + (availableDLC - usedExtraFee) + penaltyExtraFee;
+
+            // 防止超出实际余额
+            uint256 actualBalance = feeToken.balanceOf(address(this));
+            if (payBackDLCFee > actualBalance) { payBackDLCFee = actualBalance; }
 
             if (payBackDLCFee > 0) {
                 SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
