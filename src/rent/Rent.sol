@@ -1243,7 +1243,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 7;
+        return 8;
     }
 
     /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
@@ -1351,8 +1351,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 );
                 addSlashInfoAndReport(slashInfo);
 
-                // 按比例退费并清理租赁状态
-                _terminateRentOnSlash(machineId, rentId, rentInfo);
+                // 惩罚性退费：未用部分全退 + 已用部分最多24h也退给租户（矿工不拿）
+                _terminateRentOnSlashWithPenalty(machineId, rentId, rentInfo);
 
                 emit SlashMachineOnOffline(
                     rentInfo.stakeHolder,
@@ -1530,6 +1530,103 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         }
 
         // 清理 Rent 合约状态
+        machineId2LastRentEndBlock[machineId] = block.number;
+        machine2ProxyRented[machineId] = false;
+        delete rentId2RentInfo[rentId];
+        delete machineId2RentId[machineId];
+        delete machineId2IsMonthlyRent[machineId];
+        delete rentId2FeeInfoInDLC[rentId];
+
+        emit EndRentMachine(rentInfo.stakeHolder, rentId, machineId, block.timestamp, rentInfo.renter);
+    }
+
+    /// @notice 惩罚性退费：未用部分全退 + 已用部分最多24h也退给租户（矿工不拿）
+    /// @dev 与 _terminateRentOnSlash 区别：矿工已赚的 extraFee（最多24h）作为惩罚退给租户
+    function _terminateRentOnSlashWithPenalty(string memory machineId, uint256 rentId, RentInfo memory rentInfo) internal {
+        FeeInfo memory feeInfo = rentId2FeeInfoInDLC[rentId];
+
+        uint256 rentDuration = rentInfo.rentEndTime - rentInfo.rentStatTime;
+        uint256 usedDuration = block.timestamp - rentInfo.rentStatTime;
+        if (rentDuration == 0) { rentDuration = 1; }
+
+        // 惩罚上限：已使用部分最多 24 小时
+        uint256 penaltyDuration = usedDuration > 24 hours ? 24 hours : usedDuration;
+
+        uint256 usedBaseFee = (feeInfo.baseFee * usedDuration) / rentDuration;
+        uint256 usedPlatformFee = (feeInfo.platformFee * usedDuration) / rentDuration;
+
+        address payer = machine2ProxyRented[machineId] ? machine2ProxyRentPayer[machineId] : rentInfo.renter;
+        if (payer == address(0)) { payer = rentInfo.renter; }
+
+        if (!feeInfo.isV1) {
+            // V2: extraFee 是 Point Token (DLP)
+            IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+            uint256 pointTokenBalance = pointToken.balanceOf(address(this));
+            uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
+            uint256 usedExtraFee = (availablePointToken * usedDuration) / rentDuration;
+
+            // 惩罚部分：已用 extraFee 中最多 24h 的金额退给租户（不给矿工）
+            uint256 penaltyExtraFee = (availablePointToken * penaltyDuration) / rentDuration;
+            // 超出 24h 惩罚的部分正常给矿工
+            uint256 minerExtraFee = usedExtraFee > penaltyExtraFee ? usedExtraFee - penaltyExtraFee : 0;
+
+            // 退给租户：未使用部分 + 惩罚部分
+            uint256 payBackExtraFee = (availablePointToken - usedExtraFee) + penaltyExtraFee;
+            uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee);
+
+            if (payBackDLCFee > 0) {
+                SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+                emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+            }
+            if (payBackExtraFee > 0) {
+                SafeERC20.safeTransfer(pointToken, payer, payBackExtraFee);
+                emit PayBackExtraFee(machineId, rentId, payer, payBackExtraFee);
+            }
+
+            if (usedBaseFee > 0) {
+                feeToken.approve(address(this), usedBaseFee);
+                feeToken.burnFrom(address(this), usedBaseFee);
+                emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
+                totalBurnedAmount += usedBaseFee;
+            }
+
+            // 矿工只拿超过 24h 惩罚的部分
+            if (minerExtraFee > 0) {
+                SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, minerExtraFee);
+                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, minerExtraFee);
+            }
+        } else {
+            // V1: extraFee 是 DLC
+            uint256 usedExtraFee = (feeInfo.extraFee * usedDuration) / rentDuration;
+            uint256 penaltyExtraFee = (feeInfo.extraFee * penaltyDuration) / rentDuration;
+            uint256 minerExtraFee = usedExtraFee > penaltyExtraFee ? usedExtraFee - penaltyExtraFee : 0;
+
+            // 退给租户：未使用 + 惩罚（全 DLC）
+            uint256 payBackDLCFee = (feeInfo.baseFee - usedBaseFee) + (feeInfo.platformFee - usedPlatformFee)
+                + (feeInfo.extraFee - usedExtraFee) + penaltyExtraFee;
+
+            if (payBackDLCFee > 0) {
+                SafeERC20.safeTransfer(feeToken, payer, payBackDLCFee);
+                emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
+            }
+
+            if (usedBaseFee > 0) {
+                feeToken.approve(address(this), usedBaseFee);
+                feeToken.burnFrom(address(this), usedBaseFee);
+                emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
+                totalBurnedAmount += usedBaseFee;
+            }
+
+            if (minerExtraFee > 0) {
+                SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, minerExtraFee);
+                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, minerExtraFee);
+            }
+        }
+
+        if (usedPlatformFee > 0) {
+            distributePlatformFee(rentId, machineId, usedPlatformFee);
+        }
+
         machineId2LastRentEndBlock[machineId] = block.number;
         machine2ProxyRented[machineId] = false;
         delete rentId2RentInfo[rentId];
