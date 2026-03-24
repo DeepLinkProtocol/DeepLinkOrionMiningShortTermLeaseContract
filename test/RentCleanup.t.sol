@@ -161,7 +161,7 @@ contract RentCleanupTest is Test {
 
     /// @notice Test: version is 6 after upgrade
     function testVersion() public view {
-        assertEq(rent.version(), 7, "version should be 7");
+        assertEq(rent.version(), 8, "version should be 8");
     }
 
     // ============ Helpers ============

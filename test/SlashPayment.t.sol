@@ -230,7 +230,7 @@ contract SlashPaymentTest is Test {
     // ========== 测试 version ==========
 
     function test_version() public view {
-        assertEq(rent.version(), 7);
+        assertEq(rent.version(), 8);
         assertEq(nftStaking.version(), 9);
     }
 
