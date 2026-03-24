@@ -1583,17 +1583,26 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit PayBackExtraFee(machineId, rentId, payer, payBackExtraFee);
             }
 
-            if (usedBaseFee > 0) {
-                feeToken.approve(address(this), usedBaseFee);
-                feeToken.burnFrom(address(this), usedBaseFee);
-                emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
-                totalBurnedAmount += usedBaseFee;
+            // burn 和转账前检查余额，防止 revert 阻塞 notify
+            {
+                uint256 dlcBal = feeToken.balanceOf(address(this));
+                uint256 burnAmt = usedBaseFee > dlcBal ? dlcBal : usedBaseFee;
+                if (burnAmt > 0) {
+                    feeToken.approve(address(this), burnAmt);
+                    feeToken.burnFrom(address(this), burnAmt);
+                    emit BurnedFee(machineId, rentId, block.timestamp, burnAmt, rentInfo.renter, 1);
+                    totalBurnedAmount += burnAmt;
+                }
             }
 
             // 矿工只拿超过 24h 惩罚的部分
             if (minerExtraFee > 0) {
-                SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, minerExtraFee);
-                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, minerExtraFee);
+                uint256 ptBal = pointToken.balanceOf(address(this));
+                uint256 transferAmt = minerExtraFee > ptBal ? ptBal : minerExtraFee;
+                if (transferAmt > 0) {
+                    SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, transferAmt);
+                    emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, transferAmt);
+                }
             }
         } else {
             // V1: extraFee 是 DLC — 加余额保护防止 revert 导致整个 notify 阻塞
@@ -1616,21 +1625,33 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
             }
 
-            if (usedBaseFee > 0) {
-                feeToken.approve(address(this), usedBaseFee);
-                feeToken.burnFrom(address(this), usedBaseFee);
-                emit BurnedFee(machineId, rentId, block.timestamp, usedBaseFee, rentInfo.renter, 1);
-                totalBurnedAmount += usedBaseFee;
+            {
+                uint256 dlcBal2 = feeToken.balanceOf(address(this));
+                uint256 burnAmt2 = usedBaseFee > dlcBal2 ? dlcBal2 : usedBaseFee;
+                if (burnAmt2 > 0) {
+                    feeToken.approve(address(this), burnAmt2);
+                    feeToken.burnFrom(address(this), burnAmt2);
+                    emit BurnedFee(machineId, rentId, block.timestamp, burnAmt2, rentInfo.renter, 1);
+                    totalBurnedAmount += burnAmt2;
+                }
             }
 
             if (minerExtraFee > 0) {
-                SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, minerExtraFee);
-                emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, minerExtraFee);
+                uint256 dlcBal3 = feeToken.balanceOf(address(this));
+                uint256 transferAmt3 = minerExtraFee > dlcBal3 ? dlcBal3 : minerExtraFee;
+                if (transferAmt3 > 0) {
+                    SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, transferAmt3);
+                    emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, transferAmt3);
+                }
             }
         }
 
-        if (usedPlatformFee > 0) {
-            distributePlatformFee(rentId, machineId, usedPlatformFee);
+        {
+            uint256 dlcBal4 = feeToken.balanceOf(address(this));
+            uint256 platAmt = usedPlatformFee > dlcBal4 ? dlcBal4 : usedPlatformFee;
+            if (platAmt > 0) {
+                distributePlatformFee(rentId, machineId, platAmt);
+            }
         }
 
         machineId2LastRentEndBlock[machineId] = block.number;
