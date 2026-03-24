@@ -1314,7 +1314,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         return renter;
     }
 
-    function notify(NotifyType tp, string calldata machineId) external onlyDBCAIContract returns (bool) {
+    function notify(NotifyType tp, string calldata machineId) external nonReentrant onlyDBCAIContract returns (bool) {
         if (tp == NotifyType.ContractRegister) {
             registered = true;
             return true;
@@ -1579,8 +1579,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 emit PayBackFee(machineId, rentId, payer, payBackDLCFee);
             }
             if (payBackExtraFee > 0) {
-                SafeERC20.safeTransfer(pointToken, payer, payBackExtraFee);
-                emit PayBackExtraFee(machineId, rentId, payer, payBackExtraFee);
+                uint256 ptBal0 = pointToken.balanceOf(address(this));
+                uint256 refundPt = payBackExtraFee > ptBal0 ? ptBal0 : payBackExtraFee;
+                if (refundPt > 0) {
+                    SafeERC20.safeTransfer(pointToken, payer, refundPt);
+                    emit PayBackExtraFee(machineId, rentId, payer, refundPt);
+                }
             }
 
             // burn 和转账前检查余额，防止 revert 阻塞 notify
