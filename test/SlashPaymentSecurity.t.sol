@@ -250,12 +250,17 @@ contract SlashPaymentSecurityTest is Test {
     // 安全测试 10: canStake 中 hasUnpaidSlash 调用不会被 mock 绕过
     //   攻击者不能通过外部方式让 hasUnpaidSlash 返回 false
     // ================================================================
-    function test_security_canStakeCheckCannotBeBypassed() public {
+    function test_security_lightPenaltyKeepsStaking() public {
         _createUnpaidSlash();
 
-        assertTrue(rent.hasUnpaidSlash(machineId));
+        assertTrue(rent.hasUnpaidSlash(machineId), "should have unpaid slash");
+        // 轻量惩罚后机器保持质押状态（不解质押）
+        assertTrue(nftStaking.isStaking(machineId), "should still be staking after light penalty");
+        // NFTStaking 侧租赁状态已清除
+        (,,,,,,,, bool isRentedByUser,,) = nftStaking.machineId2StakeInfos(machineId);
+        assertFalse(isRentedByUser, "isRentedByUser should be false");
 
-        // 确认无法质押
+        // 尝试重新质押 — 应该失败（因为已经在质押中，IsStaking）
         vm.mockCall(
             address(nftStaking.dbcAIContract()),
             abi.encodeWithSelector(IDBCAIContract.getMachineInfo.selector),
@@ -276,7 +281,7 @@ contract SlashPaymentSecurityTest is Test {
         nftTokens[0] = 1;
         nftTokensBalance[0] = 1;
 
-        vm.expectRevert(abi.encodeWithSelector(NFTStaking.MachineHasUnpaidSlash.selector, machineId));
+        vm.expectRevert(abi.encodeWithSelector(NFTStaking.IsStaking.selector));
         nftStaking.stakeV2(owner, machineId, nftTokens, nftTokensBalance, 720, false);
         vm.stopPrank();
     }

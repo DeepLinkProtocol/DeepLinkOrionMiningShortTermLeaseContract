@@ -6,6 +6,7 @@ interface IStakingContract {
     function endRentMachine(string calldata machineId, uint256 baseRentFee, uint256 extraRentFee) external;
     function renewRentMachine(string memory machineId, uint256 rentFee) external;
     function reportMachineFault(string calldata machineId, address renter) external;
+    function reportMachineFaultLight(string calldata machineId, address renter) external;
     function getMachineInfo(string memory machineId)
         external
         view

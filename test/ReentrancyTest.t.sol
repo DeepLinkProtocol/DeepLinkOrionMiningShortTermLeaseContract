@@ -276,31 +276,17 @@ contract ReentrancyTest is Test {
         vm.prank(address(dbcAI));
         dbcAI.triggerOfflineNotify(MACHINE_ID);
 
-        // Verify post-conditions: unstake completed despite reentrancy
-        assertFalse(nftStaking.isStaking(MACHINE_ID), "isStaking should be false after penalty");
-        assertEq(nftStaking.totalCalcPoint(), 0, "calcPoint should be 0 after penalty");
+        // Verify post-conditions: 轻量惩罚 — 机器保持质押，租赁终止
+        assertTrue(nftStaking.isStaking(MACHINE_ID), "isStaking should remain true after light penalty");
         assertRentalTerminated(MACHINE_ID);
 
-        // NFT returned to owner
-        assertEq(nftToken.balanceOf(owner, 1), 1, "NFT should be returned to owner");
+        // NFT 保留在合约中（不退还给 owner）
+        assertEq(nftToken.balanceOf(address(nftStaking), 1), 1, "NFT should stay in staking contract");
 
-        // DLC returned to owner (minus slash amount, plus any accumulated rewards from _claim)
-        uint256 ownerBalanceAfter = rewardToken.balanceOf(owner);
-        uint256 slashAmount = nftStaking.SLASH_AMOUNT();
-        uint256 netReturn = ownerBalanceAfter - ownerBalanceBefore;
-        assertGe(
-            netReturn,
-            reserveAmount - slashAmount,
-            "DLC returned should be >= reserveAmount - slashAmount"
-        );
-
-        // reservedAmount should be 0
+        // reservedAmount 应减少 SLASH_AMOUNT（不归零）
         (,,,,, uint256 finalReserved,,,,,) = nftStaking.machineId2StakeInfos(MACHINE_ID);
-        assertEq(finalReserved, 0, "reservedAmount should be 0");
-
-        // endAtTimestamp should be set
-        (,,, uint256 endAt,,,,,,,) = nftStaking.machineId2StakeInfos(MACHINE_ID);
-        assertEq(endAt, block.timestamp, "endAt should be current timestamp");
+        uint256 slashAmount = nftStaking.SLASH_AMOUNT();
+        assertEq(finalReserved, reserveAmount - slashAmount, "reservedAmount should be reduced by slash");
     }
 
     // ── 测试 2: 非重入路径仍正常工作 ────────────────────────
@@ -321,10 +307,10 @@ contract ReentrancyTest is Test {
         vm.prank(address(dbcAI));
         dbcAI.triggerOfflineNotifyNoGuard(MACHINE_ID);
 
-        // Same expected outcome
-        assertFalse(nftStaking.isStaking(MACHINE_ID), "isStaking should be false");
+        // 轻量惩罚：机器保持质押，租赁终止
+        assertTrue(nftStaking.isStaking(MACHINE_ID), "isStaking should remain true after light penalty");
         assertRentalTerminated(MACHINE_ID);
-        assertEq(nftToken.balanceOf(owner, 1), 1, "NFT should be returned");
+        assertEq(nftToken.balanceOf(address(nftStaking), 1), 1, "NFT should stay in staking contract");
     }
 
     // ── 测试 3: 未租赁时离线不触发 slash（仅 stopRewarding）──────
@@ -380,35 +366,19 @@ contract ReentrancyTest is Test {
         vm.prank(address(dbcAI));
         dbcAI.triggerOfflineNotify(MACHINE_ID);
 
-        assertFalse(nftStaking.isStaking(MACHINE_ID), "should not be staking after penalty");
-        assertEq(nftToken.balanceOf(owner, 1), 1, "NFT should be with owner");
+        // 轻量惩罚后机器保持质押
+        assertTrue(nftStaking.isStaking(MACHINE_ID), "should still be staking after light penalty");
 
-        // Wait some time, then re-stake
-        passHours(24);
-
-        // Re-register machine as online
+        // 轻量惩罚后机器保持质押，不需要重新 stakeV2
+        // 等冷却期后可被重新租赁
+        passHours(1);
         dbcAI.setMachineState(MACHINE_ID, true, true);
 
-        vm.startPrank(owner);
-        dealERC1155(address(nftToken), owner, 1, 1, false);
-        deal(address(rewardToken), owner, 100000 * 1e18);
-        rewardToken.approve(address(nftStaking), reserveAmount);
-        nftToken.setApprovalForAll(address(nftStaking), true);
-
-        uint256[] memory nftTokens = new uint256[](1);
-        uint256[] memory nftBalances = new uint256[](1);
-        nftTokens[0] = 1;
-        nftBalances[0] = 1;
-        nftStaking.stakeV2(owner, MACHINE_ID, nftTokens, nftBalances, 48, true);
-        nftStaking.addDLCToStake(MACHINE_ID, reserveAmount);
-        vm.stopPrank();
-
-        // Verify re-stake succeeded
-        assertTrue(nftStaking.isStaking(MACHINE_ID), "should be staking again");
-        assertEq(nftStaking.totalCalcPoint(), 100, "calcPoint should be 100 after re-stake");
+        assertTrue(nftStaking.isStaking(MACHINE_ID), "should still be staking, ready for re-rent");
         (,,,, uint256 calcPoint, uint256 reserved,,,,,) = nftStaking.machineId2StakeInfos(MACHINE_ID);
-        assertEq(calcPoint, 100, "calcPoint should be 100");
-        assertGt(reserved, 0, "reservedAmount should be > 0");
+        assertGt(calcPoint, 0, "calcPoint should be > 0 (mining continues)");
+        // reservedAmount 减少了 slash 金额但不为零
+        assertEq(reserved, reserveAmount - nftStaking.SLASH_AMOUNT(), "reserved should be reduced by slash");
     }
 
     // ── 测试 5: 零 DLC 质押时的重入路径 ─────────────────────
@@ -425,9 +395,10 @@ contract ReentrancyTest is Test {
         vm.prank(address(dbcAI));
         dbcAI.triggerOfflineNotify(MACHINE_ID);
 
-        assertFalse(nftStaking.isStaking(MACHINE_ID), "isStaking should be false");
+        // 轻量惩罚：保持质押，租赁终止
+        assertTrue(nftStaking.isStaking(MACHINE_ID), "isStaking should remain true");
         assertRentalTerminated(MACHINE_ID);
-        assertEq(nftToken.balanceOf(owner, 1), 1, "NFT should be returned");
+        assertEq(nftToken.balanceOf(address(nftStaking), 1), 1, "NFT should stay in staking");
     }
 
     // ── 测试 6: 租赁到期后的离线通知 ────────────────────────

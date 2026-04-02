@@ -1187,6 +1187,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         stakingContract.reportMachineFault(slashInfo.machineId, slashInfo.renter);
     }
 
+    /// @notice 轻量惩罚版本：记录 slash 信息，但调用 NFTStaking 的轻量惩罚（不解质押）
+    function addSlashInfoAndReportLight(SlashInfo memory slashInfo) internal {
+        machineId2SlashInfos[slashInfo.machineId].push(slashInfo);
+        machineId2UnpaidSlashCount[slashInfo.machineId]++;
+        machineId2LastSlashTimestamp[slashInfo.machineId] = block.timestamp;
+        stakingContract.reportMachineFaultLight(slashInfo.machineId, slashInfo.renter);
+    }
+
     function approveMachineFaultReporting(string calldata machineId) external onlyApproveAdmins {
         require(machineId2SlashInfo[machineId].renter != address(0x0), ReportedMachineNotFound());
 
@@ -1338,7 +1346,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                     emit RemoveCalcPointOnOffline(machineId);
                     return true;
                 }
-                // 非包月：触发 slash 流程 + 按比例退费 + 清理状态
+                // 非包月：触发轻量 slash 流程（扣罚金+结束租赁，不解质押不下架）+ 按比例退费 + 清理状态
                 SlashInfo memory slashInfo = newSlashInfo(
                     rentInfo.stakeHolder,
                     rentInfo.machineId,
@@ -1349,7 +1357,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                     SlashType.Offline,
                     rentInfo.renter
                 );
-                addSlashInfoAndReport(slashInfo);
+                addSlashInfoAndReportLight(slashInfo);
 
                 // 惩罚性退费：未用部分全退 + 已用部分最多24h也退给租户（矿工不拿）
                 _terminateRentOnSlashWithPenalty(machineId, rentId, rentInfo);
