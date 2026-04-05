@@ -138,6 +138,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     // v7: last slash timestamp — O(1) query for last penalty time
     mapping(string => uint256) public machineId2LastSlashTimestamp;
 
+    // v8: rent whitelist counter — total number of machines in rent whitelist
+    uint256 public rentWhitelistCount;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -563,7 +566,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     function setRentingWhitelist(string[] calldata machineIds, bool isAdd) external {
         require(adminsToSetRentWhiteList[msg.sender], "has no permission to set renting whitelist");
         for (uint256 i = 0; i < machineIds.length; i++) {
-            rentWhitelist[machineIds[i]] = isAdd;
+            bool current = rentWhitelist[machineIds[i]];
+            if (current != isAdd) {
+                rentWhitelist[machineIds[i]] = isAdd;
+                if (isAdd) {
+                    rentWhitelistCount++;
+                } else {
+                    if (rentWhitelistCount > 0) rentWhitelistCount--;
+                }
+            }
         }
     }
 
@@ -1251,7 +1262,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 8;
+        return 9;
     }
 
     /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
