@@ -172,6 +172,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     );
     event PayBackFee(string machineId, uint256 rentId, address renter, uint256 amount);
     event PayBackExtraFee(string machineId, uint256 rentId, address renter, uint256 amount);
+    event PayBackExtraFeeShortfall(string machineId, uint256 rentId, address renter, uint256 owed, uint256 actual);
     event PayBackPointFee(string machineId, uint256 rentId, address renter, uint256 amount);
     event RentTime(uint256 totalRentSenconds, uint256 usedRentSeconds);
     event PayToContractOnRent(uint256 rentId, address renter, uint256 totalRentFee);
@@ -1262,7 +1263,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 9;
+        return 10;
+    }
+
+    /// @notice H-2: 初始化白名单计数器（升级后一次性调用，同步已有白名单数量）
+    function initializeWhitelistCount(uint256 count) external onlyOwner {
+        require(rentWhitelistCount == 0, "already initialized");
+        rentWhitelistCount = count;
     }
 
     /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
@@ -1603,6 +1610,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 if (refundPt > 0) {
                     SafeERC20.safeTransfer(pointToken, payer, refundPt);
                     emit PayBackExtraFee(machineId, rentId, payer, refundPt);
+                }
+                // M-2: 记录余额不足导致的退款差额，供链下系统补偿
+                if (refundPt < payBackExtraFee) {
+                    emit PayBackExtraFeeShortfall(machineId, rentId, payer, payBackExtraFee, refundPt);
                 }
             }
 

@@ -1078,28 +1078,41 @@ contract NFTStaking is
 
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
 
+        // H-1: 验证机器确实已质押，未质押的机器不处理
+        if (stakeInfo.holder == address(0)) {
+            return;
+        }
+
         // 1. 清理租赁状态（状态变更在外部调用之前，防止重入）
         machineId2Rented[machineId] = false;
         stakeInfo.isRentedByUser = false;
         delete machineId2BeneficiaryInfos[machineId];
 
-        // 2. claim 未领奖励（在扣罚金之前，确保奖励按原始 reservedAmount 计算）
-        _claim(machineId);
-
-        // 3. 扣DLC罚金（有就扣，没有就记欠条）
+        // 2. 先扣DLC罚金（M-1: slash 在 claim 之前，防止矿工先拿奖励再被扣不足）
         tryPaySlashOnReport(stakeInfo, machineId, renter);
 
+        // 3. claim 未领奖励（slash 后再领，确保罚金优先）
+        _claim(machineId);
+
         // 4. 设置冷却期（与 endRentMachine 一致，300秒）
+        // C-1: 防止 endAtTimestamp < 1 hours 时下溢回滚
         stakeInfo.nextRenterCanRentAt = 300 + block.timestamp;
-        if (block.timestamp > stakeInfo.endAtTimestamp - 1 hours) {
+        if (stakeInfo.endAtTimestamp > 1 hours && block.timestamp > stakeInfo.endAtTimestamp - 1 hours) {
             stakeInfo.nextRenterCanRentAt = 0;
         }
 
         // 5. 恢复挖矿算力（不解除质押，机器继续参与挖矿）
+        // C-2: try/catch 防止 dbcAI 合约异常阻塞整个惩罚链
         if (stakeInfo.nftCount > 0) {
-            (, uint256 calcPoint,,,,,,,) = dbcAIContract.getMachineInfo(machineId, true);
-            calcPoint = calcPoint * getNFTCount(stakeInfo.tokenIdBalances);
-            _joinStaking(machineId, calcPoint, stakeInfo.reservedAmount);
+            try dbcAIContract.getMachineInfo(machineId, true) returns (
+                address, uint256 calcPoint, uint256, string memory, uint256, string memory, uint256, string memory, uint256
+            ) {
+                calcPoint = calcPoint * getNFTCount(stakeInfo.tokenIdBalances);
+                _joinStaking(machineId, calcPoint, stakeInfo.reservedAmount);
+            } catch {
+                // dbcAI 合约异常（暂停/机器注销），跳过恢复算力
+                // 机器不参与挖矿直到下次正常 _joinStaking
+            }
         }
 
         emit ReportMachineFaultLight(machineId, renter, stakeInfo.nextRenterCanRentAt);
@@ -1404,7 +1417,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 10;
+        return 11;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
