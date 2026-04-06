@@ -1263,12 +1263,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 10;
+        return 11;
     }
 
-    /// @notice H-2: 初始化白名单计数器（升级后一次性调用，同步已有白名单数量）
-    function initializeWhitelistCount(uint256 count) external onlyOwner {
-        require(rentWhitelistCount == 0, "already initialized");
+    /// @notice 校准白名单计数器（onlyOwner，可重复调用）
+    function setWhitelistCount(uint256 count) external onlyOwner {
         rentWhitelistCount = count;
     }
 
