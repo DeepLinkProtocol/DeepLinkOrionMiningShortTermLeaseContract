@@ -8,6 +8,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../interface/IDBCAIContract.sol";
+import {NFTStaking} from "../NFTStaking.sol";
 
 /// @title FreeRental - 免质押 GPU 出租合约
 /// @notice 不需要质押 DLC/NFT，机器注册后即可被租赁
@@ -15,7 +16,7 @@ import "../interface/IDBCAIContract.sol";
 contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
-    uint256 public constant VERSION = 2;
+    uint256 public constant VERSION = 3;
     uint256 public constant PLATFORM_FEE_PCT = 25; // 平台提成 25%，机主得定价部分
     string public constant PROJECT_NAME = "DeepLinkEVM";
 
@@ -72,6 +73,15 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     address public platformWallet; // 平台收款钱包
     mapping(address => uint256) public ownerPendingIncome; // 待领取收益
     mapping(address => uint256) public ownerTotalClaimed;  // 已领取总额
+
+    // ── DDN 通知类型（与 Rent.sol 保持一致）──
+    enum NotifyType {
+        ContractRegister,
+        MachineRegister,
+        MachineUnregister,
+        MachineOnline,
+        MachineOffline
+    }
 
     // ── Events ──
     event MachineRegistered(string machineId, address indexed owner);
@@ -193,6 +203,12 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
                     enabled: true
                 });
                 machineCount++;
+
+                // 向 dbcAI 注册机器（DDN 检测节点通过此识别机器）
+                if (address(dbcAIContract) != address(0)) {
+                    try dbcAIContract.reportStakingStatus(PROJECT_NAME, NFTStaking.StakingType.ShortTerm, machineIds[i], 1, true) {} catch {}
+                }
+
                 emit MachineRegistered(machineIds[i], owners[i]);
             }
         }
@@ -302,6 +318,7 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
             // 正常到期：全额分配
             ownerPendingIncome[r.owner] += r.ownerPoint;
             pointToken.safeTransfer(platformWallet, r.platformPoint);
+            emit RentEnded(rentId, machineId, r.renter, r.ownerPoint, r.platformPoint);
         } else {
             // 提前退租：按比例分配，剩余退给租户
             uint256 usedTotal = r.totalPointPaid * actualDuration / totalDuration;
@@ -314,9 +331,8 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
             if (refund > 0) {
                 pointToken.safeTransfer(r.renter, refund);
             }
+            emit RentEnded(rentId, machineId, r.renter, usedOwner, usedPlatform);
         }
-
-        emit RentEnded(rentId, machineId, r.renter, r.ownerPoint, r.platformPoint);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -361,11 +377,10 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
 
     /// @notice DDN 检测节点通知机器离线，触发惩罚
     /// @dev 由 dbcAI 合约调用，与 Rent.notify() 同接口
-    function notify(uint8 tp, string calldata machineId) external nonReentrant returns (bool) {
+    function notify(NotifyType tp, string calldata machineId) external nonReentrant returns (bool) {
         require(msg.sender == address(dbcAIContract), "only dbcAI");
 
-        // tp == 4 = MachineOffline
-        if (tp != 4) return true;
+        if (tp != NotifyType.MachineOffline) return true;
 
         // 检查是否为免质押注册机器
         if (!machines[machineId].registered) return false;
@@ -397,6 +412,7 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         if (usedTotal > r.totalPointPaid) usedTotal = r.totalPointPaid;
 
         uint256 maxSlash24h = r.ownerPoint * 24 * 3600 / totalDuration;
+        if (maxSlash24h > r.ownerPoint) maxSlash24h = r.ownerPoint;
         uint256 usedOwner = usedTotal * 100 / (100 + PLATFORM_FEE_PCT);
         uint256 slashAmount = usedOwner < maxSlash24h ? usedOwner : maxSlash24h;
 
