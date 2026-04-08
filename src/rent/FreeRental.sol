@@ -7,6 +7,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "../interface/IDBCAIContract.sol";
 
 /// @title FreeRental - 免质押 GPU 出租合约
 /// @notice 不需要质押 DLC/NFT，机器注册后即可被租赁
@@ -14,11 +15,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
     uint256 public constant PLATFORM_FEE_PCT = 25; // 平台提成 25%，机主得定价部分
+    string public constant PROJECT_NAME = "DeepLinkEVM";
 
     // ── 代币 ──
     IERC20 public pointToken; // DLP Point Token（积分）
+
+    // ── 外部合约 ──
+    IDBCAIContract public dbcAIContract; // DDN 链上注册/在线状态
 
     // ── 权限 ──
     address public canUpgradeAddress;
@@ -135,6 +140,10 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         platformWallet = wallet;
     }
 
+    function setDbcAIContract(address addr) external onlyOwner {
+        dbcAIContract = IDBCAIContract(addr);
+    }
+
     // ══════════════════════════════════════════════════════════════
     //  机器注册/移除（管理员操作，机主通过后端 API 触发）
     // ══════════════════════════════════════════════════════════════
@@ -159,6 +168,11 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
             enabled: true
         });
         machineCount++;
+
+        // 向 dbcAI 注册机器（DDN 检测节点通过此识别机器）
+        if (address(dbcAIContract) != address(0)) {
+            try dbcAIContract.reportStakingStatus(PROJECT_NAME, NFTStaking.StakingType.ShortTerm, machineId, 1, true) {} catch {}
+        }
 
         emit MachineRegistered(machineId, ownerWallet);
     }
@@ -193,6 +207,11 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         address prevOwner = m.owner;
         delete machines[machineId];
         if (machineCount > 0) machineCount--;
+
+        // 从 dbcAI 注销
+        if (address(dbcAIContract) != address(0)) {
+            try dbcAIContract.reportStakingStatus(PROJECT_NAME, NFTStaking.StakingType.ShortTerm, machineId, 1, false) {} catch {}
+        }
 
         emit MachineRemoved(machineId, prevOwner);
     }
@@ -304,7 +323,7 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     //  惩罚（DDN 检测离线后调用）
     // ══════════════════════════════════════════════════════════════
 
-    /// @notice 惩罚免质押机器（离线等原因）
+    /// @notice 惩罚免质押机器（离线等原因）— 管理员手动调用
     /// @dev 最多扣 24 小时租金，结束租赁，退还租户剩余积分
     function reportFault(string calldata machineId) external onlySlashAdmin nonReentrant {
         uint256 rentId = machineId2RentId[machineId];
@@ -312,63 +331,7 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         RentInfo storage r = rentId2RentInfo[rentId];
         require(!r.ended, "already ended");
 
-        MachineInfo storage m = machines[machineId];
-
-        // 计算已使用时长
-        uint256 actualDuration = block.timestamp > r.rentStartTime
-            ? block.timestamp - r.rentStartTime
-            : 0;
-        uint256 totalDuration = r.rentEndTime - r.rentStartTime;
-
-        // 已使用部分的积分
-        uint256 usedTotal = r.totalPointPaid * actualDuration / totalDuration;
-        if (usedTotal > r.totalPointPaid) usedTotal = r.totalPointPaid;
-
-        // 惩罚金额：最多 24 小时租金（从机主收益中扣）
-        uint256 maxSlash24h = r.ownerPoint * 24 * 3600 / totalDuration;
-        uint256 usedOwner = usedTotal * 100 / (100 + PLATFORM_FEE_PCT);
-        uint256 slashAmount = usedOwner < maxSlash24h ? usedOwner : maxSlash24h;
-
-        // 退还租户：未使用部分
-        uint256 refundAmount = r.totalPointPaid - usedTotal;
-
-        // 结束租赁
-        r.ended = true;
-        machineIsRented[machineId] = false;
-        delete machineId2RentId[machineId];
-
-        // 平台部分照收（已使用部分）
-        uint256 usedPlatform = usedTotal - usedOwner;
-        if (usedPlatform > 0) {
-            pointToken.safeTransfer(platformWallet, usedPlatform);
-        }
-
-        // 机主收益减去罚金（如果有正收益）
-        if (usedOwner > slashAmount) {
-            ownerPendingIncome[r.owner] += (usedOwner - slashAmount);
-        }
-        // 罚金归平台
-        if (slashAmount > 0) {
-            pointToken.safeTransfer(platformWallet, slashAmount);
-        }
-
-        // 退还租户
-        if (refundAmount > 0) {
-            pointToken.safeTransfer(r.renter, refundAmount);
-        }
-
-        // 记录惩罚
-        machineId2SlashInfo[machineId] = SlashInfo({
-            machineId: machineId,
-            renter: r.renter,
-            slashAmount: slashAmount,
-            refundAmount: refundAmount,
-            createdAt: block.timestamp,
-            executed: true
-        });
-
-        emit SlashExecuted(machineId, r.renter, slashAmount);
-        emit RentEndedBySlash(rentId, machineId, r.renter, slashAmount, refundAmount);
+        _executeFault(machineId);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -391,6 +354,86 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     // ══════════════════════════════════════════════════════════════
     //  查询函数
     // ══════════════════════════════════════════════════════════════
+
+    // ══════════════════════════════════════════════════════════════
+    //  DDN 通知接口（dbcAI 合约调用）
+    // ══════════════════════════════════════════════════════════════
+
+    /// @notice DDN 检测节点通知机器离线，触发惩罚
+    /// @dev 由 dbcAI 合约调用，与 Rent.notify() 同接口
+    function notify(uint8 tp, string calldata machineId) external nonReentrant returns (bool) {
+        require(msg.sender == address(dbcAIContract), "only dbcAI");
+
+        // tp == 4 = MachineOffline
+        if (tp != 4) return true;
+
+        // 检查是否为免质押注册机器
+        if (!machines[machineId].registered) return false;
+
+        // 检查是否有活跃租赁
+        uint256 rentId = machineId2RentId[machineId];
+        if (rentId == 0) return true; // 未租赁，无需惩罚
+
+        RentInfo storage r = rentId2RentInfo[rentId];
+        if (r.ended) return true;
+        if (block.timestamp > r.rentEndTime) return true; // 已过期
+
+        // 执行惩罚（复用 reportFault 逻辑）
+        _executeFault(machineId);
+        return true;
+    }
+
+    /// @dev 内部惩罚执行（reportFault 和 notify 共用）
+    function _executeFault(string calldata machineId) internal {
+        uint256 rentId = machineId2RentId[machineId];
+        RentInfo storage r = rentId2RentInfo[rentId];
+
+        uint256 actualDuration = block.timestamp > r.rentStartTime
+            ? block.timestamp - r.rentStartTime
+            : 0;
+        uint256 totalDuration = r.rentEndTime - r.rentStartTime;
+
+        uint256 usedTotal = r.totalPointPaid * actualDuration / totalDuration;
+        if (usedTotal > r.totalPointPaid) usedTotal = r.totalPointPaid;
+
+        uint256 maxSlash24h = r.ownerPoint * 24 * 3600 / totalDuration;
+        uint256 usedOwner = usedTotal * 100 / (100 + PLATFORM_FEE_PCT);
+        uint256 slashAmount = usedOwner < maxSlash24h ? usedOwner : maxSlash24h;
+
+        uint256 refundAmount = r.totalPointPaid - usedTotal;
+
+        r.ended = true;
+        machineIsRented[machineId] = false;
+        delete machineId2RentId[machineId];
+
+        uint256 usedPlatform = usedTotal - usedOwner;
+        if (usedPlatform > 0) {
+            pointToken.safeTransfer(platformWallet, usedPlatform);
+        }
+
+        if (usedOwner > slashAmount) {
+            ownerPendingIncome[r.owner] += (usedOwner - slashAmount);
+        }
+        if (slashAmount > 0) {
+            pointToken.safeTransfer(platformWallet, slashAmount);
+        }
+
+        if (refundAmount > 0) {
+            pointToken.safeTransfer(r.renter, refundAmount);
+        }
+
+        machineId2SlashInfo[machineId] = SlashInfo({
+            machineId: machineId,
+            renter: r.renter,
+            slashAmount: slashAmount,
+            refundAmount: refundAmount,
+            createdAt: block.timestamp,
+            executed: true
+        });
+
+        emit SlashExecuted(machineId, r.renter, slashAmount);
+        emit RentEndedBySlash(rentId, machineId, r.renter, slashAmount, refundAmount);
+    }
 
     /// @notice 查询机器信息
     function getMachineInfo(string calldata machineId) external view returns (
