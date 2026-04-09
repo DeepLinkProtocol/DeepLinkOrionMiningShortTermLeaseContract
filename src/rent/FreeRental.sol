@@ -16,7 +16,7 @@ import {NFTStaking} from "../NFTStaking.sol";
 contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
-    uint256 public constant VERSION = 3;
+    uint256 public constant VERSION = 4;
     uint256 public constant PLATFORM_FEE_PCT = 25; // 平台提成 25%，机主得定价部分
     string public constant PROJECT_NAME = "DeepLinkEVM";
 
@@ -481,6 +481,26 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
     function canRent(string calldata machineId) external view returns (bool) {
         MachineInfo storage m = machines[machineId];
         return m.registered && m.enabled && !machineIsRented[machineId];
+    }
+
+    /// @notice 紧急结束租赁（owner 兜底，防积分永久锁定）
+    /// @dev 当 admin 私钥丢失或 endRent/notify 都无法调用时，owner 可强制结束并按比例退款
+    function emergencyEndRent(string calldata machineId) external onlyOwner nonReentrant {
+        uint256 rentId = machineId2RentId[machineId];
+        require(rentId > 0, "no active rent");
+        RentInfo storage r = rentId2RentInfo[rentId];
+        require(!r.ended, "already ended");
+
+        r.ended = true;
+        machineIsRented[machineId] = false;
+        delete machineId2RentId[machineId];
+
+        // 全额退还租户（紧急情况下优先保护租户资金）
+        if (r.totalPointPaid > 0) {
+            pointToken.safeTransfer(r.renter, r.totalPointPaid);
+        }
+
+        emit RentEnded(rentId, machineId, r.renter, 0, 0);
     }
 
     /// @notice 查询机主待领取收益
