@@ -914,6 +914,11 @@ contract NFTStaking is
         emit Unstaked(stakeholder, machineId, reservedAmount);
     }
 
+    /// @notice 强制从 dbcAI 注销机器（forceUnStake 后 try-catch 吞掉 revert 时用）
+    function forceUnregisterDbcAI(string calldata machineId) external onlyOwner {
+        dbcAIContract.reportStakingStatus(PROJECT_NAME, StakingType.ShortTerm, machineId, 1, false);
+    }
+
     function unStakeByHolder(string calldata machineId) public nonReentrant {
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
         require(msg.sender == stakeInfo.holder, NotStakeHolder(machineId, msg.sender));
