@@ -16,8 +16,10 @@ import {NFTStaking} from "../NFTStaking.sol";
 contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
-    uint256 public constant VERSION = 4;
+    uint256 public constant VERSION = 5;
     uint256 public constant PLATFORM_FEE_PCT = 25; // 平台提成 25%，机主得定价部分
+    uint256 public constant MAX_MACHINE_ID_LENGTH = 128;
+    uint256 public constant MIN_RENT_PAYMENT = 100; // 最小租赁金额 100 wei
     string public constant PROJECT_NAME = "DeepLinkEVM";
 
     // ── 代币 ──
@@ -167,6 +169,8 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         address ownerWallet,
         uint256 pricePerHourUSD
     ) external onlyAdmin {
+        require(bytes(machineId).length > 0, "empty machineId");
+        require(bytes(machineId).length <= MAX_MACHINE_ID_LENGTH, "machineId too long");
         require(!machines[machineId].registered, "already registered");
         require(ownerWallet != address(0), "zero owner");
         require(pricePerHourUSD > 0, "zero price");
@@ -194,7 +198,9 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         uint256 pricePerHourUSD
     ) external onlyAdmin {
         require(machineIds.length == owners.length, "length mismatch");
+        require(pricePerHourUSD > 0, "zero price");
         for (uint256 i = 0; i < machineIds.length; i++) {
+            if (bytes(machineIds[i]).length == 0 || bytes(machineIds[i]).length > MAX_MACHINE_ID_LENGTH) continue;
             if (!machines[machineIds[i]].registered && owners[i] != address(0)) {
                 machines[machineIds[i]] = MachineInfo({
                     owner: owners[i],
@@ -267,7 +273,7 @@ contract FreeRental is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reent
         require(!machineIsRented[machineId], "already rented");
         require(renter != address(0), "zero renter");
         require(durationSeconds > 0, "zero duration");
-        require(totalPoint > 0, "zero payment");
+        require(totalPoint >= MIN_RENT_PAYMENT, "payment too small");
 
         // 计算分成：ownerPoint = totalPoint * 100 / 125 (去掉25%平台提成)
         uint256 ownerPoint = totalPoint * 100 / (100 + PLATFORM_FEE_PCT);
