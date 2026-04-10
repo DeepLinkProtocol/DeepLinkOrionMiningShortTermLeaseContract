@@ -638,6 +638,19 @@ contract NFTStaking is
         machineId2ExtraRentFeeInUSDPerMinutes[machineId] = feeInUSD;
     }
 
+    /// @notice Admin 批量设置网吧机器额外价格（矿工未设置或超上限时由管理员统一设置）
+    event ExtraRentFeeSetByAdmin(string machineId, uint256 feeInUSD);
+    function setExtraRentFeeByAdmin(string[] calldata machineIds, uint256 feeInUSD) external {
+        require(msg.sender == owner() || dlcClientWalletAddress[msg.sender], NotAdmin());
+        require(machineIds.length <= 100, "batch too large");
+        require(maxExtraRentFeeInUSDPerMinutes > 0, MaxRentExtraFeeNotSet());
+        require(feeInUSD <= maxExtraRentFeeInUSDPerMinutes, CanNotOverExtraFeeLimit(maxExtraRentFeeInUSDPerMinutes));
+        for (uint256 i = 0; i < machineIds.length; i++) {
+            machineId2ExtraRentFeeInUSDPerMinutes[machineIds[i]] = feeInUSD;
+            emit ExtraRentFeeSetByAdmin(machineIds[i], feeInUSD);
+        }
+    }
+
     function getPendingSlashCount(string memory machineId) public view returns (uint256) {
         return pendingSlashedMachineId2Renter[machineId].length;
     }
@@ -1422,7 +1435,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 11;
+        return 13;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
