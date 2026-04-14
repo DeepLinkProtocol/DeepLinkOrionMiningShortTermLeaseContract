@@ -28,6 +28,8 @@ import {
   SlashPaidByStakeHolder,
 } from "../generated/Rent/Rent";
 import {
+  StateSummary,
+  StakeHolder,
   MachineInfo,
   MachineSlashedRecord,
   RentingRecord,
@@ -92,11 +94,36 @@ export function handleEndRentMachine(event: RentMachineEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
 
   // Fix: Rent 合约的 forceCleanupRentInfo/forceCleanupRentInfoByOwner 只 emit Rent 的 EndRentMachine，
-  // 不会触发 NFTStaking 的 handler，需要在这里同步更新 MachineInfo.isRented
+  // 不会触发 NFTStaking 的 handler，需要在这里同步更新
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
-    machineInfo.isRented = false;
-    machineInfo.save();
+    // 只在之前是 rented 状态时才减计数（防止重复减）
+    if (machineInfo.isRented) {
+      machineInfo.isRented = false;
+      machineInfo.rentedGPUCount = BigInt.zero();
+      machineInfo.save();
+
+      // 同步减 StakeHolder.rentedGPUCount
+      let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+      if (stakeholder != null) {
+        if (stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+          stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
+        }
+        stakeholder.save();
+      }
+
+      // 同步减 StateSummary.totalRentedGPUCount
+      let stateSummary = StateSummary.load(Bytes.empty());
+      if (stateSummary != null) {
+        if (stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+          stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
+        }
+        stateSummary.save();
+      }
+    } else {
+      machineInfo.isRented = false;
+      machineInfo.save();
+    }
   }
 
   let rentingRecord = RentingRecord.load(id);

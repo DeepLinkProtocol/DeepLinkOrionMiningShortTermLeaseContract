@@ -674,7 +674,31 @@ export function handleExitStakingForOffline(
     return;
   }
   machineInfo.online = false;
+
+  // Bug fix: 同步减 calcPoint（合约 _stopRewarding → _joinStaking(0)）
+  let calcPointToRemove = machineInfo.fullTotalCalcPoint;
+  machineInfo.fullTotalCalcPoint = BigInt.zero();
   machineInfo.save();
+
+  let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+  if (stakeholder != null) {
+    if (stakeholder.fullTotalCalcPoint.gt(calcPointToRemove)) {
+      stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(calcPointToRemove);
+    } else {
+      stakeholder.fullTotalCalcPoint = BigInt.zero();
+    }
+    stakeholder.save();
+  }
+
+  let stateSummary = StateSummary.load(Bytes.empty());
+  if (stateSummary != null) {
+    if (stateSummary.totalCalcPoint.gt(calcPointToRemove)) {
+      stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
+    } else {
+      stateSummary.totalCalcPoint = BigInt.zero();
+    }
+    stateSummary.save();
+  }
 
   let record = new MachineOfflineRecord(id);
   record.blockNumber = event.block.number;
@@ -706,7 +730,28 @@ export function handleReOnline(event: RecoverRewarding): void {
     return;
   }
   machineInfo.online = true;
+
+  // Bug fix: 恢复 calcPoint（合约 _recoverRewarding → _joinStaking(calcPoint)）
+  // 恢复到含 NFT 倍数的值（如果在租赁中还要加 30% 增幅）
+  let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
+  if (machineInfo.isRented) {
+    let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
+    restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
+  }
+  machineInfo.fullTotalCalcPoint = restoredCalcPoint;
   machineInfo.save();
+
+  let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+  if (stakeholder != null) {
+    stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(restoredCalcPoint);
+    stakeholder.save();
+  }
+
+  let stateSummary = StateSummary.load(Bytes.empty());
+  if (stateSummary != null) {
+    stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(restoredCalcPoint);
+    stateSummary.save();
+  }
 
   let lastOfflineRecord = MachineOfflineRecord.load(id);
   if (lastOfflineRecord == null || !lastOfflineRecord.isActive) {
@@ -744,6 +789,35 @@ export function handleExitStakingForBlocking(
   event: ExitStakingForBlocking
 ): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
+
+  // Bug fix: 同步减 calcPoint（合约 _stopRewarding → _joinStaking(0)）
+  let machineInfo = MachineInfo.load(id);
+  if (machineInfo != null) {
+    let calcPointToRemove = machineInfo.fullTotalCalcPoint;
+    machineInfo.fullTotalCalcPoint = BigInt.zero();
+    machineInfo.save();
+
+    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+    if (stakeholder != null) {
+      if (stakeholder.fullTotalCalcPoint.gt(calcPointToRemove)) {
+        stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(calcPointToRemove);
+      } else {
+        stakeholder.fullTotalCalcPoint = BigInt.zero();
+      }
+      stakeholder.save();
+    }
+
+    let stateSummary = StateSummary.load(Bytes.empty());
+    if (stateSummary != null) {
+      if (stateSummary.totalCalcPoint.gt(calcPointToRemove)) {
+        stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
+      } else {
+        stateSummary.totalCalcPoint = BigInt.zero();
+      }
+      stateSummary.save();
+    }
+  }
+
   let record = new StopRewardingForBlockingRecord(id);
   record.blockNumber = event.block.number;
   record.blockTimestamp = event.block.timestamp;
@@ -757,6 +831,31 @@ export function handleRecoverRewardingForBlocking(
   event: RecoverRewardingForBlocking
 ): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
+
+  // Bug fix: 恢复 calcPoint（合约 _recoverRewarding → _joinStaking(calcPoint)）
+  let machineInfo = MachineInfo.load(id);
+  if (machineInfo != null) {
+    let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
+    if (machineInfo.isRented) {
+      let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
+      restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
+    }
+    machineInfo.fullTotalCalcPoint = restoredCalcPoint;
+    machineInfo.save();
+
+    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+    if (stakeholder != null) {
+      stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(restoredCalcPoint);
+      stakeholder.save();
+    }
+
+    let stateSummary = StateSummary.load(Bytes.empty());
+    if (stateSummary != null) {
+      stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(restoredCalcPoint);
+      stateSummary.save();
+    }
+  }
+
   let record = new RecoverRewardingForBlockingRecord(id);
   record.blockNumber = event.block.number;
   record.blockTimestamp = event.block.timestamp;
@@ -854,12 +953,54 @@ export function handleReportMachineFault(event: ReportMachineFault): void {
   record.transactionHash = event.transaction.hash;
   record.save();
 
-  // 更新 MachineInfo 状态
+  // Bug fix: 重度罚款会调 _unStake()，需要同步减 calcPoint 和 totalCalcPointPoolCount
   let id = Bytes.fromUTF8(event.params.machineId);
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     machineInfo.isSlashed = true;
+    let calcPointToRemove = machineInfo.fullTotalCalcPoint;
+    machineInfo.fullTotalCalcPoint = BigInt.zero();
+    machineInfo.totalCalcPoint = BigInt.zero();
+    machineInfo.isStaking = false;
+    machineInfo.isRented = false;
     machineInfo.save();
+
+    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+    if (stakeholder != null) {
+      if (stakeholder.fullTotalCalcPoint.gt(calcPointToRemove)) {
+        stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(calcPointToRemove);
+      } else {
+        stakeholder.fullTotalCalcPoint = BigInt.zero();
+      }
+      if (stakeholder.totalStakingGPUCount.gt(BigInt.zero())) {
+        stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.minus(BigInt.fromI32(1));
+      }
+      stakeholder.save();
+
+      // totalCalcPointPoolCount: 当 stakeholder 最后一台机器被罚除后减 1
+      if (stakeholder.totalStakingGPUCount.equals(BigInt.zero())) {
+        let stateSummary = StateSummary.load(Bytes.empty());
+        if (stateSummary != null) {
+          stateSummary.totalCalcPointPoolCount = stateSummary.totalCalcPointPoolCount.minus(BigInt.fromI32(1));
+          if (stateSummary.totalCalcPoint.gt(calcPointToRemove)) {
+            stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
+          } else {
+            stateSummary.totalCalcPoint = BigInt.zero();
+          }
+          stateSummary.save();
+        }
+      } else {
+        let stateSummary = StateSummary.load(Bytes.empty());
+        if (stateSummary != null) {
+          if (stateSummary.totalCalcPoint.gt(calcPointToRemove)) {
+            stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
+          } else {
+            stateSummary.totalCalcPoint = BigInt.zero();
+          }
+          stateSummary.save();
+        }
+      }
+    }
   }
 }
 
