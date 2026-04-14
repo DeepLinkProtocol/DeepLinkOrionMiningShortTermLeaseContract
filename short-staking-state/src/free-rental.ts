@@ -36,7 +36,11 @@ function getOrCreateSummary(): FreeRentalSummary {
 // ── 机器注册 ──
 export function handleFreeRentalMachineRegistered(event: MachineRegisteredEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId);
-  let machine = new FreeRentalMachine(id);
+  let machine = FreeRentalMachine.load(id);
+  let isNew = machine == null;
+  if (machine == null) {
+    machine = new FreeRentalMachine(id);
+  }
   machine.machineId = event.params.machineId;
   machine.owner = event.params.owner;
   machine.registered = true;
@@ -49,7 +53,9 @@ export function handleFreeRentalMachineRegistered(event: MachineRegisteredEvent)
   machine.save();
 
   let summary = getOrCreateSummary();
-  summary.totalMachines = summary.totalMachines.plus(BigInt.fromI32(1));
+  if (isNew) {
+    summary.totalMachines = summary.totalMachines.plus(BigInt.fromI32(1));
+  }
   summary.save();
 }
 
@@ -99,11 +105,13 @@ export function handleFreeRentalRentStarted(event: RentStartedEvent): void {
     machine.save();
   }
 
-  let record = new FreeRentalRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  // ID 用 rentId 以便 RentEnded/RentEndedBySlash 回写
+  let recordId = Bytes.fromUTF8("fr-" + event.params.rentId.toString());
+  let record = new FreeRentalRecord(recordId);
   record.rentId = event.params.rentId;
   record.machine = machineId;
   record.machineId = event.params.machineId;
-  record.owner = machine != null ? machine.owner : Bytes.fromI32(0);
+  record.owner = machine != null ? machine.owner : Bytes.fromHexString("0x0000000000000000000000000000000000000000");
   record.renter = event.params.renter;
   record.rentStartTime = event.block.timestamp;
   record.rentEndTime = event.params.rentEndTime;
@@ -134,6 +142,17 @@ export function handleFreeRentalRentEnded(event: RentEndedEvent): void {
     machine.save();
   }
 
+  // 回写 FreeRentalRecord
+  let recordId = Bytes.fromUTF8("fr-" + event.params.rentId.toString());
+  let record = FreeRentalRecord.load(recordId);
+  if (record != null) {
+    record.ended = true;
+    record.ownerPoint = event.params.ownerPoint;
+    record.platformPoint = event.params.platformPoint;
+    record.endTransactionHash = event.transaction.hash;
+    record.save();
+  }
+
   let summary = getOrCreateSummary();
   if (summary.totalActiveRentals.gt(BigInt.zero())) {
     summary.totalActiveRentals = summary.totalActiveRentals.minus(BigInt.fromI32(1));
@@ -151,6 +170,18 @@ export function handleFreeRentalRentEndedBySlash(event: RentEndedBySlashEvent): 
   if (machine != null) {
     machine.isRented = false;
     machine.save();
+  }
+
+  // 回写 FreeRentalRecord
+  let recordId = Bytes.fromUTF8("fr-" + event.params.rentId.toString());
+  let record = FreeRentalRecord.load(recordId);
+  if (record != null) {
+    record.ended = true;
+    record.endedBySlash = true;
+    record.slashAmount = event.params.slashAmount;
+    record.refundAmount = event.params.refundAmount;
+    record.endTransactionHash = event.transaction.hash;
+    record.save();
   }
 
   let summary = getOrCreateSummary();
