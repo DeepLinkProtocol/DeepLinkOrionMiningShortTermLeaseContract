@@ -151,7 +151,7 @@ dataSources:
     source:
       address: "0x69f2Aaa94a447A210A5acF16a324C006864C98aa"
       abi: FreeRental
-      startBlock: 6700000
+      startBlock: 6818683
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -192,7 +192,7 @@ dataSources:
     source:
       address: "0xa7B9f404653841227AF204a561455113F36d8EC8"
       abi: AI
-      startBlock: 1265285
+      startBlock: 1217214
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
