@@ -3,6 +3,13 @@ import {
   RenewRent as RenewRentEvent,
   SlashMachineOnOffline as SlashMachineOnOfflineEvent,
   Upgraded as UpgradedEvent,
+  RentFee as RentFeeEvent,
+  PayBackFee as PayBackFeeEvent,
+  PayBackExtraFee as PayBackExtraFeeEvent,
+  PayBackPointFee as PayBackPointFeeEvent,
+  PaidSlash as PaidSlashEvent,
+  MachineRegister as MachineRegisterEvent,
+  MachineUnregister as MachineUnregisterEvent,
 } from "../generated/Rent/Rent";
 import {
   MachineInfo,
@@ -10,6 +17,11 @@ import {
   RentingRecord,
   RentMachineRecord,
   RentRenewal,
+  RentFeeRecord,
+  PayBackFeeRecord,
+  RentPaidSlashRecord,
+  RentMachineRegisterRecord,
+  RentMachineUnregisterRecord,
 } from "../generated/schema";
 import { BigInt, Bytes } from "@graphprotocol/graph-ts";
 
@@ -115,4 +127,92 @@ export function handleSlashMachineOnOffline(
   machineInfo.isSlashed = true;
   machineInfo.isRented = false;
   machineInfo.save();
+}
+
+// ── 补全事件: RentFee（租赁费用详情） ──
+export function handleRentFee(event: RentFeeEvent): void {
+  let record = new RentFeeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.baseRentFee = event.params.baseRentFee;
+  record.extraRentFee = event.params.extraRentFee;
+  record.platformFee = event.params.platformFee;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PayBackFee（退还基础费） ──
+export function handlePayBackFee(event: PayBackFeeEvent): void {
+  let record = new PayBackFeeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.amount = event.params.amount;
+  record.feeType = "base";
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PayBackExtraFee（退还额外费） ──
+export function handlePayBackExtraFee(event: PayBackExtraFeeEvent): void {
+  let record = new PayBackFeeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.amount = event.params.amount;
+  record.feeType = "extra";
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PayBackPointFee（退还积分费） ──
+export function handlePayBackPointFee(event: PayBackPointFeeEvent): void {
+  let record = new PayBackFeeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.amount = event.params.amount;
+  record.feeType = "point";
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PaidSlash（Rent 合约罚款已支付） ──
+export function handleRentPaidSlash(event: PaidSlashEvent): void {
+  let record = new RentPaidSlashRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: MachineRegister（Rent 合约机器注册） ──
+export function handleRentMachineRegister(event: MachineRegisterEvent): void {
+  let record = new RentMachineRegisterRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.calcPoint = event.params.calcPoint;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: MachineUnregister（Rent 合约机器注销） ──
+export function handleRentMachineUnregister(event: MachineUnregisterEvent): void {
+  let record = new RentMachineUnregisterRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.calcPoint = event.params.calcPoint;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
 }

@@ -21,6 +21,8 @@ import {
   RecoverRewardingForBlocking,
   MachineUnregistered,
   MachineRegistered,
+  ReportMachineFaultLight,
+  AfterAddHoursEndTime,
 } from "../generated/NFTStaking/NFTStaking";
 import {
   StateSummary,
@@ -42,6 +44,8 @@ import {
   MachineReportedRecord,
   RentMachineRecord,
   RentingRecord,
+  ReportMachineFaultLightRecord,
+  AfterAddHoursEndTimeRecord,
 } from "../generated/schema";
 
 export function handleClaimed(event: ClaimedEvent): void {
@@ -793,4 +797,46 @@ export function handleMachineRegister(event: MachineRegistered): void {
 
   unregisterRecord.isActive = false;
   unregisterRecord.save();
+}
+
+// ── 补全事件: ReportMachineFaultLight（轻量惩罚） ──
+export function handleReportMachineFaultLight(event: ReportMachineFaultLight): void {
+  let record = new ReportMachineFaultLightRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.renter = event.params.renter;
+  record.nextCanRentTime = event.params.nextCanRentTime;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+
+  // 更新 MachineInfo 状态
+  let id = Bytes.fromUTF8(event.params.machineId);
+  let machineInfo = MachineInfo.load(id);
+  if (machineInfo != null) {
+    machineInfo.isSlashed = true;
+    machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
+    machineInfo.nextCanRentTime = new Date(event.params.nextCanRentTime.toU64() * 1000).toISOString();
+    machineInfo.save();
+  }
+}
+
+// ── 补全事件: AfterAddHoursEndTime（延长质押后的新结束时间） ──
+export function handleAfterAddHoursEndTime(event: AfterAddHoursEndTime): void {
+  let record = new AfterAddHoursEndTimeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.endTimestamp = event.params.endTimestamp;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+
+  // 更新 MachineInfo 的质押结束时间
+  let id = Bytes.fromUTF8(event.params.machineId);
+  let machineInfo = MachineInfo.load(id);
+  if (machineInfo != null) {
+    machineInfo.stakeEndTimestamp = event.params.endTimestamp;
+    machineInfo.stakeEndTime = new Date(event.params.endTimestamp.toU64() * 1000).toISOString();
+    machineInfo.save();
+  }
 }

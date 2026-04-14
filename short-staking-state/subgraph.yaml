@@ -59,8 +59,10 @@ dataSources:
           handler: handleMachineUnregister
         - event: MachineRegistered(string)
           handler: handleMachineRegister
-          
-          
+        - event: ReportMachineFaultLight(string,address,uint256)
+          handler: handleReportMachineFaultLight
+        - event: AfterAddHoursEndTime(string,uint256)
+          handler: handleAfterAddHoursEndTime
       file: ./src/nft-staking.ts
 
   - kind: ethereum
@@ -91,5 +93,59 @@ dataSources:
           handler: handleEndRentMachine  
         - event: SlashMachineOnOffline(indexed address,string,indexed address,uint256,uint256,uint256,uint8)
           handler: handleSlashMachineOnOffline
-
+        - event: RentFee(uint256,address,uint256,uint256,uint256)
+          handler: handleRentFee
+        - event: PayBackFee(string,uint256,address,uint256)
+          handler: handlePayBackFee
+        - event: PayBackExtraFee(string,uint256,address,uint256)
+          handler: handlePayBackExtraFee
+        - event: PayBackPointFee(string,uint256,address,uint256)
+          handler: handlePayBackPointFee
+        - event: PaidSlash(string)
+          handler: handleRentPaidSlash
+        - event: MachineRegister(string,uint256)
+          handler: handleRentMachineRegister
+        - event: MachineUnregister(string,uint256)
+          handler: handleRentMachineUnregister
       file: ./src/rent.ts
+
+  - kind: ethereum
+    name: FreeRental
+    network: deepbrainchain-mainnet
+    source:
+      address: "0x69f2Aaa94a447A210A5acF16a324C006864C98aa"
+      abi: FreeRental
+      startBlock: 6700000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - FreeRentalSummary
+        - FreeRentalMachine
+        - FreeRentalRecord
+        - FreeRentalSlashRecord
+        - FreeRentalIncomeClaimedRecord
+      abis:
+        - name: FreeRental
+          file: ./abis/FreeRental.json
+      eventHandlers:
+        - event: MachineRegistered(string,indexed address)
+          handler: handleFreeRentalMachineRegistered
+        - event: MachineRemoved(string,indexed address)
+          handler: handleFreeRentalMachineRemoved
+        - event: MachineEnabled(string,bool)
+          handler: handleFreeRentalMachineEnabled
+        - event: PriceUpdated(string,uint256)
+          handler: handleFreeRentalPriceUpdated
+        - event: RentStarted(indexed uint256,string,indexed address,uint256,uint256)
+          handler: handleFreeRentalRentStarted
+        - event: RentEnded(indexed uint256,string,indexed address,uint256,uint256)
+          handler: handleFreeRentalRentEnded
+        - event: RentEndedBySlash(indexed uint256,string,indexed address,uint256,uint256)
+          handler: handleFreeRentalRentEndedBySlash
+        - event: IncomeClaimed(indexed address,uint256)
+          handler: handleFreeRentalIncomeClaimed
+        - event: SlashExecuted(string,indexed address,uint256)
+          handler: handleFreeRentalSlashExecuted
+      file: ./src/free-rental.ts
