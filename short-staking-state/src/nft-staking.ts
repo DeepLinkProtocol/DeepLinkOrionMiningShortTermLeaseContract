@@ -160,7 +160,7 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   }
   machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
   machineInfo.nextCanRentTime = new Date(
-    machineInfo.nextCanRentTimestamp.toU64() * 1000
+    machineInfo.nextCanRentTimestamp.toI64() * 1000
   ).toISOString();
 
   machineInfo.save();
@@ -418,10 +418,10 @@ export function handleStaked(event: StakedEvent): void {
   );
   machineInfo.nextCanRentTimestamp = event.block.timestamp;
   machineInfo.stakeEndTime = new Date(
-    machineInfo.stakeEndTimestamp.toU64() * 1000
+    machineInfo.stakeEndTimestamp.toI64() * 1000
   ).toISOString();
   machineInfo.nextCanRentTime = new Date(
-    machineInfo.nextCanRentTimestamp.toU64() * 1000
+    machineInfo.nextCanRentTimestamp.toI64() * 1000
   ).toISOString();
   machineInfo.isStaking = true;
   machineInfo.online = true;
@@ -644,7 +644,7 @@ export function handleAddStakeHours(event: AddedStakeHoursEvent): void {
     event.params.stakeHours.times(BigInt.fromI32(3600))
   );
   machineInfo.stakeEndTime = new Date(
-    machineInfo.stakeEndTimestamp.toU64() * 1000
+    machineInfo.stakeEndTimestamp.toI64() * 1000
   ).toISOString();
   machineInfo.save();
 
@@ -918,7 +918,7 @@ export function handleReportMachineFaultLight(event: ReportMachineFaultLight): v
   if (machineInfo != null) {
     machineInfo.isSlashed = true;
     machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
-    machineInfo.nextCanRentTime = new Date(event.params.nextCanRentTime.toU64() * 1000).toISOString();
+    machineInfo.nextCanRentTime = new Date(event.params.nextCanRentTime.toI64() * 1000).toISOString();
     machineInfo.save();
   }
 }
@@ -938,7 +938,7 @@ export function handleAfterAddHoursEndTime(event: AfterAddHoursEndTime): void {
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     machineInfo.stakeEndTimestamp = event.params.endTimestamp;
-    machineInfo.stakeEndTime = new Date(event.params.endTimestamp.toU64() * 1000).toISOString();
+    machineInfo.stakeEndTime = new Date(event.params.endTimestamp.toI64() * 1000).toISOString();
     machineInfo.save();
   }
 }
