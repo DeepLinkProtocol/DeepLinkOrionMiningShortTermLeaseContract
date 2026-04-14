@@ -8,7 +8,8 @@ import {
   OwnershipTransferred as OwnershipTransferredEvent,
   PaySlash as PaySlashEvent,
   RentMachine as RentMachineEvent,
-  ReportMachineFault as ReportMachineFaultEvent,
+  ReportMachineFault,
+  RewardsPerCalcPointUpdate,
   ReserveDLC as ReserveDLCEvent,
   Staked as StakedEvent,
   Unstaked as UnstakedEvent,
@@ -46,6 +47,8 @@ import {
   RentingRecord,
   ReportMachineFaultLightRecord,
   AfterAddHoursEndTimeRecord,
+  ReportMachineFaultRecord,
+  RewardsPerCalcPointUpdateRecord,
 } from "../generated/schema";
 
 export function handleClaimed(event: ClaimedEvent): void {
@@ -839,4 +842,34 @@ export function handleAfterAddHoursEndTime(event: AfterAddHoursEndTime): void {
     machineInfo.stakeEndTime = new Date(event.params.endTimestamp.toU64() * 1000).toISOString();
     machineInfo.save();
   }
+}
+
+// ── 补全事件: ReportMachineFault（重度惩罚） ──
+export function handleReportMachineFault(event: ReportMachineFault): void {
+  let record = new ReportMachineFaultRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.renter = event.params.renter;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+
+  // 更新 MachineInfo 状态
+  let id = Bytes.fromUTF8(event.params.machineId);
+  let machineInfo = MachineInfo.load(id);
+  if (machineInfo != null) {
+    machineInfo.isSlashed = true;
+    machineInfo.save();
+  }
+}
+
+// ── 补全事件: RewardsPerCalcPointUpdate（每算力点奖励更新） ──
+export function handleRewardsPerCalcPointUpdate(event: RewardsPerCalcPointUpdate): void {
+  let record = new RewardsPerCalcPointUpdateRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.accumulatedPerShareBefore = event.params.accumulatedPerShareBefore;
+  record.accumulatedPerShareAfter = event.params.accumulatedPerShareAfter;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
 }

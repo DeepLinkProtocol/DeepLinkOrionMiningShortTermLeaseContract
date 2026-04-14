@@ -63,6 +63,10 @@ dataSources:
           handler: handleReportMachineFaultLight
         - event: AfterAddHoursEndTime(string,uint256)
           handler: handleAfterAddHoursEndTime
+        - event: ReportMachineFault(string,address)
+          handler: handleReportMachineFault
+        - event: RewardsPerCalcPointUpdate(uint256,uint256)
+          handler: handleRewardsPerCalcPointUpdate
       file: ./src/nft-staking.ts
 
   - kind: ethereum
@@ -107,6 +111,38 @@ dataSources:
           handler: handleRentMachineRegister
         - event: MachineUnregister(string,uint256)
           handler: handleRentMachineUnregister
+        - event: ExtraRentFeeTransfer(indexed address,uint256,uint256)
+          handler: handleExtraRentFeeTransfer
+        - event: ReportMachineFault(uint256,string,address)
+          handler: handleRentReportMachineFault
+        - event: BurnedFee(string,uint256,uint256,uint256,address,uint8)
+          handler: handleBurnedFee
+        - event: PayBackExtraFeeShortfall(string,uint256,address,uint256,uint256)
+          handler: handlePayBackExtraFeeShortfall
+        - event: RentTime(uint256,uint256)
+          handler: handleRentTime
+        - event: PayToContractOnRent(uint256,address,uint256)
+          handler: handlePayToContractOnRent
+        - event: RenterPayExtraRentFee(uint256,address,uint256)
+          handler: handleRenterPayExtraRentFee
+        - event: ApprovedReport(string,address)
+          handler: handleApprovedReport
+        - event: RefusedReport(string,address)
+          handler: handleRefusedReport
+        - event: ExecuteReport(string,uint8)
+          handler: handleExecuteReport
+        - event: RemoveCalcPointOnOffline(string)
+          handler: handleRemoveCalcPointOnOffline
+        - event: AddCalcPointOnline(string)
+          handler: handleAddCalcPointOnline
+        - event: AddBackCalcPointOnOnline(string,uint256)
+          handler: handleAddBackCalcPointOnOnline
+        - event: PlatformFeeTransfer(indexed address,uint256,uint256)
+          handler: handlePlatformFeeTransfer
+        - event: TokenPriceUpdated(uint256,uint256,uint256)
+          handler: handleTokenPriceUpdated
+        - event: SlashPaidByStakeHolder(string,address,address,uint256)
+          handler: handleSlashPaidByStakeHolder
       file: ./src/rent.ts
 
   - kind: ethereum
@@ -149,3 +185,36 @@ dataSources:
         - event: SlashExecuted(string,indexed address,uint256)
           handler: handleFreeRentalSlashExecuted
       file: ./src/free-rental.ts
+
+  - kind: ethereum
+    name: AI
+    network: deepbrainchain-mainnet
+    source:
+      address: "0xa7B9f404653841227AF204a561455113F36d8EC8"
+      abi: AI
+      startBlock: 1265285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - MachineStateUpdateRecord
+        - NotifiedTargetContractRecord
+        - ReportedStakingStatusRecord
+        - ContractRegisterRecord
+        - ReportFailedRecord
+      abis:
+        - name: AI
+          file: ./abis/AI.json
+      eventHandlers:
+        - event: MachineStateUpdate(string,string,uint8,uint8)
+          handler: handleMachineStateUpdate
+        - event: NotifiedTargetContract(indexed address,uint8,string,bool)
+          handler: handleNotifiedTargetContract
+        - event: reportedStakingStatus(string,uint8,string,uint256,bool)
+          handler: handleReportedStakingStatus
+        - event: ContractRegister(indexed address,string,indexed address,indexed address)
+          handler: handleContractRegister
+        - event: ReportFailed(uint8,string,uint8,string,string)
+          handler: handleReportFailed
+      file: ./src/ai.ts

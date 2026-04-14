@@ -1,0 +1,59 @@
+[
+  {
+    "type": "event",
+    "name": "MachineStateUpdate",
+    "inputs": [
+      { "name": "machineId", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "projectName", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "stakingType", "type": "uint8", "indexed": false, "internalType": "enum AI.StakingType" },
+      { "name": "tp", "type": "uint8", "indexed": false, "internalType": "enum AI.NotifyType" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NotifiedTargetContract",
+    "inputs": [
+      { "name": "targetContractAddress", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "tp", "type": "uint8", "indexed": false, "internalType": "enum AI.NotifyType" },
+      { "name": "machineId", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "result", "type": "bool", "indexed": false, "internalType": "bool" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "reportedStakingStatus",
+    "inputs": [
+      { "name": "projectName", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "tp", "type": "uint8", "indexed": false, "internalType": "enum AI.StakingType" },
+      { "name": "machineId", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "gpuNum", "type": "uint256", "indexed": false, "internalType": "uint256" },
+      { "name": "isStake", "type": "bool", "indexed": false, "internalType": "bool" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ContractRegister",
+    "inputs": [
+      { "name": "caller", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "projectName", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "toBeNotified", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "toReportStakingStatus", "type": "address", "indexed": true, "internalType": "address" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ReportFailed",
+    "inputs": [
+      { "name": "tp", "type": "uint8", "indexed": false, "internalType": "enum AI.NotifyType" },
+      { "name": "projectName", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "stakingType", "type": "uint8", "indexed": false, "internalType": "enum AI.StakingType" },
+      { "name": "machineId", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "reason", "type": "string", "indexed": false, "internalType": "string" }
+    ],
+    "anonymous": false
+  }
+]

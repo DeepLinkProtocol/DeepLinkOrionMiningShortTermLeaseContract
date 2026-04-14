@@ -390,3 +390,247 @@ type FreeRentalIncomeClaimedRecord @entity {
   blockTimestamp: BigInt!
   transactionHash: Bytes!
 }
+
+# ══════════════════════════════════════════════════════════
+#  NFTStaking 补全事件记录（第二批）
+# ══════════════════════════════════════════════════════════
+
+type ReportMachineFaultRecord @entity {
+  id: Bytes!
+  machineId: String!
+  renter: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RewardsPerCalcPointUpdateRecord @entity {
+  id: Bytes!
+  accumulatedPerShareBefore: BigInt! # uint256
+  accumulatedPerShareAfter: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+# ══════════════════════════════════════════════════════════
+#  Rent 合约补全事件记录（第二批）
+# ══════════════════════════════════════════════════════════
+
+type ExtraRentFeeTransferRecord @entity {
+  id: Bytes!
+  machineOwner: Bytes! # address
+  rentId: BigInt! # uint256
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RentReportMachineFaultRecord @entity {
+  id: Bytes!
+  rentId: BigInt! # uint256
+  machineId: String!
+  reporter: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type BurnedFeeRecord @entity {
+  id: Bytes!
+  machineId: String!
+  rentId: BigInt! # uint256
+  burnTime: BigInt! # uint256
+  burnDLCAmount: BigInt! # uint256
+  renter: Bytes! # address
+  rentGpuCount: BigInt! # uint8 stored as BigInt
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PayBackExtraFeeShortfallRecord @entity {
+  id: Bytes!
+  machineId: String!
+  rentId: BigInt! # uint256
+  renter: Bytes! # address
+  owed: BigInt! # uint256
+  actual: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RentTimeRecord @entity {
+  id: Bytes!
+  totalRentSeconds: BigInt! # uint256
+  usedRentSeconds: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PayToContractOnRentRecord @entity {
+  id: Bytes!
+  rentId: BigInt! # uint256
+  renter: Bytes! # address
+  totalRentFee: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RenterPayExtraRentFeeRecord @entity {
+  id: Bytes!
+  rentId: BigInt! # uint256
+  renter: Bytes! # address
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ApprovedReportRecord @entity {
+  id: Bytes!
+  machineId: String!
+  admin: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RefusedReportRecord @entity {
+  id: Bytes!
+  machineId: String!
+  admin: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ExecuteReportRecord @entity {
+  id: Bytes!
+  machineId: String!
+  vote: BigInt! # uint8 stored as BigInt
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RemoveCalcPointOnOfflineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type AddCalcPointOnlineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type AddBackCalcPointOnOnlineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  calcPoint: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PlatformFeeTransferRecord @entity {
+  id: Bytes!
+  machineOwner: Bytes! # address
+  rentId: BigInt! # uint256
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type TokenPriceUpdatedRecord @entity {
+  id: Bytes!
+  oldPrice: BigInt! # uint256
+  newPrice: BigInt! # uint256
+  timestamp: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type SlashPaidByStakeHolderRecord @entity {
+  id: Bytes!
+  machineId: String!
+  stakeHolder: Bytes! # address
+  renter: Bytes! # address
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+# ══════════════════════════════════════════════════════════
+#  dbcAI 合约（AI.sol）事件记录
+# ══════════════════════════════════════════════════════════
+
+type MachineStateUpdateRecord @entity {
+  id: Bytes!
+  machineId: String!
+  projectName: String!
+  stakingType: BigInt! # enum StakingType (uint8)
+  notifyType: BigInt! # enum NotifyType (uint8)
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type NotifiedTargetContractRecord @entity {
+  id: Bytes!
+  targetContractAddress: Bytes! # address
+  notifyType: BigInt! # enum NotifyType (uint8)
+  machineId: String!
+  result: Boolean!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ReportedStakingStatusRecord @entity {
+  id: Bytes!
+  projectName: String!
+  stakingType: BigInt! # enum StakingType (uint8)
+  machineId: String!
+  gpuNum: BigInt! # uint256
+  isStake: Boolean!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ContractRegisterRecord @entity {
+  id: Bytes!
+  caller: Bytes! # address
+  projectName: String!
+  toBeNotified: Bytes! # address
+  toReportStakingStatus: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ReportFailedRecord @entity {
+  id: Bytes!
+  notifyType: BigInt! # enum NotifyType (uint8)
+  projectName: String!
+  stakingType: BigInt! # enum StakingType (uint8)
+  machineId: String!
+  reason: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}

@@ -10,6 +10,22 @@ import {
   PaidSlash as PaidSlashEvent,
   MachineRegister as MachineRegisterEvent,
   MachineUnregister as MachineUnregisterEvent,
+  ExtraRentFeeTransfer,
+  ReportMachineFault as RentReportMachineFault,
+  BurnedFee,
+  PayBackExtraFeeShortfall,
+  RentTime,
+  PayToContractOnRent,
+  RenterPayExtraRentFee,
+  ApprovedReport,
+  RefusedReport,
+  ExecuteReport,
+  RemoveCalcPointOnOffline,
+  AddCalcPointOnline,
+  AddBackCalcPointOnOnline,
+  PlatformFeeTransfer,
+  TokenPriceUpdated,
+  SlashPaidByStakeHolder,
 } from "../generated/Rent/Rent";
 import {
   MachineInfo,
@@ -22,6 +38,22 @@ import {
   RentPaidSlashRecord,
   RentMachineRegisterRecord,
   RentMachineUnregisterRecord,
+  ExtraRentFeeTransferRecord,
+  RentReportMachineFaultRecord,
+  BurnedFeeRecord,
+  PayBackExtraFeeShortfallRecord,
+  RentTimeRecord,
+  PayToContractOnRentRecord,
+  RenterPayExtraRentFeeRecord,
+  ApprovedReportRecord,
+  RefusedReportRecord,
+  ExecuteReportRecord,
+  RemoveCalcPointOnOfflineRecord,
+  AddCalcPointOnlineRecord,
+  AddBackCalcPointOnOnlineRecord,
+  PlatformFeeTransferRecord,
+  TokenPriceUpdatedRecord,
+  SlashPaidByStakeHolderRecord,
 } from "../generated/schema";
 import { BigInt, Bytes } from "@graphprotocol/graph-ts";
 
@@ -211,6 +243,195 @@ export function handleRentMachineUnregister(event: MachineUnregisterEvent): void
   let record = new RentMachineUnregisterRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
   record.machineId = event.params.machineId;
   record.calcPoint = event.params.calcPoint;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: ExtraRentFeeTransfer（额外租金转账给机主） ──
+export function handleExtraRentFeeTransfer(event: ExtraRentFeeTransfer): void {
+  let record = new ExtraRentFeeTransferRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineOwner = event.params.machineOnwer;
+  record.rentId = event.params.rentId;
+  record.amount = event.params.amount;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: ReportMachineFault（Rent 合约举报机器故障） ──
+export function handleRentReportMachineFault(event: RentReportMachineFault): void {
+  let record = new RentReportMachineFaultRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.rentId = event.params.rentId;
+  record.machineId = event.params.machineId;
+  record.reporter = event.params.reporter;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: BurnedFee（销毁费用） ──
+export function handleBurnedFee(event: BurnedFee): void {
+  let record = new BurnedFeeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.rentId = event.params.rentId;
+  record.burnTime = event.params.burnTime;
+  record.burnDLCAmount = event.params.burnDLCAmount;
+  record.renter = event.params.renter;
+  record.rentGpuCount = BigInt.fromI32(event.params.rentGpuCount);
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PayBackExtraFeeShortfall（额外费退还不足记录） ──
+export function handlePayBackExtraFeeShortfall(event: PayBackExtraFeeShortfall): void {
+  let record = new PayBackExtraFeeShortfallRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.owed = event.params.owed;
+  record.actual = event.params.actual;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: RentTime（租赁时间统计） ──
+export function handleRentTime(event: RentTime): void {
+  let record = new RentTimeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.totalRentSeconds = event.params.totalRentSenconds;
+  record.usedRentSeconds = event.params.usedRentSeconds;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PayToContractOnRent（租赁时支付到合约） ──
+export function handlePayToContractOnRent(event: PayToContractOnRent): void {
+  let record = new PayToContractOnRentRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.totalRentFee = event.params.totalRentFee;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: RenterPayExtraRentFee（租户支付额外租金） ──
+export function handleRenterPayExtraRentFee(event: RenterPayExtraRentFee): void {
+  let record = new RenterPayExtraRentFeeRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.rentId = event.params.rentId;
+  record.renter = event.params.renter;
+  record.amount = event.params.amount;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: ApprovedReport（管理员批准举报） ──
+export function handleApprovedReport(event: ApprovedReport): void {
+  let record = new ApprovedReportRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.admin = event.params.admin;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: RefusedReport（管理员拒绝举报） ──
+export function handleRefusedReport(event: RefusedReport): void {
+  let record = new RefusedReportRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.admin = event.params.admin;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: ExecuteReport（执行举报结果） ──
+export function handleExecuteReport(event: ExecuteReport): void {
+  let record = new ExecuteReportRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.vote = BigInt.fromI32(event.params.vote);
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: RemoveCalcPointOnOffline（离线移除算力点） ──
+export function handleRemoveCalcPointOnOffline(event: RemoveCalcPointOnOffline): void {
+  let record = new RemoveCalcPointOnOfflineRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: AddCalcPointOnline（上线添加算力点） ──
+export function handleAddCalcPointOnline(event: AddCalcPointOnline): void {
+  let record = new AddCalcPointOnlineRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: AddBackCalcPointOnOnline（重新上线恢复算力点） ──
+export function handleAddBackCalcPointOnOnline(event: AddBackCalcPointOnOnline): void {
+  let record = new AddBackCalcPointOnOnlineRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.calcPoint = event.params.calcPoint;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: PlatformFeeTransfer（平台费转账） ──
+export function handlePlatformFeeTransfer(event: PlatformFeeTransfer): void {
+  let record = new PlatformFeeTransferRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineOwner = event.params.machineOnwer;
+  record.rentId = event.params.rentId;
+  record.amount = event.params.amount;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: TokenPriceUpdated（代币价格更新） ──
+export function handleTokenPriceUpdated(event: TokenPriceUpdated): void {
+  let record = new TokenPriceUpdatedRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.oldPrice = event.params.oldPrice;
+  record.newPrice = event.params.newPrice;
+  record.timestamp = event.params.timestamp;
+  record.blockNumber = event.block.number;
+  record.blockTimestamp = event.block.timestamp;
+  record.transactionHash = event.transaction.hash;
+  record.save();
+}
+
+// ── 补全事件: SlashPaidByStakeHolder（质押者支付罚款） ──
+export function handleSlashPaidByStakeHolder(event: SlashPaidByStakeHolder): void {
+  let record = new SlashPaidByStakeHolderRecord(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  record.machineId = event.params.machineId;
+  record.stakeHolder = event.params.stakeHolder;
+  record.renter = event.params.renter;
+  record.amount = event.params.amount;
   record.blockNumber = event.block.number;
   record.blockTimestamp = event.block.timestamp;
   record.transactionHash = event.transaction.hash;
