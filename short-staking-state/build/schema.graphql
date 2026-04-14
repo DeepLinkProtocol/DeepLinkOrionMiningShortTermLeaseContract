@@ -1,0 +1,392 @@
+type StateSummary @entity {
+  id: Bytes!
+  totalGPUCount: BigInt! # uint256
+  totalStakingGPUCount: BigInt! # uint256
+  totalCalcPointPoolCount: BigInt! # uint256
+  totalRentedGPUCount: BigInt! # uint256
+  totalBurnedRentFee: BigInt! # uint256
+  totalReservedAmount: BigInt! # uint256
+  totalCalcPoint: BigInt! # uint256
+}
+
+type StakeHolder @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  totalCalcPoint: BigInt! # uint256
+  fullTotalCalcPoint: BigInt! # uint256
+  totalGPUCount: BigInt! # uint256
+  totalStakingGPUCount: BigInt! # uint256
+  rentedGPUCount: BigInt! # uint256
+  totalReservedAmount: BigInt! # uint256
+  burnedRentFee: BigInt! # uint256
+  extraRentFee: BigInt! # uint256
+  totalClaimedRewardAmount: BigInt! # uint256
+  totalReleasedRewardAmount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  machineInfos: [MachineInfo!]! @derivedFrom(field: "holderRef")
+}
+
+type MachineInfo @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  holderRef: StakeHolder! @belongsTo(field: "holder")
+  machineId: String!
+  totalCalcPoint: BigInt! # uint256
+  totalCalcPointWithNFT: BigInt! # uint256
+  fullTotalCalcPoint: BigInt! # uint256
+  totalGPUCount: BigInt! # uint256
+  rentedGPUCount: BigInt! # uint256
+  totalReservedAmount: BigInt! # uint256
+  burnedRentFee: BigInt! # uint256
+  extraRentFee: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  totalClaimedRewardAmount: BigInt! # uint256
+  stakeEndTimestamp: BigInt! # uint256
+  stakeEndTime: String! # string
+  nextCanRentTimestamp: BigInt! # uint256
+  nextCanRentTime: String! # string
+  isRented: Boolean!
+  isStaking: Boolean!
+  isSlashed: Boolean!
+  online: Boolean!
+  registered: Boolean!
+  gpuType: String!
+  claimTimes: BigInt! # uint256
+}
+
+type GpuTypeValue @entity {
+  id: Bytes!
+  value: String!
+  count: BigInt! # uint256
+}
+
+type AddStakeHour @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  machineId: String!
+  hours: BigInt! # uint256
+  stakeEndTimestampBefore: BigInt! # uint256
+  stakeEndTimestampAfter: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineOfflineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  isActive: Boolean!
+}
+
+type RecoverRewardingForBlockingRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type StopRewardingForBlockingRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineReOnlineRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineSlashedRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  renter: Bytes! # address
+  slashAmount: BigInt! # uint256
+  slashType: BigInt!
+  rentStatTime: BigInt! # uint256
+  rentEndTime: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type HolderPaidSlashRecord @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  paid: Boolean!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PaidSlashRecord @entity {
+  id: Bytes!
+  machineId: String!
+  holder: Bytes! # address
+  slashAmount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type AddDLCRecord @entity {
+  id: Bytes!
+  machineId: String!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type giveBackDlc @entity {
+  id: Bytes!
+  machineId: String!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type claimedReward @entity {
+  id: Bytes!
+  holder: Bytes! # address
+  machineId: String!
+  total: BigInt!
+  released: BigInt!
+
+  transactionHash: Bytes!
+  blocktimestamp: BigInt!
+}
+
+type MachineUnregisterRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  isActive: Boolean!
+}
+
+type MachineRegisterRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MachineReportedRecord @entity {
+  id: Bytes!
+  machineId: String!
+  offlineBlockTimestamp: BigInt!
+  reOnlineBlockTimestamp: BigInt!
+  offlineTransactionHash: Bytes!
+  reOnlineTransactionHash: Bytes!
+  unStakeBlockTimestamp: BigInt!
+  unStakeTransactionHash: Bytes!
+  finishedByEndStake: Boolean!
+  finishedByReOnline: Boolean!
+  offlineDuration: BigInt!
+}
+
+type RentingRecord @entity {
+  id: Bytes! # machineId
+  machineOwner: Bytes! # address
+  rentId: BigInt! # uint256
+  machineId: String!
+  isActive: Boolean!
+  transactionHash: Bytes!
+}
+
+type RentMachineRecord @entity {
+  id: Bytes! # machineId
+  machineOwner: Bytes! # address 机器所有者(算工)
+  rentId: BigInt! # uint256 租用id
+  machineId: String! # 机器id
+  rentEndTime: BigInt! # uint256  租用时设置的结束时间戳
+  renter: Bytes! # address # 租用人地址
+  gogoing: Boolean! # 是否在租用中 true: 租用中 否：租用已经结束
+  rentBlockTimestamp: BigInt! # 租用开始时间戳
+  rentTransactionHash: Bytes! # 租用交易hash
+  endRentBlockTimestamp: BigInt! # 实际的租用结束时间戳（提前退租导致与预期租用时间不一样）
+  endRentTransactionHash: Bytes! # 租用结束交易hash
+  extraRentFee: BigInt! # uint256 额外租金
+}
+
+type RentRenewal @entity {
+  id: Bytes! # transaction hash
+  machineOwner: Bytes! # address
+  machineId: String!
+  rentId: BigInt! # uint256
+  additionalRentSeconds: BigInt! # uint256
+  additionalRentFee: BigInt! # uint256
+  renter: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+# ══════════════════════════════════════════════════════════
+#  NFTStaking 补全事件记录
+# ══════════════════════════════════════════════════════════
+
+type ReportMachineFaultLightRecord @entity {
+  id: Bytes!
+  machineId: String!
+  renter: Bytes! # address
+  nextCanRentTime: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type AfterAddHoursEndTimeRecord @entity {
+  id: Bytes!
+  machineId: String!
+  endTimestamp: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+# ══════════════════════════════════════════════════════════
+#  Rent 合约补全事件记录
+# ══════════════════════════════════════════════════════════
+
+type RentFeeRecord @entity {
+  id: Bytes! # transactionHash
+  rentId: BigInt! # uint256
+  renter: Bytes! # address
+  baseRentFee: BigInt! # uint256
+  extraRentFee: BigInt! # uint256
+  platformFee: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type PayBackFeeRecord @entity {
+  id: Bytes! # transactionHash
+  machineId: String!
+  rentId: BigInt! # uint256
+  renter: Bytes! # address
+  amount: BigInt! # uint256
+  feeType: String! # "base" | "extra" | "point"
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RentPaidSlashRecord @entity {
+  id: Bytes!
+  machineId: String!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RentMachineRegisterRecord @entity {
+  id: Bytes!
+  machineId: String!
+  calcPoint: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RentMachineUnregisterRecord @entity {
+  id: Bytes!
+  machineId: String!
+  calcPoint: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+# ══════════════════════════════════════════════════════════
+#  FreeRental 合约（免质押出租）
+# ══════════════════════════════════════════════════════════
+
+type FreeRentalSummary @entity {
+  id: Bytes! # singleton
+  totalMachines: BigInt!
+  totalActiveRentals: BigInt!
+  totalCompletedRentals: BigInt!
+  totalPointPaid: BigInt!
+  totalOwnerIncome: BigInt!
+  totalPlatformIncome: BigInt!
+  totalSlashAmount: BigInt!
+}
+
+type FreeRentalMachine @entity {
+  id: Bytes! # machineId bytes
+  machineId: String!
+  owner: Bytes! # address
+  registered: Boolean!
+  enabled: Boolean!
+  isRented: Boolean!
+  pricePerHourUSD: BigInt! # uint256 (6位精度)
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  rentals: [FreeRentalRecord!]! @derivedFrom(field: "machine")
+}
+
+type FreeRentalRecord @entity {
+  id: Bytes! # transactionHash
+  rentId: BigInt! # uint256
+  machine: FreeRentalMachine!
+  machineId: String!
+  owner: Bytes! # address
+  renter: Bytes! # address
+  rentStartTime: BigInt! # uint256
+  rentEndTime: BigInt! # uint256
+  totalPointPaid: BigInt! # uint256
+  ownerPoint: BigInt! # uint256
+  platformPoint: BigInt! # uint256
+  ended: Boolean!
+  endedBySlash: Boolean!
+  slashAmount: BigInt!
+  refundAmount: BigInt!
+  rentTransactionHash: Bytes!
+  endTransactionHash: Bytes
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+}
+
+type FreeRentalSlashRecord @entity {
+  id: Bytes!
+  machineId: String!
+  renter: Bytes! # address
+  slashAmount: BigInt! # uint256
+  refundAmount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type FreeRentalIncomeClaimedRecord @entity {
+  id: Bytes!
+  owner: Bytes! # address
+  amount: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}

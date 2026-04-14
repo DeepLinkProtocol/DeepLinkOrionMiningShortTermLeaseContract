@@ -19,9 +19,9 @@ import {
 } from "../generated/schema";
 
 function getOrCreateSummary(): FreeRentalSummary {
-  let summary = FreeRentalSummary.load(Bytes.empty());
+  let summary = FreeRentalSummary.load(Bytes.fromI32(0));
   if (summary == null) {
-    summary = new FreeRentalSummary(Bytes.empty());
+    summary = new FreeRentalSummary(Bytes.fromI32(0));
     summary.totalMachines = BigInt.zero();
     summary.totalActiveRentals = BigInt.zero();
     summary.totalCompletedRentals = BigInt.zero();
@@ -103,7 +103,7 @@ export function handleFreeRentalRentStarted(event: RentStartedEvent): void {
   record.rentId = event.params.rentId;
   record.machine = machineId;
   record.machineId = event.params.machineId;
-  record.owner = machine != null ? machine.owner : Bytes.empty();
+  record.owner = machine != null ? machine.owner : Bytes.fromI32(0);
   record.renter = event.params.renter;
   record.rentStartTime = event.block.timestamp;
   record.rentEndTime = event.params.rentEndTime;

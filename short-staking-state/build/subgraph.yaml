@@ -1,0 +1,150 @@
+specVersion: 1.2.0
+indexerHints:
+  prune: auto
+schema:
+  file: schema.graphql
+dataSources:
+  - kind: ethereum
+    name: NFTStaking
+    network: deepbrainchain-mainnet
+    source:
+      address: "0x6268Aba94D0d0e4FB917cC02765f631f309a7388"
+      abi: NFTStaking
+      startBlock: 1265285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - StateSummary
+        - StakeHolder
+        - MachineInfo
+      abis:
+        - name: NFTStaking
+          file: NFTStaking\NFTStaking.json
+      eventHandlers:
+        - event: MoveToReserveAmount(string,address,uint256)
+          handler: handleMoveToReserveAmount
+        - event: Claimed(indexed address,string,uint256,uint256,uint256,bool)
+          handler: handleClaimed
+        - event: PaySlash(string,address,uint256)
+          handler: handlePaySlash
+        - event: ReserveDLC(string,uint256)
+          handler: handleReserveDLC
+        - event: Staked(indexed address,string,uint256,uint256,uint256)
+          handler: handleStaked
+        - event: Unstaked(indexed address,string,uint256)
+          handler: handleUnstaked
+        - event: RentMachine(indexed address,string,uint256)
+          handler: handleRentMachine
+        - event: EndRentMachine(indexed address,string,uint256)
+          handler: handleEndRentMachine
+        - event: StakedGPUType(string,string)
+          handler: handleStakedGPUType
+        - event: AddedStakeHours(indexed address,string,uint256)
+          handler: handleAddStakeHours
+        - event: RenewRent(string,address,uint256)
+          handler: handleRenewRent
+        - event: ExitStakingForOffline(string,address)
+          handler: handleExitStakingForOffline
+        - event: RecoverRewarding(string,address)
+          handler: handleReOnline
+        - event: EndRentMachineFee(indexed address,string,uint256,uint256)
+          handler: handleEndRentMachineFee
+        - event: ExitStakingForBlocking(string,address)
+          handler: handleExitStakingForBlocking
+        - event: RecoverRewardingForBlocking(string,address)
+          handler: handleRecoverRewardingForBlocking
+        - event: MachineUnregistered(string)
+          handler: handleMachineUnregister
+        - event: MachineRegistered(string)
+          handler: handleMachineRegister
+        - event: ReportMachineFaultLight(string,address,uint256)
+          handler: handleReportMachineFaultLight
+        - event: AfterAddHoursEndTime(string,uint256)
+          handler: handleAfterAddHoursEndTime
+      file: NFTStaking\NFTStaking.wasm
+  - kind: ethereum
+    name: Rent
+    network: deepbrainchain-mainnet
+    source:
+      address: "0xda9efdff9ca7b7065b7706406a1a79c0e483815a"
+      abi: Rent
+      startBlock: 1265285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - StateSummary
+        - StakeHolder
+        - MachineInfo
+        - RentRenewal
+      abis:
+        - name: Rent
+          file: Rent\Rent.json
+      eventHandlers:
+        - event: RentMachine(indexed address,uint256,string,uint256,address,uint256)
+          handler: handleRentMachine
+        - event: RenewRent(indexed address,string,uint256,uint256,uint256,address)
+          handler: handleRenewRent
+        - event: EndRentMachine(address,uint256,string,uint256,address)
+          handler: handleEndRentMachine
+        - event: SlashMachineOnOffline(indexed address,string,indexed
+            address,uint256,uint256,uint256,uint8)
+          handler: handleSlashMachineOnOffline
+        - event: RentFee(uint256,address,uint256,uint256,uint256)
+          handler: handleRentFee
+        - event: PayBackFee(string,uint256,address,uint256)
+          handler: handlePayBackFee
+        - event: PayBackExtraFee(string,uint256,address,uint256)
+          handler: handlePayBackExtraFee
+        - event: PayBackPointFee(string,uint256,address,uint256)
+          handler: handlePayBackPointFee
+        - event: PaidSlash(string)
+          handler: handleRentPaidSlash
+        - event: MachineRegister(string,uint256)
+          handler: handleRentMachineRegister
+        - event: MachineUnregister(string,uint256)
+          handler: handleRentMachineUnregister
+      file: Rent\Rent.wasm
+  - kind: ethereum
+    name: FreeRental
+    network: deepbrainchain-mainnet
+    source:
+      address: "0x69f2Aaa94a447A210A5acF16a324C006864C98aa"
+      abi: FreeRental
+      startBlock: 6700000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - FreeRentalSummary
+        - FreeRentalMachine
+        - FreeRentalRecord
+        - FreeRentalSlashRecord
+        - FreeRentalIncomeClaimedRecord
+      abis:
+        - name: FreeRental
+          file: FreeRental\FreeRental.json
+      eventHandlers:
+        - event: MachineRegistered(string,indexed address)
+          handler: handleFreeRentalMachineRegistered
+        - event: MachineRemoved(string,indexed address)
+          handler: handleFreeRentalMachineRemoved
+        - event: MachineEnabled(string,bool)
+          handler: handleFreeRentalMachineEnabled
+        - event: PriceUpdated(string,uint256)
+          handler: handleFreeRentalPriceUpdated
+        - event: RentStarted(indexed uint256,string,indexed address,uint256,uint256)
+          handler: handleFreeRentalRentStarted
+        - event: RentEnded(indexed uint256,string,indexed address,uint256,uint256)
+          handler: handleFreeRentalRentEnded
+        - event: RentEndedBySlash(indexed uint256,string,indexed address,uint256,uint256)
+          handler: handleFreeRentalRentEndedBySlash
+        - event: IncomeClaimed(indexed address,uint256)
+          handler: handleFreeRentalIncomeClaimed
+        - event: SlashExecuted(string,indexed address,uint256)
+          handler: handleFreeRentalSlashExecuted
+      file: FreeRental\FreeRental.wasm
