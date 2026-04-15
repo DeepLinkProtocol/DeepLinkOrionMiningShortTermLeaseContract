@@ -189,6 +189,9 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(
     BigInt.fromI32(1)
   );
+  if (stateSummary.totalCalcPoint.gt(reducedCalcPoint)) {
+    stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(reducedCalcPoint);
+  }
   stateSummary.save();
 }
 
@@ -334,6 +337,7 @@ export function handleRentMachine(event: RentMachineEvent): void {
   stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.plus(
     BigInt.fromI32(1)
   );
+  stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(addedCalcPoint);
   stateSummary.totalBurnedRentFee = stateSummary.totalBurnedRentFee.plus(
     event.params.rentFee
   );
@@ -485,7 +489,7 @@ export function handleStaked(event: StakedEvent): void {
     BigInt.fromI32(1)
   );
   stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(
-    machineInfo.totalCalcPoint
+    machineInfo.fullTotalCalcPoint
   );
   stateSummary.totalStakingGPUCount = stateSummary.totalStakingGPUCount.plus(
     BigInt.fromI32(1)
@@ -561,9 +565,13 @@ export function handleUnstaked(event: UnstakedEvent): void {
   stateSummary.totalGPUCount = stateSummary.totalGPUCount.minus(
     BigInt.fromI32(1)
   );
-  stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(
-    machineInfo.totalCalcPoint
-  );
+  if (stateSummary.totalCalcPoint.gt(machineInfo.fullTotalCalcPoint)) {
+    stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(
+      machineInfo.fullTotalCalcPoint
+    );
+  } else {
+    stateSummary.totalCalcPoint = BigInt.zero();
+  }
   if (stakeholder.totalStakingGPUCount.equals(BigInt.zero())) {
     stateSummary.totalCalcPointPoolCount =
       stateSummary.totalCalcPointPoolCount.minus(BigInt.fromI32(1));
@@ -953,54 +961,13 @@ export function handleReportMachineFault(event: ReportMachineFault): void {
   record.transactionHash = event.transaction.hash;
   record.save();
 
-  // Bug fix: 重度罚款会调 _unStake()，需要同步减 calcPoint 和 totalCalcPointPoolCount
+  // 重度罚款会调 _unStake()，emit Unstaked 事件 → handleUnstaked 会处理 GPU 计数和 calcPoint 的减操作
+  // 这里只标记 isSlashed，不减计数（避免与 handleUnstaked 重复减）
   let id = Bytes.fromUTF8(event.params.machineId);
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     machineInfo.isSlashed = true;
-    let calcPointToRemove = machineInfo.fullTotalCalcPoint;
-    machineInfo.fullTotalCalcPoint = BigInt.zero();
-    machineInfo.totalCalcPoint = BigInt.zero();
-    machineInfo.isStaking = false;
-    machineInfo.isRented = false;
     machineInfo.save();
-
-    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
-    if (stakeholder != null) {
-      if (stakeholder.fullTotalCalcPoint.gt(calcPointToRemove)) {
-        stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(calcPointToRemove);
-      } else {
-        stakeholder.fullTotalCalcPoint = BigInt.zero();
-      }
-      if (stakeholder.totalStakingGPUCount.gt(BigInt.zero())) {
-        stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.minus(BigInt.fromI32(1));
-      }
-      stakeholder.save();
-
-      // totalCalcPointPoolCount: 当 stakeholder 最后一台机器被罚除后减 1
-      if (stakeholder.totalStakingGPUCount.equals(BigInt.zero())) {
-        let stateSummary = StateSummary.load(Bytes.empty());
-        if (stateSummary != null) {
-          stateSummary.totalCalcPointPoolCount = stateSummary.totalCalcPointPoolCount.minus(BigInt.fromI32(1));
-          if (stateSummary.totalCalcPoint.gt(calcPointToRemove)) {
-            stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
-          } else {
-            stateSummary.totalCalcPoint = BigInt.zero();
-          }
-          stateSummary.save();
-        }
-      } else {
-        let stateSummary = StateSummary.load(Bytes.empty());
-        if (stateSummary != null) {
-          if (stateSummary.totalCalcPoint.gt(calcPointToRemove)) {
-            stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
-          } else {
-            stateSummary.totalCalcPoint = BigInt.zero();
-          }
-          stateSummary.save();
-        }
-      }
-    }
   }
 }
 

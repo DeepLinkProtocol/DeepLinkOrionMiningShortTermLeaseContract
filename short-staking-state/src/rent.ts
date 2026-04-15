@@ -184,8 +184,32 @@ export function handleSlashMachineOnOffline(
     return;
   }
   machineInfo.isSlashed = true;
-  machineInfo.isRented = false;
-  machineInfo.save();
+
+  // Bug fix: slash 结束租赁时必须同步减 rentedGPUCount 和 totalRentedGPUCount
+  if (machineInfo.isRented) {
+    machineInfo.isRented = false;
+    machineInfo.rentedGPUCount = BigInt.zero();
+    machineInfo.save();
+
+    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+    if (stakeholder != null) {
+      if (stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+        stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
+      }
+      stakeholder.save();
+    }
+
+    let stateSummary = StateSummary.load(Bytes.empty());
+    if (stateSummary != null) {
+      if (stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+        stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
+      }
+      stateSummary.save();
+    }
+  } else {
+    machineInfo.isRented = false;
+    machineInfo.save();
+  }
 }
 
 // ── 补全事件: RentFee（租赁费用详情） ──
