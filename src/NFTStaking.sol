@@ -162,7 +162,7 @@ contract NFTStaking is
     event RecoverRewardingForBlocking(string machineId, address holder);
     event MachineUnregistered(string machineId);
     event MachineRegistered(string machineId);
-    event MachinePersonalChanged(string machineId, bool isPersonal);
+    event MachinePersonalChanged(string indexed machineId, bool isPersonal);
     // error
 
     error CallerNotRentContract();
@@ -1524,8 +1524,13 @@ contract NFTStaking is
     }
 
     function setMachineToPersonal(string[] calldata machineIds) external onlyDLCClientWallet {
+        require(machineIds.length <= 100, "batch too large");
         for (uint256 i = 0; i < machineIds.length; i++) {
-            machineId2Personal[machineIds[i]] = true;
+            // Idempotent: only emit event when value actually changes (avoid subgraph noise)
+            if (!machineId2Personal[machineIds[i]]) {
+                machineId2Personal[machineIds[i]] = true;
+                emit MachinePersonalChanged(machineIds[i], true);
+            }
         }
     }
 
@@ -1533,8 +1538,11 @@ contract NFTStaking is
     function setMachineToNonPersonal(string[] calldata machineIds) external onlyOwner {
         require(machineIds.length <= 100, "batch too large");
         for (uint256 i = 0; i < machineIds.length; i++) {
-            machineId2Personal[machineIds[i]] = false;
-            emit MachinePersonalChanged(machineIds[i], false);
+            // Idempotent: only emit event when value actually changes (avoid subgraph noise)
+            if (machineId2Personal[machineIds[i]]) {
+                machineId2Personal[machineIds[i]] = false;
+                emit MachinePersonalChanged(machineIds[i], false);
+            }
         }
     }
 

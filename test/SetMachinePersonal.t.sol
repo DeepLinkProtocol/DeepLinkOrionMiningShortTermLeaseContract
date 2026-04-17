@@ -91,9 +91,9 @@ contract SetMachinePersonalTest is Test {
         string[] memory ids = new string[](1);
         ids[0] = "machine_xyz";
 
-        // Non-owner should fail
+        // Non-owner should fail with specific OZ v5 error
         vm.prank(nonOwner);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", nonOwner));
         stakingProxy.setMachineToNonPersonal(ids);
     }
 
@@ -103,21 +103,31 @@ contract SetMachinePersonalTest is Test {
 
         // DLC client wallet should also fail (only owner can call)
         vm.prank(dlcClientWallet);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", dlcClientWallet));
         stakingProxy.setMachineToNonPersonal(ids);
     }
 
-    function test_setMachineToNonPersonal_alreadyNonPersonal() public {
+    function test_setMachineToNonPersonal_alreadyNonPersonal_isNoop() public {
         // Machine is non-personal by default
         assertFalse(stakingProxy.isPersonalMachine("machine_new"));
 
-        // Setting to non-personal when already non-personal should be safe (no-op)
+        // Setting to non-personal when already non-personal must be a no-op:
+        // value stays false AND event MUST NOT emit (idempotent guard)
         string[] memory ids = new string[](1);
         ids[0] = "machine_new";
+        vm.recordLogs();
         vm.prank(owner);
         stakingProxy.setMachineToNonPersonal(ids);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
 
         assertFalse(stakingProxy.isPersonalMachine("machine_new"));
+        // Must be ZERO MachinePersonalChanged events (idempotent: no value change → no event)
+        bytes32 sig = keccak256("MachinePersonalChanged(string,bool)");
+        uint256 matched = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length > 0 && logs[i].topics[0] == sig) matched++;
+        }
+        assertEq(matched, 0, "should not emit event when no change");
     }
 
     function test_setMachineToNonPersonal_emitsEvent() public {
@@ -127,11 +137,63 @@ contract SetMachinePersonalTest is Test {
         ids[0] = "machine_event_test";
         stakingProxy.setMachineToPersonal(ids);
 
-        // Expect event
+        // Expect event with indexed machineId (topic1 = keccak("machine_event_test"))
+        // Indexed string is hashed in event topic, so we verify topic1 matches
         vm.prank(owner);
-        vm.expectEmit(false, false, false, true);
+        vm.expectEmit(true, false, false, true);
         emit NFTStaking.MachinePersonalChanged("machine_event_test", false);
         stakingProxy.setMachineToNonPersonal(ids);
+    }
+
+    function test_setMachineToPersonal_isIdempotent() public {
+        // setMachineToPersonal should also be idempotent (symmetric with setMachineToNonPersonal)
+        string[] memory ids = new string[](1);
+        ids[0] = "machine_persidemp";
+
+        // First call: changes state, emits event
+        vm.prank(dlcClientWallet);
+        vm.expectEmit(true, false, false, true);
+        emit NFTStaking.MachinePersonalChanged("machine_persidemp", true);
+        stakingProxy.setMachineToPersonal(ids);
+        assertTrue(stakingProxy.isPersonalMachine("machine_persidemp"));
+
+        // Second call (already personal): must NOT emit
+        vm.recordLogs();
+        vm.prank(dlcClientWallet);
+        stakingProxy.setMachineToPersonal(ids);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("MachinePersonalChanged(string,bool)");
+        uint256 matched = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length > 0 && logs[i].topics[0] == sig) matched++;
+        }
+        assertEq(matched, 0, "second setMachineToPersonal call should not emit");
+    }
+
+    function test_setMachineToPersonal_batchLimit_101_reverts() public {
+        // 101 batch should revert (matches setMachineToNonPersonal symmetry)
+        string[] memory ids = new string[](101);
+        for (uint i = 0; i < 101; i++) {
+            ids[i] = string(abi.encodePacked("machine_p_", vm.toString(i)));
+        }
+        vm.prank(dlcClientWallet);
+        vm.expectRevert("batch too large");
+        stakingProxy.setMachineToPersonal(ids);
+    }
+
+    function test_setMachineToPersonal_realProductionMachineId() public {
+        // Production machineIds are 64-char hex (sha256 of hardware fingerprint)
+        string memory longId = "e6d30a33ebda9387c266548269a15b35bcdd6991391f60d266bed054f6f12e26";
+        string[] memory ids = new string[](1);
+        ids[0] = longId;
+
+        vm.prank(dlcClientWallet);
+        stakingProxy.setMachineToPersonal(ids);
+        assertTrue(stakingProxy.isPersonalMachine(longId));
+
+        vm.prank(owner);
+        stakingProxy.setMachineToNonPersonal(ids);
+        assertFalse(stakingProxy.isPersonalMachine(longId));
     }
 
     function test_setMachineToNonPersonal_batchLimit() public {
