@@ -162,6 +162,7 @@ contract NFTStaking is
     event RecoverRewardingForBlocking(string machineId, address holder);
     event MachineUnregistered(string machineId);
     event MachineRegistered(string machineId);
+    event MachinePersonalChanged(string machineId, bool isPersonal);
     // error
 
     error CallerNotRentContract();
@@ -1435,7 +1436,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 13;
+        return 14;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
@@ -1525,6 +1526,14 @@ contract NFTStaking is
     function setMachineToPersonal(string[] calldata machineIds) external onlyDLCClientWallet {
         for (uint256 i = 0; i < machineIds.length; i++) {
             machineId2Personal[machineIds[i]] = true;
+        }
+    }
+
+    /// @notice 将机器从个人版切换为网吧版（owner-only，修复误标记的机器）
+    function setMachineToNonPersonal(string[] calldata machineIds) external onlyOwner {
+        for (uint256 i = 0; i < machineIds.length; i++) {
+            machineId2Personal[machineIds[i]] = false;
+            emit MachinePersonalChanged(machineIds[i], false);
         }
     }
 
