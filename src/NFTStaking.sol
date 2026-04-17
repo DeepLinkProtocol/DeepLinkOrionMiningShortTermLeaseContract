@@ -1531,6 +1531,7 @@ contract NFTStaking is
 
     /// @notice 将机器从个人版切换为网吧版（owner-only，修复误标记的机器）
     function setMachineToNonPersonal(string[] calldata machineIds) external onlyOwner {
+        require(machineIds.length <= 100, "batch too large");
         for (uint256 i = 0; i < machineIds.length; i++) {
             machineId2Personal[machineIds[i]] = false;
             emit MachinePersonalChanged(machineIds[i], false);
