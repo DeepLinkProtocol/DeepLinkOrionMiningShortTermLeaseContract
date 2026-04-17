@@ -1436,7 +1436,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 14;
+        return 15;
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
