@@ -24,3 +24,9 @@ broadcast/
 # Sensitive
 *.pem
 *.key
+
+# Claude Code temp worktrees
+tmpclaude-*
+
+# Foundry one-off verify output
+verify*.json
