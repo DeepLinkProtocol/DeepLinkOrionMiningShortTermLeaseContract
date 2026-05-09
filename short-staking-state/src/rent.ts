@@ -99,6 +99,17 @@ export function handleEndRentMachine(event: RentMachineEvent): void {
   if (machineInfo != null) {
     // 只在之前是 rented 状态时才减计数（防止重复减）
     if (machineInfo.isRented) {
+      // Bug fix: forceCleanupRentInfo / forceCleanupRentInfoByOwner only
+      // emit Rent.EndRentMachine — NFTStaking's handler never fires, so
+      // its calcPoint cleanup never runs. Mirror the same -30% rent bonus
+      // unwind here to keep machine + aggregates in sync with the chain.
+      let reducedCalcPoint = machineInfo.totalCalcPointWithNFT
+        .times(BigInt.fromI32(3))
+        .div(BigInt.fromI32(10));
+      if (machineInfo.fullTotalCalcPoint.gt(reducedCalcPoint)) {
+        machineInfo.fullTotalCalcPoint =
+          machineInfo.fullTotalCalcPoint.minus(reducedCalcPoint);
+      }
       machineInfo.isRented = false;
       machineInfo.rentedGPUCount = BigInt.zero();
       machineInfo.save();
@@ -109,6 +120,12 @@ export function handleEndRentMachine(event: RentMachineEvent): void {
         if (stakeholder.rentedGPUCount.gt(BigInt.zero())) {
           stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
         }
+        if (stakeholder.fullTotalCalcPoint.gt(reducedCalcPoint)) {
+          stakeholder.fullTotalCalcPoint =
+            stakeholder.fullTotalCalcPoint.minus(reducedCalcPoint);
+        } else {
+          stakeholder.fullTotalCalcPoint = BigInt.zero();
+        }
         stakeholder.save();
       }
 
@@ -117,6 +134,12 @@ export function handleEndRentMachine(event: RentMachineEvent): void {
       if (stateSummary != null) {
         if (stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
           stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
+        }
+        if (stateSummary.totalCalcPoint.gt(reducedCalcPoint)) {
+          stateSummary.totalCalcPoint =
+            stateSummary.totalCalcPoint.minus(reducedCalcPoint);
+        } else {
+          stateSummary.totalCalcPoint = BigInt.zero();
         }
         stateSummary.save();
       }

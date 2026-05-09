@@ -153,20 +153,27 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   let wasRented = machineInfo.isRented;
 
   machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
-  machineInfo.isRented = false;
-  machineInfo.rentedGPUCount = BigInt.fromI32(0);
-
-  const reducedCalcPoint = machineInfo.totalCalcPointWithNFT
-    .times(BigInt.fromI32(3))
-    .div(BigInt.fromI32(10));
-  if (machineInfo.fullTotalCalcPoint > reducedCalcPoint) {
-    machineInfo.fullTotalCalcPoint =
-      machineInfo.fullTotalCalcPoint.minus(reducedCalcPoint);
-  }
-  machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
   machineInfo.nextCanRentTime = new Date(
     machineInfo.nextCanRentTimestamp.toI64() * 1000
   ).toISOString();
+
+  // BLOCKER fix: previously this always subtracted reducedCalcPoint from
+  // per-machine fullTotalCalcPoint regardless of wasRented, which mutates
+  // a value that was never inflated by the matching RentMachine (the rent
+  // bonus was already removed by ExitStakingForOffline / handleSlashMachineOnOffline
+  // / forceCleanup paths). Move the per-machine calcPoint mutation INSIDE
+  // the wasRented branch so it stays in lockstep with the aggregate decrement.
+  const reducedCalcPoint = machineInfo.totalCalcPointWithNFT
+    .times(BigInt.fromI32(3))
+    .div(BigInt.fromI32(10));
+  if (wasRented) {
+    machineInfo.isRented = false;
+    machineInfo.rentedGPUCount = BigInt.fromI32(0);
+    if (machineInfo.fullTotalCalcPoint.gt(reducedCalcPoint)) {
+      machineInfo.fullTotalCalcPoint =
+        machineInfo.fullTotalCalcPoint.minus(reducedCalcPoint);
+    }
+  }
 
   machineInfo.save();
 
@@ -878,13 +885,12 @@ export function handleReOnline(event: RecoverRewarding): void {
   let needsCalcPointRestore = machineInfo.fullTotalCalcPoint.equals(BigInt.zero());
 
   // Bug fix: 恢复 calcPoint（合约 _recoverRewarding → _joinStaking(calcPoint)）
-  // 恢复到含 NFT 倍数的值（如果在租赁中还要加 30% 增幅）
+  // 恢复到含 NFT 倍数的值。NOTE: contract restores BASE calcPoint only —
+  // _recoverRewarding never re-adds the rent +30% bonus (and by the time we
+  // reach this handler our ExitStaking* patches have already cleared
+  // isRented anyway). Match the chain: no bonus on restore.
   if (needsCalcPointRestore) {
     let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
-    if (machineInfo.isRented) {
-      let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
-      restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
-    }
     machineInfo.fullTotalCalcPoint = restoredCalcPoint;
     machineInfo.save();
 
@@ -1009,15 +1015,13 @@ export function handleRecoverRewardingForBlocking(
   // Bug fix: idempotency — the contract has `if (calcPoint != 0) return`
   // so the on-chain effect of a duplicate RecoverRewardingForBlocking is
   // a no-op; mirror that here so the subgraph aggregates don't double up.
+  // NOTE: contract restores BASE calcPoint only — _recoverRewarding never
+  // re-adds the rent +30% bonus. Subgraph mirrors that exactly.
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     machineInfo.online = true;
     if (machineInfo.fullTotalCalcPoint.equals(BigInt.zero())) {
       let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
-      if (machineInfo.isRented) {
-        let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
-        restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
-      }
       machineInfo.fullTotalCalcPoint = restoredCalcPoint;
       machineInfo.save();
 
@@ -1094,13 +1098,67 @@ export function handleReportMachineFaultLight(event: ReportMachineFaultLight): v
   record.save();
 
   // 更新 MachineInfo 状态
+  // Bug fix: contract.reportMachineFaultLight calls
+  // _joinStaking(machineId, baseCalcPoint*nftCount, ...) — restoring the
+  // BASE calcPoint and dropping the rent +30% bonus. Subgraph used to keep
+  // the bonus baked into fullTotalCalcPoint forever, leaving aggregates
+  // 0.3X over for every faulted-during-rent machine. Mirror the chain:
+  // if the machine was rented at fault time, undo the bonus (per-machine
+  // and aggregates) and clear the rent state. The rent.ts.handleEndRentMachine
+  // that follows will see isRented=false and skip its own decrement.
   let id = Bytes.fromUTF8(event.params.machineId);
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     machineInfo.isSlashed = true;
     machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
     machineInfo.nextCanRentTime = new Date(event.params.nextCanRentTime.toI64() * 1000).toISOString();
-    machineInfo.save();
+
+    if (machineInfo.isRented) {
+      let reducedCalcPoint = machineInfo.totalCalcPointWithNFT
+        .times(BigInt.fromI32(3))
+        .div(BigInt.fromI32(10));
+      if (machineInfo.fullTotalCalcPoint.gt(reducedCalcPoint)) {
+        machineInfo.fullTotalCalcPoint =
+          machineInfo.fullTotalCalcPoint.minus(reducedCalcPoint);
+      }
+      machineInfo.isRented = false;
+      machineInfo.rentedGPUCount = BigInt.zero();
+      machineInfo.save();
+
+      let stakeholder = StakeHolder.load(
+        Bytes.fromHexString(machineInfo.holder.toHexString())
+      );
+      if (stakeholder != null) {
+        if (stakeholder.fullTotalCalcPoint.gt(reducedCalcPoint)) {
+          stakeholder.fullTotalCalcPoint =
+            stakeholder.fullTotalCalcPoint.minus(reducedCalcPoint);
+        } else {
+          stakeholder.fullTotalCalcPoint = BigInt.zero();
+        }
+        if (stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+          stakeholder.rentedGPUCount =
+            stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
+        }
+        stakeholder.save();
+      }
+
+      let stateSummary = StateSummary.load(Bytes.empty());
+      if (stateSummary != null) {
+        if (stateSummary.totalCalcPoint.gt(reducedCalcPoint)) {
+          stateSummary.totalCalcPoint =
+            stateSummary.totalCalcPoint.minus(reducedCalcPoint);
+        } else {
+          stateSummary.totalCalcPoint = BigInt.zero();
+        }
+        if (stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+          stateSummary.totalRentedGPUCount =
+            stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
+        }
+        stateSummary.save();
+      }
+    } else {
+      machineInfo.save();
+    }
   }
 }
 
