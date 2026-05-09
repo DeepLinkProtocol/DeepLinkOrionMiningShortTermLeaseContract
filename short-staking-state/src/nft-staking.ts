@@ -147,6 +147,11 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
     return;
   }
 
+  // Idempotency: only decrement if the machine was actually rented.
+  // EndRentMachine can race with the rent.ts SlashMachineOnOffline path
+  // (both decrement) and was the second drift source.
+  let wasRented = machineInfo.isRented;
+
   machineInfo.nextCanRentTimestamp = event.params.nextCanRentTime;
   machineInfo.isRented = false;
   machineInfo.rentedGPUCount = BigInt.fromI32(0);
@@ -165,6 +170,10 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
 
   machineInfo.save();
 
+  if (!wasRented) {
+    return;
+  }
+
   let stakeholder = StakeHolder.load(
     Bytes.fromHexString(machineInfo.holder.toHexString())
   );
@@ -172,9 +181,11 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
     return;
   }
 
-  stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(
-    BigInt.fromI32(1)
-  );
+  if (stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+    stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(
+      BigInt.fromI32(1)
+    );
+  }
   if (stakeholder.fullTotalCalcPoint > reducedCalcPoint) {
     stakeholder.fullTotalCalcPoint =
       stakeholder.fullTotalCalcPoint.minus(reducedCalcPoint);
@@ -186,9 +197,11 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
   if (stateSummary == null) {
     return;
   }
-  stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(
-    BigInt.fromI32(1)
-  );
+  if (stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+    stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(
+      BigInt.fromI32(1)
+    );
+  }
   if (stateSummary.totalCalcPoint.gt(reducedCalcPoint)) {
     stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(reducedCalcPoint);
   }
@@ -301,6 +314,15 @@ export function handleRentMachine(event: RentMachineEvent): void {
     return;
   }
 
+  // Idempotency: bail if this machine is already flagged rented. Without
+  // this guard a duplicate RentMachine emission (reorg, retry, edge case)
+  // would double-increment the per-stakeholder and per-summary aggregates,
+  // which is the root cause of historical drift seen on prod (rented count
+  // exceeding total staking count).
+  if (machineInfo.isRented) {
+    return;
+  }
+
   machineInfo.isRented = true;
   machineInfo.rentedGPUCount = BigInt.fromI32(1);
   const addedCalcPoint = machineInfo.totalCalcPointWithNFT
@@ -395,6 +417,7 @@ export function handleStaked(event: StakedEvent): void {
   let id = Bytes.fromUTF8(event.params.machineId.toString());
   let machineInfo = MachineInfo.load(id);
   let isNewMachine: boolean = false;
+  let wasAlreadyStaking: boolean = false;
   if (machineInfo == null) {
     isNewMachine = true;
     machineInfo = new MachineInfo(id);
@@ -410,6 +433,11 @@ export function handleStaked(event: StakedEvent): void {
     machineInfo.claimTimes = BigInt.fromI32(0);
     machineInfo.extraRentFee = BigInt.fromI32(0);
     machineInfo.totalClaimedRewardAmount = BigInt.fromI32(0);
+  } else {
+    // Track whether this is a re-stake (after Unstaked cleared isStaking)
+    // versus a duplicate Staked while still staking (aggregates already
+    // counted, must NOT increment again).
+    wasAlreadyStaking = machineInfo.isStaking;
   }
   machineInfo.isSlashed = false;
 
@@ -455,6 +483,19 @@ export function handleStaked(event: StakedEvent): void {
     stakeholder.totalReleasedRewardAmount = BigInt.fromI32(0);
     stakeholder.totalClaimedRewardAmount = BigInt.fromI32(0);
     stakeholder.extraRentFee = BigInt.fromI32(0);
+  }
+
+  // Idempotency: skip aggregate increments when the machine was already
+  // counted as staking. Without this, a duplicate Staked event (or a stake
+  // that arrived without a prior matching Unstaked clearing isStaking) would
+  // double-count the GPU and inflate calc points across stakeholder and
+  // state summary. Per-machine entity fields above are still re-asserted
+  // each time (they're set, not incremented, so they're idempotent).
+  if (wasAlreadyStaking) {
+    stakeholder.save();
+    machineInfo.holderRef = stakeholder.id;
+    machineInfo.save();
+    return;
   }
 
   stakeholder.totalGPUCount = stakeholder.totalGPUCount.plus(
@@ -530,6 +571,17 @@ export function handleUnstaked(event: UnstakedEvent): void {
     return;
   }
 
+  // Idempotency: a duplicate Unstaked event would otherwise re-decrement
+  // every aggregate counter and pull totals into negative territory.
+  if (!machineInfo.isStaking) {
+    return;
+  }
+
+  // If the machine is being unstaked while still flagged as rented (e.g.
+  // operator pulls it out without the EndRentMachine path running first),
+  // the rented aggregates would stay too high. Carry the cleanup here.
+  let wasRented = machineInfo.isRented;
+
   let stakeholder = StakeHolder.load(
     Bytes.fromHexString(event.params.stakeholder.toHexString())
   );
@@ -537,21 +589,24 @@ export function handleUnstaked(event: UnstakedEvent): void {
     return;
   }
 
-  stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(
-    machineInfo.fullTotalCalcPoint
-  );
-  stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.minus(
-    machineInfo.totalReservedAmount
-  );
-  stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.minus(
-    BigInt.fromI32(1)
-  );
-  stakeholder.totalGPUCount = stakeholder.totalGPUCount.minus(
-    BigInt.fromI32(1)
-  );
-  stakeholder.totalCalcPoint = stakeholder.totalCalcPoint.minus(
-    machineInfo.totalCalcPoint
-  );
+  stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.gt(machineInfo.fullTotalCalcPoint)
+    ? stakeholder.fullTotalCalcPoint.minus(machineInfo.fullTotalCalcPoint)
+    : BigInt.zero();
+  stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.gt(machineInfo.totalReservedAmount)
+    ? stakeholder.totalReservedAmount.minus(machineInfo.totalReservedAmount)
+    : BigInt.zero();
+  stakeholder.totalStakingGPUCount = stakeholder.totalStakingGPUCount.gt(BigInt.zero())
+    ? stakeholder.totalStakingGPUCount.minus(BigInt.fromI32(1))
+    : BigInt.zero();
+  stakeholder.totalGPUCount = stakeholder.totalGPUCount.gt(BigInt.zero())
+    ? stakeholder.totalGPUCount.minus(BigInt.fromI32(1))
+    : BigInt.zero();
+  stakeholder.totalCalcPoint = stakeholder.totalCalcPoint.gt(machineInfo.totalCalcPoint)
+    ? stakeholder.totalCalcPoint.minus(machineInfo.totalCalcPoint)
+    : BigInt.zero();
+  if (wasRented && stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+    stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
+  }
   stakeholder.save();
 
   let stateSummary = StateSummary.load(Bytes.empty());
@@ -559,12 +614,12 @@ export function handleUnstaked(event: UnstakedEvent): void {
     return;
   }
 
-  stateSummary.totalStakingGPUCount = stateSummary.totalStakingGPUCount.minus(
-    BigInt.fromU32(1)
-  );
-  stateSummary.totalGPUCount = stateSummary.totalGPUCount.minus(
-    BigInt.fromI32(1)
-  );
+  if (stateSummary.totalStakingGPUCount.gt(BigInt.zero())) {
+    stateSummary.totalStakingGPUCount = stateSummary.totalStakingGPUCount.minus(BigInt.fromI32(1));
+  }
+  if (stateSummary.totalGPUCount.gt(BigInt.zero())) {
+    stateSummary.totalGPUCount = stateSummary.totalGPUCount.minus(BigInt.fromI32(1));
+  }
   if (stateSummary.totalCalcPoint.gt(machineInfo.fullTotalCalcPoint)) {
     stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(
       machineInfo.fullTotalCalcPoint
@@ -572,13 +627,17 @@ export function handleUnstaked(event: UnstakedEvent): void {
   } else {
     stateSummary.totalCalcPoint = BigInt.zero();
   }
-  if (stakeholder.totalStakingGPUCount.equals(BigInt.zero())) {
+  if (stakeholder.totalStakingGPUCount.equals(BigInt.zero())
+    && stateSummary.totalCalcPointPoolCount.gt(BigInt.zero())) {
     stateSummary.totalCalcPointPoolCount =
       stateSummary.totalCalcPointPoolCount.minus(BigInt.fromI32(1));
   }
-  stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.minus(
-    machineInfo.totalReservedAmount
-  );
+  if (wasRented && stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+    stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
+  }
+  stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.gt(machineInfo.totalReservedAmount)
+    ? stateSummary.totalReservedAmount.minus(machineInfo.totalReservedAmount)
+    : BigInt.zero();
   stateSummary.save();
 
   let giveBackDlcRecord = new giveBackDlc(event.transaction.hash);
@@ -799,10 +858,17 @@ export function handleExitStakingForBlocking(
   let id = Bytes.fromUTF8(event.params.machineId.toString());
 
   // Bug fix: 同步减 calcPoint（合约 _stopRewarding → _joinStaking(0)）
+  // Bug fix: also flip online to false. The Blocking pathway is what
+  // validateMachineIds() uses (the DLC client wallet's health check), so
+  // 70%+ of real-world "machine went offline" transitions arrive here,
+  // not via ExitStakingForOffline. Without this line, blocked machines
+  // appear online=true forever and any UI relying on machineInfo.online
+  // gets misleading data.
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     let calcPointToRemove = machineInfo.fullTotalCalcPoint;
     machineInfo.fullTotalCalcPoint = BigInt.zero();
+    machineInfo.online = false;
     machineInfo.save();
 
     let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
@@ -841,6 +907,7 @@ export function handleRecoverRewardingForBlocking(
   let id = Bytes.fromUTF8(event.params.machineId.toString());
 
   // Bug fix: 恢复 calcPoint（合约 _recoverRewarding → _joinStaking(calcPoint)）
+  // Bug fix: mirror the online=true flip its non-blocking sibling does.
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
     let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
@@ -849,6 +916,7 @@ export function handleRecoverRewardingForBlocking(
       restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
     }
     machineInfo.fullTotalCalcPoint = restoredCalcPoint;
+    machineInfo.online = true;
     machineInfo.save();
 
     let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
