@@ -193,9 +193,11 @@ export function handleEndRentMachine(event: EndRentMachineEvent): void {
       BigInt.fromI32(1)
     );
   }
-  if (stakeholder.fullTotalCalcPoint > reducedCalcPoint) {
+  if (stakeholder.fullTotalCalcPoint.gt(reducedCalcPoint)) {
     stakeholder.fullTotalCalcPoint =
       stakeholder.fullTotalCalcPoint.minus(reducedCalcPoint);
+  } else {
+    stakeholder.fullTotalCalcPoint = BigInt.zero();
   }
 
   stakeholder.save();
@@ -277,9 +279,13 @@ export function handlePaySlash(event: PaySlashEvent): void {
     return;
   }
 
-  machineInfo.totalReservedAmount = machineInfo.totalReservedAmount.minus(
-    event.params.slashAmount
-  );
+  if (machineInfo.totalReservedAmount.gt(event.params.slashAmount)) {
+    machineInfo.totalReservedAmount = machineInfo.totalReservedAmount.minus(
+      event.params.slashAmount
+    );
+  } else {
+    machineInfo.totalReservedAmount = BigInt.zero();
+  }
   machineInfo.save();
 
   let stakeholder = StakeHolder.load(
@@ -289,9 +295,13 @@ export function handlePaySlash(event: PaySlashEvent): void {
     return;
   }
 
-  stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.minus(
-    event.params.slashAmount
-  );
+  if (stakeholder.totalReservedAmount.gt(event.params.slashAmount)) {
+    stakeholder.totalReservedAmount = stakeholder.totalReservedAmount.minus(
+      event.params.slashAmount
+    );
+  } else {
+    stakeholder.totalReservedAmount = BigInt.zero();
+  }
   stakeholder.save();
 
   let stateSummary = StateSummary.load(Bytes.empty());
@@ -299,9 +309,13 @@ export function handlePaySlash(event: PaySlashEvent): void {
     return;
   }
 
-  stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.minus(
-    event.params.slashAmount
-  );
+  if (stateSummary.totalReservedAmount.gt(event.params.slashAmount)) {
+    stateSummary.totalReservedAmount = stateSummary.totalReservedAmount.minus(
+      event.params.slashAmount
+    );
+  } else {
+    stateSummary.totalReservedAmount = BigInt.zero();
+  }
   stateSummary.save();
 
   let payRecord = new HolderPaidSlashRecord(event.transaction.hash);
