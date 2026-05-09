@@ -418,6 +418,13 @@ export function handleStaked(event: StakedEvent): void {
   let machineInfo = MachineInfo.load(id);
   let isNewMachine: boolean = false;
   let wasAlreadyStaking: boolean = false;
+  // Snapshot the previously-counted contributions before we overwrite the
+  // per-machine fields. Used below when wasAlreadyStaking to delta-adjust
+  // stakeholder/summary aggregates instead of skipping them entirely —
+  // the contract's addDLCToStake / repricing flow can re-emit Staked with
+  // a different calcPoint, in which case the aggregates need to follow.
+  let priorTotalCalcPoint: BigInt = BigInt.zero();
+  let priorFullTotalCalcPoint: BigInt = BigInt.zero();
   if (machineInfo == null) {
     isNewMachine = true;
     machineInfo = new MachineInfo(id);
@@ -438,6 +445,10 @@ export function handleStaked(event: StakedEvent): void {
     // versus a duplicate Staked while still staking (aggregates already
     // counted, must NOT increment again).
     wasAlreadyStaking = machineInfo.isStaking;
+    if (wasAlreadyStaking) {
+      priorTotalCalcPoint = machineInfo.totalCalcPoint;
+      priorFullTotalCalcPoint = machineInfo.fullTotalCalcPoint;
+    }
   }
   machineInfo.isSlashed = false;
 
@@ -485,16 +496,59 @@ export function handleStaked(event: StakedEvent): void {
     stakeholder.extraRentFee = BigInt.fromI32(0);
   }
 
-  // Idempotency: skip aggregate increments when the machine was already
-  // counted as staking. Without this, a duplicate Staked event (or a stake
-  // that arrived without a prior matching Unstaked clearing isStaking) would
-  // double-count the GPU and inflate calc points across stakeholder and
-  // state summary. Per-machine entity fields above are still re-asserted
-  // each time (they're set, not incremented, so they're idempotent).
+  // Idempotency: when the machine was already counted as staking, we skip
+  // the GPU-count increment but still need to delta-adjust calcPoint
+  // aggregates if the new event carries a different value (the contract's
+  // addDLCToStake / repricing path re-emits Staked with an updated calcPoint).
+  // GPU count itself is binary per machine, so the .totalGPUCount and
+  // .totalStakingGPUCount increments stay skipped.
   if (wasAlreadyStaking) {
+    let newTotalCalcPoint = machineInfo.totalCalcPoint;
+    let newFullCalcPoint = machineInfo.fullTotalCalcPoint;
+
+    // stakeholder.totalCalcPoint += (new - prior)
+    if (newTotalCalcPoint.gt(priorTotalCalcPoint)) {
+      stakeholder.totalCalcPoint = stakeholder.totalCalcPoint.plus(
+        newTotalCalcPoint.minus(priorTotalCalcPoint)
+      );
+    } else if (priorTotalCalcPoint.gt(newTotalCalcPoint)) {
+      let delta = priorTotalCalcPoint.minus(newTotalCalcPoint);
+      stakeholder.totalCalcPoint = stakeholder.totalCalcPoint.gt(delta)
+        ? stakeholder.totalCalcPoint.minus(delta)
+        : BigInt.zero();
+    }
+
+    // stakeholder.fullTotalCalcPoint += (new - prior)
+    if (newFullCalcPoint.gt(priorFullTotalCalcPoint)) {
+      stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(
+        newFullCalcPoint.minus(priorFullTotalCalcPoint)
+      );
+    } else if (priorFullTotalCalcPoint.gt(newFullCalcPoint)) {
+      let delta = priorFullTotalCalcPoint.minus(newFullCalcPoint);
+      stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.gt(delta)
+        ? stakeholder.fullTotalCalcPoint.minus(delta)
+        : BigInt.zero();
+    }
     stakeholder.save();
     machineInfo.holderRef = stakeholder.id;
     machineInfo.save();
+
+    // Mirror the same delta on stateSummary.totalCalcPoint (it's incremented
+    // by fullTotalCalcPoint in the new-stake branch below, so use full delta).
+    let stateSummary = StateSummary.load(Bytes.empty());
+    if (stateSummary != null) {
+      if (newFullCalcPoint.gt(priorFullTotalCalcPoint)) {
+        stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(
+          newFullCalcPoint.minus(priorFullTotalCalcPoint)
+        );
+      } else if (priorFullTotalCalcPoint.gt(newFullCalcPoint)) {
+        let delta = priorFullTotalCalcPoint.minus(newFullCalcPoint);
+        stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.gt(delta)
+          ? stateSummary.totalCalcPoint.minus(delta)
+          : BigInt.zero();
+      }
+      stateSummary.save();
+    }
     return;
   }
 
@@ -742,6 +796,18 @@ export function handleExitStakingForOffline(
   }
   machineInfo.online = false;
 
+  // Bug fix: same-tx RentMachine + ExitStakingForOffline could leave the
+  // machine flagged isRented forever because the contract path that ends
+  // rewards via _stopRewarding doesn't unwind the rent state on the
+  // subgraph side. If the machine was being rented when rewards stopped,
+  // clear isRented and decrement the rented aggregates here so the
+  // counters stay consistent.
+  let wasRented = machineInfo.isRented;
+  if (wasRented) {
+    machineInfo.isRented = false;
+    machineInfo.rentedGPUCount = BigInt.zero();
+  }
+
   // Bug fix: 同步减 calcPoint（合约 _stopRewarding → _joinStaking(0)）
   let calcPointToRemove = machineInfo.fullTotalCalcPoint;
   machineInfo.fullTotalCalcPoint = BigInt.zero();
@@ -754,6 +820,9 @@ export function handleExitStakingForOffline(
     } else {
       stakeholder.fullTotalCalcPoint = BigInt.zero();
     }
+    if (wasRented && stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+      stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
+    }
     stakeholder.save();
   }
 
@@ -763,6 +832,9 @@ export function handleExitStakingForOffline(
       stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
     } else {
       stateSummary.totalCalcPoint = BigInt.zero();
+    }
+    if (wasRented && stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+      stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
     }
     stateSummary.save();
   }
@@ -796,28 +868,39 @@ export function handleReOnline(event: RecoverRewarding): void {
   if (machineInfo == null) {
     return;
   }
+
   machineInfo.online = true;
+
+  // Idempotency: mirror the contract guard `if (calcPoint != 0) return`.
+  // A duplicate RecoverRewarding (reorg, retry) would otherwise add the
+  // bonus to the aggregates twice while the per-machine field stays at the
+  // same restored value. Only restore calcPoint when it was actually 0.
+  let needsCalcPointRestore = machineInfo.fullTotalCalcPoint.equals(BigInt.zero());
 
   // Bug fix: 恢复 calcPoint（合约 _recoverRewarding → _joinStaking(calcPoint)）
   // 恢复到含 NFT 倍数的值（如果在租赁中还要加 30% 增幅）
-  let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
-  if (machineInfo.isRented) {
-    let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
-    restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
-  }
-  machineInfo.fullTotalCalcPoint = restoredCalcPoint;
-  machineInfo.save();
+  if (needsCalcPointRestore) {
+    let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
+    if (machineInfo.isRented) {
+      let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
+      restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
+    }
+    machineInfo.fullTotalCalcPoint = restoredCalcPoint;
+    machineInfo.save();
 
-  let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
-  if (stakeholder != null) {
-    stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(restoredCalcPoint);
-    stakeholder.save();
-  }
+    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+    if (stakeholder != null) {
+      stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(restoredCalcPoint);
+      stakeholder.save();
+    }
 
-  let stateSummary = StateSummary.load(Bytes.empty());
-  if (stateSummary != null) {
-    stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(restoredCalcPoint);
-    stateSummary.save();
+    let stateSummary = StateSummary.load(Bytes.empty());
+    if (stateSummary != null) {
+      stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(restoredCalcPoint);
+      stateSummary.save();
+    }
+  } else {
+    machineInfo.save();
   }
 
   let lastOfflineRecord = MachineOfflineRecord.load(id);
@@ -864,11 +947,20 @@ export function handleExitStakingForBlocking(
   // not via ExitStakingForOffline. Without this line, blocked machines
   // appear online=true forever and any UI relying on machineInfo.online
   // gets misleading data.
+  // Bug fix: same-tx RentMachine + ExitStakingForBlocking could leave
+  // the machine in `isRented=true / fullTotalCalcPoint=0` permanently —
+  // ExitStakingForBlocking zeroed calcPoint but never unwound rent state.
+  // Mirror the cleanup we do for ExitStakingForOffline.
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
+    let wasRented = machineInfo.isRented;
     let calcPointToRemove = machineInfo.fullTotalCalcPoint;
     machineInfo.fullTotalCalcPoint = BigInt.zero();
     machineInfo.online = false;
+    if (wasRented) {
+      machineInfo.isRented = false;
+      machineInfo.rentedGPUCount = BigInt.zero();
+    }
     machineInfo.save();
 
     let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
@@ -877,6 +969,9 @@ export function handleExitStakingForBlocking(
         stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.minus(calcPointToRemove);
       } else {
         stakeholder.fullTotalCalcPoint = BigInt.zero();
+      }
+      if (wasRented && stakeholder.rentedGPUCount.gt(BigInt.zero())) {
+        stakeholder.rentedGPUCount = stakeholder.rentedGPUCount.minus(BigInt.fromI32(1));
       }
       stakeholder.save();
     }
@@ -887,6 +982,9 @@ export function handleExitStakingForBlocking(
         stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.minus(calcPointToRemove);
       } else {
         stateSummary.totalCalcPoint = BigInt.zero();
+      }
+      if (wasRented && stateSummary.totalRentedGPUCount.gt(BigInt.zero())) {
+        stateSummary.totalRentedGPUCount = stateSummary.totalRentedGPUCount.minus(BigInt.fromI32(1));
       }
       stateSummary.save();
     }
@@ -908,27 +1006,34 @@ export function handleRecoverRewardingForBlocking(
 
   // Bug fix: 恢复 calcPoint（合约 _recoverRewarding → _joinStaking(calcPoint)）
   // Bug fix: mirror the online=true flip its non-blocking sibling does.
+  // Bug fix: idempotency — the contract has `if (calcPoint != 0) return`
+  // so the on-chain effect of a duplicate RecoverRewardingForBlocking is
+  // a no-op; mirror that here so the subgraph aggregates don't double up.
   let machineInfo = MachineInfo.load(id);
   if (machineInfo != null) {
-    let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
-    if (machineInfo.isRented) {
-      let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
-      restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
-    }
-    machineInfo.fullTotalCalcPoint = restoredCalcPoint;
     machineInfo.online = true;
-    machineInfo.save();
+    if (machineInfo.fullTotalCalcPoint.equals(BigInt.zero())) {
+      let restoredCalcPoint = machineInfo.totalCalcPointWithNFT;
+      if (machineInfo.isRented) {
+        let rentBonus = restoredCalcPoint.times(BigInt.fromI32(3)).div(BigInt.fromI32(10));
+        restoredCalcPoint = restoredCalcPoint.plus(rentBonus);
+      }
+      machineInfo.fullTotalCalcPoint = restoredCalcPoint;
+      machineInfo.save();
 
-    let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
-    if (stakeholder != null) {
-      stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(restoredCalcPoint);
-      stakeholder.save();
-    }
+      let stakeholder = StakeHolder.load(Bytes.fromHexString(machineInfo.holder.toHexString()));
+      if (stakeholder != null) {
+        stakeholder.fullTotalCalcPoint = stakeholder.fullTotalCalcPoint.plus(restoredCalcPoint);
+        stakeholder.save();
+      }
 
-    let stateSummary = StateSummary.load(Bytes.empty());
-    if (stateSummary != null) {
-      stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(restoredCalcPoint);
-      stateSummary.save();
+      let stateSummary = StateSummary.load(Bytes.empty());
+      if (stateSummary != null) {
+        stateSummary.totalCalcPoint = stateSummary.totalCalcPoint.plus(restoredCalcPoint);
+        stateSummary.save();
+      }
+    } else {
+      machineInfo.save();
     }
   }
 
