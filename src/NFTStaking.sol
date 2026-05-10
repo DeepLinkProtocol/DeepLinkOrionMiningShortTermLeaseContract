@@ -36,6 +36,15 @@ contract NFTStaking is
     uint256 public constant REWARD_DURATION = 60 days;
     uint8 public constant MAX_NFTS_PER_MACHINE = 20;
     uint256 public constant LOCK_PERIOD = 180 days;
+
+    // [NEW 2026-05-10] Phase 7+ auto-advance constants (whitepaper 7.4 第 6 项 Mining For GPU 16% halving every 4 years)
+    // Mining Race (phase 1-6) 结束后 (rewardStartAtTimestamp + 420d), 自动进入 6 个减半周期, 每周期 4 年
+    // 第 1 周期 (phase 7) = 8B / 4y = ~5.48M/day, 第 2 周期 (phase 8) = 4B / 4y = ~2.74M/day, ... 减半到 phase 12
+    // 总和 ≈ 16B (几何级数 8+4+2+1+0.5+0.25 = 15.75B)
+    uint256 public constant PHASE6_BOOST_DURATION = REWARD_DURATION * 7;  // 420 days
+    uint256 public constant NORMAL_PHASE_DURATION = 4 * 365 days;  // 1460 days = 4 years
+    uint256 public constant NUM_NORMAL_PHASES = 6;  // phase 7-12
+    uint256 public constant PHASE7_FIRST_ALLOCATION = 8_000_000_000 ether;  // 8B for phase 7
     StakingType public constant STAKING_TYPE = StakingType.ShortTerm;
 
     IDBCAIContract public dbcAIContract;
@@ -338,7 +347,11 @@ contract NFTStaking is
             return REWARD_DURATION * 5;
         }
         if (phase == 6) {
-            return REWARD_DURATION * 7;  // 300天 + 120天 = 420天
+            // [FIX 2026-05-10] phase 6 duration 从 420d 扩展到 420d + 6×1460d = 9180d (~25.1 年)
+            // 包含 Mining Race (boost 420d) + 6 个真正挖矿减半周期 (24 年)
+            // 配合 getDailyRewardAmount() 时间感知, lib rewardEndAt 不再 cap 在 5/21
+            // 25.1 年后 (2050-05-21) rewardEnd()=true, 挖矿正式停产
+            return PHASE6_BOOST_DURATION + NORMAL_PHASE_DURATION * NUM_NORMAL_PHASES;
         }
         return 0;
     }
@@ -346,8 +359,17 @@ contract NFTStaking is
     function setPhase(uint8 _phase) external onlyOwner {
         require(_phase >= 1 && _phase <= 6, "Invalid phase");
         // require(rewardEnd(), "Current phaseReward not end");
+
+        // [FIX 2026-05-10] 切换 boost phase 前先结算 OLD phase 累积奖励, 防止新 dailyRewardAmount 错误应用于旧时段
+        // _getUpdatedRewardPerCalcPoint 会用当前 phase/dailyRewardAmount/rewardStart 计算到 block.timestamp 的累积
+        // (注: phase 6 → 7+ 的真正挖矿切换是自动的, 不需要 setPhase, 见 getDailyRewardAmount)
+        if (rewardStartAtTimestamp > 0) {
+            _updateRewardPerCalcPoint();
+        }
+
         phase = _phase;
 
+        // ── Boost phases (Mining Race 期, 配额来自 whitepaper 7.4 第 12 项 3% Mining Race) ──
         if (phase == 1) {
             initRewardAmount = 180_000_000 ether;
         }
@@ -1251,8 +1273,29 @@ contract NFTStaking is
         return calculateRewards(machineId);
     }
 
+    // [NEW 2026-05-10] 时间感知日产奖励 — Mining Race (phase 1-6 boost) 结束后自动进入减半周期
+    // 不依赖 setPhase 手动调, 完全链上自动. 跨 phase 边界的小计算误差 (lib 用单一 rate 算 elapsed)
+    // 在频繁 stake/claim 触发 _updateRewardPerCalcPoint 时被压到极小, 业务可接受.
     function getDailyRewardAmount() public view returns (uint256) {
-        return dailyRewardAmount;
+        if (rewardStartAtTimestamp == 0) {
+            return 0;
+        }
+
+        uint256 phase6End = rewardStartAtTimestamp + PHASE6_BOOST_DURATION;  // 2026-05-21
+        if (block.timestamp < phase6End) {
+            // 仍在 Mining Race boost 期 (phase 1-6), 用 setPhase 配置的 stored value
+            return dailyRewardAmount;
+        }
+
+        // 自动 Normal mining phase: cycleIdx 0=phase7, 1=phase8, ..., 5=phase12
+        uint256 cycleIdx = (block.timestamp - phase6End) / NORMAL_PHASE_DURATION;
+        if (cycleIdx >= NUM_NORMAL_PHASES) {
+            return 0;  // 24 年减半周期全部跑完, 挖矿停产
+        }
+
+        // 减半: phase 7 = 8B, phase 8 = 4B, phase 9 = 2B, phase 10 = 1B, phase 11 = 500M, phase 12 = 250M
+        uint256 phaseAllocation = PHASE7_FIRST_ALLOCATION >> cycleIdx;
+        return phaseAllocation / 1460;  // 4 年 = 1460 天
     }
 
     function rewardStart() internal view returns (bool) {
@@ -1436,7 +1479,24 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 15;
+        return 16;
+    }
+
+    // [NEW 2026-05-10] 时间感知当前挖矿阶段 — 给前端/subgraph/dune 用
+    // phase storage 在 phase 7+ 自动模式下永远停在 6, 这个函数返回真实的当前 phase (1-12 或 13=ended)
+    function getCurrentMiningPhase() public view returns (uint256) {
+        if (rewardStartAtTimestamp == 0) {
+            return 0;
+        }
+        uint256 phase6End = rewardStartAtTimestamp + PHASE6_BOOST_DURATION;
+        if (block.timestamp < phase6End) {
+            return phase;  // 仍在 boost 期, 用 storage 字段 1-6
+        }
+        uint256 cycleIdx = (block.timestamp - phase6End) / NORMAL_PHASE_DURATION;
+        if (cycleIdx >= NUM_NORMAL_PHASES) {
+            return 13;  // 24 年减半周期跑完, 挖矿停产
+        }
+        return 7 + cycleIdx;  // 7, 8, 9, 10, 11, 12
     }
 
     function oneDayAccumulatedPerShare(uint256 currentAccumulatedPerShare, uint256 totalShares)
