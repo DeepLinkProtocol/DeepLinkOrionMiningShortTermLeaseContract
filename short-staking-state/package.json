@@ -10,7 +10,6 @@
     "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 staking-state",
     "deploy-test": "graph deploy staking-state --ipfs http://8.214.55.62:8021 --node http://8.214.55.62:8020 --version-label v0.0.1 ",
     "test": "graph test",
-
     "create-mainnet": "graph create short-staking-state --node http://54.179.233.88:8034",
     "deploy-mainnet": "graph deploy short-staking-state1 --ipfs http://54.179.233.88:8031 --node http://54.179.233.88:8034"
   },
@@ -18,5 +17,16 @@
     "@graphprotocol/graph-cli": "0.96.0",
     "@graphprotocol/graph-ts": "0.37.0"
   },
-  "devDependencies": { "matchstick-as": "0.6.0" }
+  "devDependencies": {
+    "matchstick-as": "0.6.0"
+  },
+  "overrides": {
+    "axios": "^1.13.0",
+    "cross-spawn": "^7.0.6",
+    "ejs": "^3.1.10",
+    "semver": "^7.5.4",
+    "undici": "^7.16.0",
+    "js-yaml": "^4.1.0",
+    "yaml": "^2.6.0"
+  }
 }
