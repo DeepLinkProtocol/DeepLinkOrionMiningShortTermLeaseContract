@@ -1,0 +1,26 @@
+{
+  "name": "deeplinkorionminingshorttermleasecontract",
+  "version": "1.0.0",
+  "description": "DeepLink Orion GPU Mining Long-Term Lease Contract",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github-deeplink:DeepLinkProtocol/DeepLinkOrionMiningShortTermLeaseContract.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "ethers": "^6.16.0"
+  }
+}
