@@ -764,7 +764,8 @@ contract NFTStaking is
             (uint256 _moveToReserveAmount, uint256 leftAmountCanClaim) =
                 tryMoveReserve(machineId, canClaimAmount, stakeInfo);
             canClaimAmount = leftAmountCanClaim;
-            moveToReserveAmount = _moveToReserveAmount;
+            // [v17 fix] Round-6 Agent B P4: 必须累加而非覆盖, 否则 claimedAmount + totalDistributedRewardAmount 少计第一次 move 的 X
+            moveToReserveAmount += _moveToReserveAmount;
         }
 
         if (canClaimAmount > 0) {
@@ -1523,6 +1524,8 @@ contract NFTStaking is
         uint256 timestamp
     );
     event PayoutAdminChanged(address indexed oldAdmin, address indexed newAdmin);
+    /// @dev 区分 initializePayout (首次) vs setPayoutAdmin (轮换) — 后端审计更清晰
+    event PayoutAdminInitialized(address indexed admin);
     event EIP712DomainInitialized(bytes32 domainSeparator);
 
     function _buildDomainSeparator() private view returns (bytes32) {
@@ -1550,7 +1553,8 @@ contract NFTStaking is
         payoutAdmin = admin;
         _CACHED_CHAIN_ID = block.chainid;
         _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator();
-        emit PayoutAdminChanged(address(0), admin);
+        emit PayoutAdminInitialized(admin);  // 区分首次 init vs rotation
+        emit PayoutAdminChanged(address(0), admin);  // 兼容下游订阅
         emit EIP712DomainInitialized(_CACHED_DOMAIN_SEPARATOR);
     }
 
