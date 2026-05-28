@@ -370,6 +370,26 @@ contract PayoutWalletTest is Test {
         assertEq(nftStaking.version(), 17);
     }
 
+    // ====== 17. deadline 上限拒绝 (Round-8 Agent B P0) ======
+    function test_setPayoutWallet_deadline_too_far_reverts() public {
+        uint256 deadline = block.timestamp + 8 days;  // 超过 7 天上限
+        bytes memory ownerSig = _signSetPayout(STAKER_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        bytes memory adminSig = _signSetPayout(ADMIN_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+
+        vm.expectRevert(NFTStaking.DeadlineTooFar.selector);
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig, adminSig);
+    }
+
+    // ====== 18. deadline 上限边界 (恰好 7 天) ======
+    function test_setPayoutWallet_deadline_at_limit() public {
+        uint256 deadline = block.timestamp + 7 days;  // 恰好 7 天, 应通过
+        bytes memory ownerSig = _signSetPayout(STAKER_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        bytes memory adminSig = _signSetPayout(ADMIN_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig, adminSig);
+        assertEq(nftStaking.stakerPayoutWallet(stakerAddr), newPayout);
+    }
+
     // ============================================================
     // P0 集成测试: 锁住 claim / unStake / Rent 跨合约的设计承诺
     // ============================================================

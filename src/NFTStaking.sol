@@ -222,6 +222,7 @@ contract NFTStaking is
     error PayoutAlreadyInitialized();
     error PayoutCannotBeContract();
     error StakerMustBeEOA();
+    error DeadlineTooFar();  // Round-8 Agent B: 防长期钓鱼 sig
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -1522,7 +1523,7 @@ contract NFTStaking is
     event PayoutWalletChanged(
         address indexed staker,
         address oldPayout,
-        address newPayout,
+        address indexed newPayout,  // Round-8 Agent B P1: 后端按收款钱包反查 staker 列表
         uint256 nonce,
         uint256 timestamp
     );
@@ -1552,7 +1553,8 @@ contract NFTStaking is
     /// @dev 必须用 owner 钱包调 (不能跟 upgradeToAndCall 原子化, 因为 canUpgradeAddress ≠ owner)
     function initializePayout(address admin) external onlyOwner {
         if (payoutAdmin != address(0)) revert PayoutAlreadyInitialized();
-        require(admin != address(0), ZeroAddress());
+        // Round-8 Agent B P1: 错误处理风格统一 (custom error 替代 require)
+        if (admin == address(0)) revert ZeroAddress();
         payoutAdmin = admin;
         _CACHED_CHAIN_ID = block.chainid;
         _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator();
@@ -1563,7 +1565,7 @@ contract NFTStaking is
 
     /// @notice 旋转官方签名钱包 — 旋转后所有 in-flight 双签 (含旧 admin) 自动失效
     function setPayoutAdmin(address newAdmin) external onlyOwner {
-        require(newAdmin != address(0), ZeroAddress());
+        if (newAdmin == address(0)) revert ZeroAddress();  // Round-8 Agent B P1: style 统一
         address old = payoutAdmin;
         payoutAdmin = newAdmin;
         emit PayoutAdminChanged(old, newAdmin);
@@ -1582,6 +1584,9 @@ contract NFTStaking is
         if (staker == address(0) || newPayout == staker) revert RedundantPayout();
         if (payoutAdmin == address(0)) revert PayoutAdminNotInitialized();
         if (block.timestamp > deadline) revert ExpiredSignature();
+        // Round-8 Agent B P0: deadline 上限 7 天, 防长期钓鱼 sig
+        // 攻击场景: 钓鱼网站后端构造 deadline=2050 的 typed data, 矿工误签 → admin 失守后任意时刻可改 payout
+        if (deadline > block.timestamp + 7 days) revert DeadlineTooFar();
         if (nonce != payoutNonce[staker]) revert InvalidNonce();
 
         // [Round-4 Agent2] 显式拒绝合约钱包矿工 (Safe/Argent/Gnosis)
