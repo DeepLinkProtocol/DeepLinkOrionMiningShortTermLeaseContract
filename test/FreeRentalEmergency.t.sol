@@ -174,6 +174,6 @@ contract FreeRentalEmergencyTest is Test {
     }
 
     function test_version() public view {
-        assertEq(fr.VERSION(), 4, "FreeRental version should be 4");
+        assertEq(fr.VERSION(), 5, "FreeRental version should be 5");
     }
 }

@@ -20,6 +20,7 @@ import {ToolLib} from "./library/ToolLib.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import {NFTStakingState} from "./NFTStakingState.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /// @custom:oz-upgrades-from OldNFTStaking
 contract NFTStaking is
@@ -210,6 +211,17 @@ contract NFTStaking is
     error CanNotOverExtraFeeLimit(uint256 maxFee);
     error TotalRateNotEq100();
     error StakeNotEnd();
+
+    // [v17 PayoutWallet]
+    error ExpiredSignature();
+    error InvalidNonce();
+    error InvalidOwnerSignature();
+    error InvalidAdminSignature();
+    error PayoutAdminNotInitialized();
+    error RedundantPayout();
+    error PayoutAlreadyInitialized();
+    error PayoutCannotBeContract();
+    error StakerMustBeEOA();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -757,7 +769,8 @@ contract NFTStaking is
 
         if (canClaimAmount > 0) {
             require(rewardToken.balanceOf(address(this)) - totalReservedAmount >= canClaimAmount, RewardNotEnough());
-            SafeERC20.safeTransfer(rewardToken, stakeholder, canClaimAmount);
+            // [v17 PayoutWallet] DLC 奖励发到矿工自定义 payout (默认还是 stakeholder)
+            SafeERC20.safeTransfer(rewardToken, _getPayoutFor(stakeholder), canClaimAmount);
         }
 
         uint256 totalRewardAmount = canClaimAmount + moveToReserveAmount;
@@ -1479,7 +1492,131 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 16;
+        return 17;
+    }
+
+    // ============================================================
+    // [v17 PayoutWallet] 矿工独立收款钱包 (EIP-712 双签设置)
+    // 决策: payoutAdmin 单点立即生效 / NFTStaking 单 source-of-truth / slash 发 staker / EIP-712 typed data
+    // ============================================================
+
+    // Storage (append-only)
+    mapping(address => address) public stakerPayoutWallet;   // staker => payout (0 = 用 staker 自己)
+    mapping(address => uint256) public payoutNonce;           // staker => nonce (防重放)
+    address public payoutAdmin;                               // 官方签名钱包
+
+    bytes32 public constant SET_PAYOUT_TYPEHASH = keccak256(
+        "SetPayoutWallet(address staker,address newPayout,address payoutAdmin,uint256 nonce,uint256 deadline)"
+    );
+
+    bytes32 private _CACHED_DOMAIN_SEPARATOR;
+    uint256 private _CACHED_CHAIN_ID;
+
+    // Storage gap (50 slot 整块预留, 当前用 5 slot: mapping×2 + admin + domain_cache + chainid_cache)
+    uint256[45] private __gap_payout;
+
+    event PayoutWalletChanged(
+        address indexed staker,
+        address oldPayout,
+        address newPayout,
+        uint256 nonce,
+        uint256 timestamp
+    );
+    event PayoutAdminChanged(address indexed oldAdmin, address indexed newAdmin);
+    event EIP712DomainInitialized(bytes32 domainSeparator);
+
+    function _buildDomainSeparator() private view returns (bytes32) {
+        return keccak256(abi.encode(
+            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+            keccak256("DeepLinkPayout"),
+            keccak256("1"),
+            block.chainid,
+            address(this)
+        ));
+    }
+
+    function _domainSeparator() internal view returns (bytes32) {
+        if (block.chainid == _CACHED_CHAIN_ID) {
+            return _CACHED_DOMAIN_SEPARATOR;
+        }
+        return _buildDomainSeparator();
+    }
+
+    /// @notice 升级后 owner 单独调用一次以初始化 payoutAdmin
+    /// @dev 必须用 owner 钱包调 (不能跟 upgradeToAndCall 原子化, 因为 canUpgradeAddress ≠ owner)
+    function initializePayout(address admin) external onlyOwner {
+        if (payoutAdmin != address(0)) revert PayoutAlreadyInitialized();
+        require(admin != address(0), ZeroAddress());
+        payoutAdmin = admin;
+        _CACHED_CHAIN_ID = block.chainid;
+        _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator();
+        emit PayoutAdminChanged(address(0), admin);
+        emit EIP712DomainInitialized(_CACHED_DOMAIN_SEPARATOR);
+    }
+
+    /// @notice 旋转官方签名钱包 — 旋转后所有 in-flight 双签 (含旧 admin) 自动失效
+    function setPayoutAdmin(address newAdmin) external onlyOwner {
+        require(newAdmin != address(0), ZeroAddress());
+        address old = payoutAdmin;
+        payoutAdmin = newAdmin;
+        emit PayoutAdminChanged(old, newAdmin);
+    }
+
+    /// @notice 双签设置矿工 payout 钱包
+    /// @dev EIP-712 typed data, MetaMask 显示人类可读字段
+    function setPayoutWallet(
+        address staker,
+        address newPayout,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata ownerSig,
+        bytes calldata adminSig
+    ) external {
+        if (staker == address(0) || newPayout == staker) revert RedundantPayout();
+        if (payoutAdmin == address(0)) revert PayoutAdminNotInitialized();
+        if (block.timestamp > deadline) revert ExpiredSignature();
+        if (nonce != payoutNonce[staker]) revert InvalidNonce();
+
+        // [Round-4 Agent2] 显式拒绝合约钱包矿工 (Safe/Argent/Gnosis)
+        // ECDSA.recover 不支持 EIP-1271, 合约 staker 永远验签失败. 显式 revert 给清晰错误
+        // 99% 网吧矿工是 EOA, 排除合约 staker 不影响主流场景
+        if (staker.code.length > 0) revert StakerMustBeEOA();
+
+        // 拒绝合约地址作为 payout (防自卡 safeTransfer revert)
+        // newPayout=0 (清除) 例外: code.length == 0 ✓
+        if (newPayout != address(0) && newPayout.code.length > 0) revert PayoutCannotBeContract();
+
+        bytes32 structHash = keccak256(abi.encode(
+            SET_PAYOUT_TYPEHASH,
+            staker,
+            newPayout,
+            payoutAdmin,
+            nonce,
+            deadline
+        ));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+
+        address recoveredOwner = ECDSA.recover(digest, ownerSig);
+        if (recoveredOwner != staker) revert InvalidOwnerSignature();
+
+        address recoveredAdmin = ECDSA.recover(digest, adminSig);
+        if (recoveredAdmin != payoutAdmin) revert InvalidAdminSignature();
+
+        address oldPayout = stakerPayoutWallet[staker];
+        stakerPayoutWallet[staker] = newPayout;
+        payoutNonce[staker] = nonce + 1;
+
+        emit PayoutWalletChanged(staker, oldPayout, newPayout, nonce, block.timestamp);
+    }
+
+    /// @notice Rent 合约通过此函数查询矿工 payout (source of truth)
+    function getPayoutFor(address staker) external view returns (address) {
+        return _getPayoutFor(staker);
+    }
+
+    function _getPayoutFor(address staker) internal view returns (address) {
+        address p = stakerPayoutWallet[staker];
+        return p == address(0) ? staker : p;
     }
 
     // [NEW 2026-05-10] 时间感知当前挖矿阶段 — 给前端/subgraph/dune 用

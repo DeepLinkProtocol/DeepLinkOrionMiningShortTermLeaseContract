@@ -159,9 +159,9 @@ contract RentCleanupTest is Test {
         assertFalse(rent.machine2ProxyRented(machineId), "proxyRented should be false");
     }
 
-    /// @notice Test: version is 6 after upgrade
+    /// @notice Test: Rent version after v12 PayoutWallet upgrade
     function testVersion() public view {
-        assertEq(rent.version(), 8, "version should be 8");
+        assertEq(rent.version(), 12, "version should be 12 (v12 PayoutWallet)");
     }
 
     // ============ Helpers ============

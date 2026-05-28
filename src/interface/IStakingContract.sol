@@ -44,4 +44,7 @@ interface IStakingContract {
     function isPersonalMachine(string memory machineId) external view returns (bool);
     function updateMachineRegisterStatus(string memory machineId,bool registered ) external;
     function endRentMachineWhenMachineOfflineAfterRentEnd(string calldata machineId) external;
+
+    // [v17 PayoutWallet] 矿工独立收款钱包 — Rent 跨合约读 NFTStaking 是 source of truth
+    function getPayoutFor(address staker) external view returns (address);
 }

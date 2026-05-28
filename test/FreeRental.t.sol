@@ -563,7 +563,7 @@ contract FreeRentalTest is Test {
     // ═══════════════════════════════════════════════════════
 
     function test_VERSION() public view {
-        assertEq(freeRental.VERSION(), 4);
+        assertEq(freeRental.VERSION(), 5);
     }
 
     // ═══════════════════════════════════════════════════════

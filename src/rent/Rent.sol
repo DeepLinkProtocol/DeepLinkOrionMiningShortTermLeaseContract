@@ -234,6 +234,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
     event SlashPaidByStakeHolder(string machineId, address stakeHolder, address renter, uint256 amount);
 
+    // [v12 PayoutWallet] NFTStaking 跨合约查询失败时 emit, 后端可监听降级状态
+    event PayoutLookupFailed(address indexed stakeHolder);
+
     modifier onlyApproveAdmins() {
         bool found = false;
         for (uint8 i = 0; i < adminsToApprove.length; i++) {
@@ -992,7 +995,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         }
 
         if (feeInfo.extraFee > 0) {
-            SafeERC20.safeTransfer(pointToken, machineHolder, feeInfo.extraFee);
+            // [v12 PayoutWallet] DLP 租金发到矿工自定义 payout
+            SafeERC20.safeTransfer(pointToken, _getPayoutFor(machineHolder), feeInfo.extraFee);
             emit ExtraRentFeeTransfer(machineHolder, lastRentId, feeInfo.extraFee);
         }
         if (feeInfo.platformFee > 0) {
@@ -1080,7 +1084,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
             // extraFee (Point Token) 转给机器持有者
             if (feeInfo.extraFee > 0) {
-                SafeERC20.safeTransfer(pointToken, machineHolder, feeInfo.extraFee);
+                // [v12 PayoutWallet] DLP 租金发到矿工自定义 payout
+                SafeERC20.safeTransfer(pointToken, _getPayoutFor(machineHolder), feeInfo.extraFee);
                 emit ExtraRentFeeTransfer(machineHolder, rentId, feeInfo.extraFee);
             }
         } else {
@@ -1118,7 +1123,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
             // extraFee (DLC) 转给机器持有者
             if (feeInfo.extraFee > 0) {
-                SafeERC20.safeTransfer(feeToken, machineHolder, feeInfo.extraFee);
+                // [v12 PayoutWallet] DLC 租金发到矿工自定义 payout (V1 legacy 路径)
+                SafeERC20.safeTransfer(feeToken, _getPayoutFor(machineHolder), feeInfo.extraFee);
                 emit ExtraRentFeeTransfer(machineHolder, rentId, feeInfo.extraFee);
             }
         }
@@ -1263,7 +1269,19 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 11;
+        return 12;
+    }
+
+    /// @dev [v12 PayoutWallet] 跨合约查矿工 payout (NFTStaking 是 source of truth)
+    ///      gas ~2300 (staticcall + SLOAD)
+    ///      失败兜底发 stakeHolder, 不阻塞 endRent
+    function _getPayoutFor(address stakeHolder) internal returns (address) {
+        try IStakingContract(address(stakingContract)).getPayoutFor(stakeHolder) returns (address payout) {
+            return payout == address(0) ? stakeHolder : payout;
+        } catch {
+            emit PayoutLookupFailed(stakeHolder);
+            return stakeHolder;
+        }
     }
 
     /// @notice 校准白名单计数器（onlyOwner，可重复调用）
@@ -1517,7 +1535,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
             // 已用的 extraFee (Point Token) 转给机器持有者
             if (usedExtraFee > 0) {
-                SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, usedExtraFee);
+                // [v12 PayoutWallet] DLP 续租已用部分发到矿工自定义 payout
+                SafeERC20.safeTransfer(pointToken, _getPayoutFor(rentInfo.stakeHolder), usedExtraFee);
                 emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
             }
         } else {
@@ -1544,7 +1563,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
 
             // 已用的 extraFee (DLC) 转给机器持有者
             if (usedExtraFee > 0) {
-                SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, usedExtraFee);
+                // [v12 PayoutWallet] DLC 续租已用部分发到矿工自定义 payout (V1 legacy)
+                SafeERC20.safeTransfer(feeToken, _getPayoutFor(rentInfo.stakeHolder), usedExtraFee);
                 emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, usedExtraFee);
             }
         }
@@ -1633,7 +1653,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 uint256 ptBal = pointToken.balanceOf(address(this));
                 uint256 transferAmt = minerExtraFee > ptBal ? ptBal : minerExtraFee;
                 if (transferAmt > 0) {
-                    SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, transferAmt);
+                    // [v12 PayoutWallet] DLP slash 后矿工剩余部分发到自定义 payout
+                    SafeERC20.safeTransfer(pointToken, _getPayoutFor(rentInfo.stakeHolder), transferAmt);
                     emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, transferAmt);
                 }
             }
@@ -1673,7 +1694,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 uint256 dlcBal3 = feeToken.balanceOf(address(this));
                 uint256 transferAmt3 = minerExtraFee > dlcBal3 ? dlcBal3 : minerExtraFee;
                 if (transferAmt3 > 0) {
-                    SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, transferAmt3);
+                    // [v12 PayoutWallet] DLC slash 后矿工剩余部分发到自定义 payout (V1 legacy)
+                    SafeERC20.safeTransfer(feeToken, _getPayoutFor(rentInfo.stakeHolder), transferAmt3);
                     emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, transferAmt3);
                 }
             }
@@ -1718,12 +1740,14 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
                 uint256 pointTokenBalance = pointToken.balanceOf(address(this));
                 uint256 availablePointToken = feeInfo.extraFee > pointTokenBalance ? pointTokenBalance : feeInfo.extraFee;
                 if (availablePointToken > 0) {
-                    SafeERC20.safeTransfer(pointToken, rentInfo.stakeHolder, availablePointToken);
+                    // [v12 PayoutWallet] DLP 全额结算发到矿工自定义 payout
+                    SafeERC20.safeTransfer(pointToken, _getPayoutFor(rentInfo.stakeHolder), availablePointToken);
                     emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, availablePointToken);
                 }
             } else {
                 // V1: extraFee 是 DLC
-                SafeERC20.safeTransfer(feeToken, rentInfo.stakeHolder, feeInfo.extraFee);
+                // [v12 PayoutWallet] DLC 全额结算发到矿工自定义 payout (V1 legacy)
+                SafeERC20.safeTransfer(feeToken, _getPayoutFor(rentInfo.stakeHolder), feeInfo.extraFee);
                 emit ExtraRentFeeTransfer(rentInfo.stakeHolder, rentId, feeInfo.extraFee);
             }
         }

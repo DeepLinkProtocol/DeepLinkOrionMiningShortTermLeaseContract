@@ -185,6 +185,6 @@ contract RentWhitelistCountTest is Test {
     }
 
     function test_version() public view {
-        assertEq(rent.version(), 9, "Version should be 9");
+        assertEq(rent.version(), 12, "Version should be 12 (v12 PayoutWallet)");
     }
 }
