@@ -13,6 +13,11 @@ eth_rpc_timeout = 300
 solc_version = "0.8.26"
 evm_version = "london"
 
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = false
+
 [etherscan]
 dbc-mainnet = { key = "abc", url = "https://rpc.dbcwallet.io", chain = "19880818" }
 dbc-testnet = { key = "abc", url = "https://rpc-testnet.dbcwallet.io", chain = "19850818" }
