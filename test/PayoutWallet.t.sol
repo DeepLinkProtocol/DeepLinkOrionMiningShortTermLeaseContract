@@ -390,6 +390,74 @@ contract PayoutWalletTest is Test {
         assertEq(nftStaking.stakerPayoutWallet(stakerAddr), newPayout);
     }
 
+    // ====== 19. Round-9 Agent C P0-1: deadline == block.timestamp 边界 ======
+    /// @dev 合约用 `>` 严格大于, deadline=now 应通过. 锁住 off-by-one
+    function test_setPayoutWallet_deadline_equal_now() public {
+        uint256 deadline = block.timestamp;
+        bytes memory ownerSig = _signSetPayout(STAKER_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        bytes memory adminSig = _signSetPayout(ADMIN_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig, adminSig);
+        assertEq(nftStaking.stakerPayoutWallet(stakerAddr), newPayout);
+    }
+
+    // ====== 20. Round-9 Agent C P0-2: deadline = 7 days + 1 必须 revert ======
+    function test_setPayoutWallet_deadline_7days_plus_1_reverts() public {
+        uint256 deadline = block.timestamp + 7 days + 1;
+        bytes memory ownerSig = _signSetPayout(STAKER_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        bytes memory adminSig = _signSetPayout(ADMIN_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+
+        vm.expectRevert(NFTStaking.DeadlineTooFar.selector);
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig, adminSig);
+    }
+
+    // ====== 21. Round-9 Agent C P0-3: admin rotation A→B→A stale sig 不复用 ======
+    /// @dev 已在 docs/PAYOUT_WALLET_V2.md 文档化 "严禁旋转回旧 admin"
+    ///      此测试锁住: 即使旋转回 A, 用 admin=A 时签的旧 sig 在 nonce 已增情况下仍 revert
+    function test_setPayoutWallet_rotation_back_stale_sig_blocked_by_nonce() public {
+        // Step 1: 用 admin=A (payoutAdminAddr) 成功 setPayout (nonce 0→1)
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory ownerSig1 = _signSetPayout(STAKER_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        bytes memory adminSig1 = _signSetPayout(ADMIN_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig1, adminSig1);
+        assertEq(nftStaking.payoutNonce(stakerAddr), 1);
+
+        // Step 2: owner 旋转 A → B
+        address newAdmin = vm.addr(0xCAFE);
+        vm.prank(owner);
+        nftStaking.setPayoutAdmin(newAdmin);
+
+        // Step 3: owner 旋转 B → A (回到原 admin)
+        vm.prank(owner);
+        nftStaking.setPayoutAdmin(payoutAdminAddr);
+
+        // Step 4: 攻击者用旧 sig (nonce=0) 上链 — 应被 nonce 防护拦截
+        vm.expectRevert(NFTStaking.InvalidNonce.selector);
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig1, adminSig1);
+    }
+
+    // ====== 22. Round-9 Agent C P0-4: event 字段完整锁 ======
+    function test_setPayoutWallet_emits_event_with_locked_fields() public {
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory ownerSig = _signSetPayout(STAKER_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+        bytes memory adminSig = _signSetPayout(ADMIN_PK, stakerAddr, newPayout, payoutAdminAddr, 0, deadline);
+
+        // 锁住所有 4 字段 + indexed (staker, newPayout 双 indexed)
+        vm.expectEmit(true, true, false, true, address(nftStaking));
+        emit NFTStaking.PayoutWalletChanged(stakerAddr, address(0), newPayout, 0, block.timestamp);
+
+        nftStaking.setPayoutWallet(stakerAddr, newPayout, 0, deadline, ownerSig, adminSig);
+    }
+
+    function test_setPayoutAdmin_emits_event_with_locked_fields() public {
+        address newAdmin = vm.addr(0xCAFE);
+        vm.expectEmit(true, true, false, false, address(nftStaking));
+        emit NFTStaking.PayoutAdminChanged(payoutAdminAddr, newAdmin);
+
+        vm.prank(owner);
+        nftStaking.setPayoutAdmin(newAdmin);
+    }
+
     // ============================================================
     // P0 集成测试: 锁住 claim / unStake / Rent 跨合约的设计承诺
     // ============================================================
