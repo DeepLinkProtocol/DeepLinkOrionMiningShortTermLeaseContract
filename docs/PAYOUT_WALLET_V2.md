@@ -596,6 +596,22 @@ POST /api/cyc/admin/submitPayoutChange       // 矿工提交 ownerSig, 后端用
 - ✅ **文档** 1790 行 platformFee 分账注释补充
 - ✅ **文档** reservedAmount 理由改为"双密钥泄露本金兜底"
 
+### ⚠️ 运维规则 (Round-7 Agent B Code4rena 红队 Low 发现)
+
+**严禁 payoutAdmin 旋转回旧地址** (A→B→A)
+
+原因:
+- `setPayoutWallet` 的 EIP-712 typed data 含**当前** `payoutAdmin` 字段
+- A→B 旋转后, 用 admin=A 签的 in-flight sig 立即失效 ✓
+- 但 B→A 旋转后, 用 admin=A 签的旧 sig **再次有效**
+- 攻击链: 用户提交 sig 但反悔 + admin 被泄露后又被重新启用
+
+**缓解**:
+1. 后端记录所有 payoutAdmin 历史, 旋转前检查目标 admin 是否曾用过
+2. owner 永不旋转回旧地址 (永远生成新钱包)
+3. 文档/runbook 写明这个约束
+4. v18 升级时把 `payoutAdmin` 字段改为 `adminGeneration` 计数器 (rotation 递增, 永久焚毁旧 sig)
+
 ### 已确认 GO 的设计
 - 9 处 Rent.sol 转账改造清单 — 零漏改零错列 ✓
 - payoutAdmin 单点钱包 + K8s secret 存储 — 短期够用, KMS 长期改进 (不阻塞上线)
