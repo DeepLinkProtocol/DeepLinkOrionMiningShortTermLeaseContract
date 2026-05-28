@@ -816,7 +816,10 @@ contract NFTStaking is
         return rewardStartAtTimestamp + getRewardDuration();
     }
 
-    function claim(string memory machineId) public {
+    /// @dev [v17 Round-7 Agent A] 加 nonReentrant 深度防御
+    ///      DLC 标准 ERC20 无 ERC777 hook + payout 限 EOA, 实际无 reentry 风险
+    ///      加 modifier 防御未来 EIP-7702 (Pectra) EOA delegate 场景
+    function claim(string memory machineId) public nonReentrant {
         address stakeholder = msg.sender;
         StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
 
