@@ -400,6 +400,40 @@ contract PayoutWalletTest is Test {
         nftStaking.setExtraRentFeeByAdmin(ids, 500);
     }
 
+    // ====== Round-终审 Agent1: payoutAdmin 超 max 拒绝 ======
+    function test_payoutAdmin_setExtraRentFee_over_max_reverts() public {
+        vm.prank(owner);
+        nftStaking.setMaxExtraRentFeeInUSDPerMinutes(1000);
+
+        string[] memory ids = new string[](1);
+        ids[0] = 'machineOverMax';
+
+        vm.prank(payoutAdminAddr);
+        vm.expectRevert(abi.encodeWithSelector(NFTStaking.CanNotOverExtraFeeLimit.selector, 1000));
+        nftStaking.setExtraRentFeeByAdmin(ids, 1001);  // 超 max
+    }
+
+    // ====== Round-终审 Agent1: payoutAdmin=0 时随机地址走该分支必拒绝 (钉死短路守卫) ======
+    function test_setExtraRentFeeByAdmin_before_payoutAdmin_init_reverts() public {
+        // 用未 init payoutAdmin 的全新合约
+        vm.startPrank(owner);
+        ERC1967Proxy fresh = new ERC1967Proxy(address(new NFTStaking()), "")
+        ;
+        NFTStaking freshStaking = NFTStaking(address(fresh));
+        freshStaking.initialize(owner, address(nftToken), address(rewardToken), address(rent), address(dbcAIContract), 1);
+        freshStaking.setMaxExtraRentFeeInUSDPerMinutes(1000);
+        vm.stopPrank();
+        // 未调 initializePayout → payoutAdmin = 0
+
+        string[] memory ids = new string[](1);
+        ids[0] = 'machineNoInit';
+
+        // 随机地址 (恰好等于 address(0) 不可能, msg.sender 非 0) → payoutAdmin=0 分支 false → NotAdmin
+        vm.prank(address(0xBADBAD));
+        vm.expectRevert(NFTStaking.NotAdmin.selector);
+        freshStaking.setExtraRentFeeByAdmin(ids, 500);
+    }
+
     // ====== 17. deadline 上限拒绝 (Round-8 Agent B P0) ======
     function test_setPayoutWallet_deadline_too_far_reverts() public {
         uint256 deadline = block.timestamp + 8 days;  // 超过 7 天上限
