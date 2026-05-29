@@ -677,7 +677,8 @@ contract NFTStaking is
     /// @notice Admin 批量设置网吧机器额外价格（矿工未设置或超上限时由管理员统一设置）
     event ExtraRentFeeSetByAdmin(string machineId, uint256 feeInUSD);
     function setExtraRentFeeByAdmin(string[] calldata machineIds, uint256 feeInUSD) external {
-        require(msg.sender == owner() || dlcClientWalletAddress[msg.sender], NotAdmin());
+        // [v17] payoutAdmin (官方 payout 签名钱包) 也可代矿工批量设价
+        require(msg.sender == owner() || dlcClientWalletAddress[msg.sender] || (payoutAdmin != address(0) && msg.sender == payoutAdmin), NotAdmin());
         require(machineIds.length <= 100, "batch too large");
         require(maxExtraRentFeeInUSDPerMinutes > 0, MaxRentExtraFeeNotSet());
         require(feeInUSD <= maxExtraRentFeeInUSDPerMinutes, CanNotOverExtraFeeLimit(maxExtraRentFeeInUSDPerMinutes));

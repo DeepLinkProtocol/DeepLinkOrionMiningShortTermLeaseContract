@@ -370,6 +370,36 @@ contract PayoutWalletTest is Test {
         assertEq(nftStaking.version(), 17);
     }
 
+    // ====== payoutAdmin 可代设 extraRentFee ======
+    function test_payoutAdmin_can_setExtraRentFeeByAdmin() public {
+        // owner 先设 max
+        vm.startPrank(owner);
+        nftStaking.setMaxExtraRentFeeInUSDPerMinutes(1000);
+        vm.stopPrank();
+
+        string[] memory ids = new string[](1);
+        ids[0] = 'machineExtraFeeTest';
+
+        // payoutAdmin (payoutAdminAddr) 调 setExtraRentFeeByAdmin 应成功
+        vm.prank(payoutAdminAddr);
+        nftStaking.setExtraRentFeeByAdmin(ids, 500);
+        assertEq(nftStaking.getMachineExtraRentFee('machineExtraFeeTest'), 500);
+    }
+
+    // ====== 非 payoutAdmin/owner/dlcClient 调 setExtraRentFeeByAdmin 拒绝 ======
+    function test_random_cannot_setExtraRentFeeByAdmin() public {
+        vm.startPrank(owner);
+        nftStaking.setMaxExtraRentFeeInUSDPerMinutes(1000);
+        vm.stopPrank();
+
+        string[] memory ids = new string[](1);
+        ids[0] = 'machineExtraFeeTest2';
+
+        vm.prank(address(0xBADBAD));
+        vm.expectRevert(NFTStaking.NotAdmin.selector);
+        nftStaking.setExtraRentFeeByAdmin(ids, 500);
+    }
+
     // ====== 17. deadline 上限拒绝 (Round-8 Agent B P0) ======
     function test_setPayoutWallet_deadline_too_far_reverts() public {
         uint256 deadline = block.timestamp + 8 days;  // 超过 7 天上限
