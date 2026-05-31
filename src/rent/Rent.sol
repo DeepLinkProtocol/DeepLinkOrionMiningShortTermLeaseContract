@@ -141,6 +141,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     // v8: rent whitelist counter — total number of machines in rent whitelist
     uint256 public rentWhitelistCount;
 
+    // v13 [2026-05-31]: DLC 租赁价格加成系数 (basis points, FACTOR=10000 表示 100% 不涨)。
+    // 仅作用于 DLC 计价的 getBaseMachinePrice / getExtraRentFee，不影响积分路径 (getBaseMachinePriceInUSD / getExtraRentFeeInPoint / getExtraRentFeeInUSD)。
+    // ⚠️ UUPS 升级后默认值为 0；getter 内将 0 视为 FACTOR(不涨) 作为安全 fallback，避免「升级完成、owner 尚未 set」窗口期 DLC 价格归零。
+    // owner 调 setDlcPriceMarkupBps(10600) 即 DLC 价 +6%。本合约无 __gap，此变量必须追加在所有 storage 变量末尾。
+    uint256 public dlcPriceMarkupBps;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -166,6 +172,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         address renter
     );
     event ExtraRentFeeTransfer(address indexed machineOnwer, uint256 rentId, uint256 amount);
+    event DlcPriceMarkupUpdated(uint256 oldBps, uint256 newBps);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
     event BurnedFee(
         string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
@@ -532,7 +539,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 dlcUSDPrice = getTokenPrice();
 
         uint256 baseRentFeeUSD = 1e18 * rentFeeUSD / dlcUSDPrice;
-        return baseRentFeeUSD;
+        // v13: 应用 DLC 价格加成 (dlcPriceMarkupBps==0 视为 FACTOR 不涨, 避免升级窗口期归零)
+        uint256 markup = dlcPriceMarkupBps == 0 ? FACTOR : dlcPriceMarkupBps;
+        return baseRentFeeUSD * markup / FACTOR;
     }
 
     function getExtraRentFeeInUSD(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
@@ -557,7 +566,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 dlcUSDPrice = getTokenPrice();
         uint256 fee = getExtraRentFeeInUSD(machineId, rentSeconds);
         uint256 baseRentFeeDLC = 1e18 * fee / dlcUSDPrice;
-        return baseRentFeeDLC;
+        // v13: 应用 DLC 价格加成 (dlcPriceMarkupBps==0 视为 FACTOR 不涨, 避免升级窗口期归零)
+        uint256 markup = dlcPriceMarkupBps == 0 ? FACTOR : dlcPriceMarkupBps;
+        return baseRentFeeDLC * markup / FACTOR;
     }
 
     function inRentWhiteList(string calldata machineId) public view returns (bool) {
@@ -1269,7 +1280,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 12;
+        return 13;
     }
 
     /// @dev [v12 PayoutWallet] 跨合约查矿工 payout (NFTStaking 是 source of truth)
@@ -1287,6 +1298,16 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     /// @notice 校准白名单计数器（onlyOwner，可重复调用）
     function setWhitelistCount(uint256 count) external onlyOwner {
         rentWhitelistCount = count;
+    }
+
+    /// @notice v13: 设置 DLC 租赁价格加成系数（onlyOwner）。仅影响 DLC 计价，不影响积分路径。
+    /// @param bps 加成 basis points：FACTOR(10000)=不涨，10600=+6%。范围限定 [FACTOR, FACTOR*2]=[100%,200%]，
+    ///        防止误设为 0（会被 getter 当作不涨）或设得过高。升级后调 setDlcPriceMarkupBps(10600) 即生效 +6%。
+    function setDlcPriceMarkupBps(uint256 bps) external onlyOwner {
+        require(bps >= FACTOR && bps <= FACTOR * 2, "markup out of range");
+        uint256 oldBps = dlcPriceMarkupBps;
+        dlcPriceMarkupBps = bps;
+        emit DlcPriceMarkupUpdated(oldBps, bps);
     }
 
     /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
