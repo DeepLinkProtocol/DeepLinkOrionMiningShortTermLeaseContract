@@ -14,7 +14,7 @@
 ## 升级前预检（只读）
 
 ```
-forge build --sizes                                  # NFTStaking impl 必须 < 24576 字节 (EIP-170)
+forge build --sizes                                  # NFTStaking runtime ~42,966B (见下注)
 cast call PROXY "version()(uint256)"                 # == 17
 cast call PROXY "owner()(address)"                   # == 0x244f8191010a9C20aaE96DC4afa4E1D63983802E
 cast call PROXY "canUpgradeAddress()(address)"       # == 0x36Ede4Fe3CD9F270747f07c15D8098F10dF6D8e8
@@ -59,6 +59,8 @@ PROXY.setUpgradeAddress(0x36Ede4Fe3CD9F270747f07c15D8098F10dF6D8e8)
 2. **照搬 v17 手册重跑 `initializePayout`** → revert 或 payoutAdmin 被覆盖。v18 无 init 步骤，用 `setStakeAdmin`。
 3. **第 2/5 步传错地址给 `setUpgradeAddress`** → 唯一真正砖合约路径，且仅当 owner 私钥同时丢失才不可恢复。逐字核对地址字面量。
 4. **cast "duplicate field" DBC bug** 致中途部分状态 → 用 ethers .mjs，每笔后验状态。
-5. **impl 部署 OOG / 体积 > 24KB** → `forge build --sizes` + `cast code NEW_IMPL` 非空检查双重兜底（失败会 fail-safe，upgradeToAndCall 对 codeless impl 会 revert）。
+5. **impl 部署 OOG** → `cast code NEW_IMPL` 非空检查兜底（失败 fail-safe，upgradeToAndCall 对 codeless impl 会 revert）。
+
+> ⚠️ **关于合约体积**：NFTStaking runtime ≈ **42,966 字节**，远超标准 EIP-170 的 24,576 限制。但 **DBC（DeepBrainChain，Substrate+Frontier EVM）不强制 EIP-170 24KB 限制** —— 现网 v17 就是同量级体积（~43KB）正常部署运行中。所以「<24KB」检查**不适用于 DBC**，别因 `forge build --sizes` 显示负 margin 就误判不能部署。真正的部署成功判据 = 部署后 `cast code NEW_IMPL` 非空 + `upgradeToAndCall` 不 revert。（initcode margin 仍为正，EIP-3860 49152 不触限。）
 
 > 走通 happy path 任何错误态都可由 owner 私钥（`0x244f8191`）恢复，无不可逆砖死路径。
