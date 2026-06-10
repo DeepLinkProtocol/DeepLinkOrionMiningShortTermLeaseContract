@@ -366,8 +366,8 @@ contract PayoutWalletTest is Test {
     }
 
     // ====== 16. version bump ======
-    function test_version_is_17() public view {
-        assertEq(nftStaking.version(), 17);
+    function test_version_is_18() public view {
+        assertEq(nftStaking.version(), 18);
     }
 
     // ====== payoutAdmin 可代设 extraRentFee ======

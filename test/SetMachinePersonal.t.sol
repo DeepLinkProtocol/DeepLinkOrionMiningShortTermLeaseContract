@@ -268,7 +268,7 @@ contract SetMachinePersonalTest is Test {
     // Version test
     // ═══════════════════════════════════════════
 
-    function test_version_is_17() public view {
-        assertEq(stakingProxy.version(), 17);
+    function test_version_is_18() public view {
+        assertEq(stakingProxy.version(), 18);
     }
 }

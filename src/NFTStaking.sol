@@ -1498,7 +1498,7 @@ contract NFTStaking is
     //    }
 
     function version() external pure returns (uint256) {
-        return 17;
+        return 18;
     }
 
     // ============================================================
@@ -1518,8 +1518,12 @@ contract NFTStaking is
     bytes32 private _CACHED_DOMAIN_SEPARATOR;
     uint256 private _CACHED_CHAIN_ID;
 
-    // Storage gap (50 slot 整块预留, 当前用 5 slot: mapping×2 + admin + domain_cache + chainid_cache)
-    uint256[45] private __gap_payout;
+    // [v18] stakeAdmin — 运维钱包, 可代矿工延长质押 (adminAddStakeHours, 跳过 holder 检查)
+    // 从 __gap_payout 消耗 1 slot (45→44), 整块仍 50 slot, 存储布局 append-safe
+    address public stakeAdmin;
+
+    // Storage gap (50 slot 整块预留, 当前用 6 slot: mapping×2 + payoutAdmin + domain_cache + chainid_cache + stakeAdmin)
+    uint256[44] private __gap_payout;
 
     event PayoutWalletChanged(
         address indexed staker,
@@ -1630,6 +1634,72 @@ contract NFTStaking is
     function _getPayoutFor(address staker) internal view returns (address) {
         address p = stakerPayoutWallet[staker];
         return p == address(0) ? staker : p;
+    }
+
+    // ============================================================
+    // [v18 StakeAdmin] 管理员代矿工延长质押 (运维自动续期)
+    // 决策: 仅"延长"不可缩短 / 跳过 holder 检查但保留"未到期才能延"+ bounds / emit 事件可审计
+    // 用途: 每日脚本扫描剩余 <7 天的质押, 用 stakeAdmin 钱包自动延 3 月, 不碰矿工私钥
+    // ============================================================
+
+    event StakeAdminChanged(address indexed oldAdmin, address indexed newAdmin);
+    event AdminAddedStakeHours(address indexed admin, string machineId, uint256 additionHours);
+
+    /// @notice 设置/旋转 stakeAdmin 运维钱包 (onlyOwner)
+    function setStakeAdmin(address newAdmin) external onlyOwner {
+        address old = stakeAdmin;
+        stakeAdmin = newAdmin;
+        emit StakeAdminChanged(old, newAdmin);
+    }
+
+    /// @dev owner 或 stakeAdmin 鉴权 (stakeAdmin 未设时只有 owner 可用)
+    function _onlyStakeAdmin() private view {
+        require(msg.sender == owner() || (stakeAdmin != address(0) && msg.sender == stakeAdmin), NotAdmin());
+    }
+
+    /// @notice 管理员代延长单台机器质押时长 (跳过 holder 检查)
+    /// @dev 保留与 addStakeHours 相同的 bounds [2,4320]h + "未到期才能延" + nextRenterCanRentAt 修复
+    function adminAddStakeHours(string memory machineId, uint256 additionHours) external {
+        _onlyStakeAdmin();
+        require(additionHours >= 2, InvalidStakeHours());
+        require(additionHours <= 4320, InvalidStakeHours());
+
+        StakeInfo storage stakeInfo = machineId2StakeInfos[machineId];
+        require(block.timestamp < stakeInfo.endAtTimestamp, MachineNotStaked(machineId));
+
+        stakeInfo.endAtTimestamp += additionHours * 1 hours;
+
+        // 与 addStakeHours 一致: 续期后恢复可租状态 (endRentMachine 在即将到期时设过 0)
+        if (stakeInfo.nextRenterCanRentAt == 0 && !stakeInfo.isRentedByUser) {
+            stakeInfo.nextRenterCanRentAt = block.timestamp;
+        }
+
+        emit AdminAddedStakeHours(msg.sender, machineId, additionHours);
+        emit AfterAddHoursEndTime(machineId, stakeInfo.endAtTimestamp);
+    }
+
+    /// @notice 批量代延长 (省 gas). 已到期/未质押的机器跳过 (不 revert 整批), 防单台 race 拖垮整批
+    /// @dev 实际延了哪些以 AdminAddedStakeHours 事件为准; bounds 错误仍整批 revert (调用方编程错误)
+    function adminAddStakeHoursBatch(string[] calldata machineIds, uint256 additionHours) external {
+        _onlyStakeAdmin();
+        require(additionHours >= 2, InvalidStakeHours());
+        require(additionHours <= 4320, InvalidStakeHours());
+        require(machineIds.length <= 100, "batch too large");
+
+        uint256 additionSeconds = additionHours * 1 hours;
+        for (uint256 i = 0; i < machineIds.length; i++) {
+            StakeInfo storage stakeInfo = machineId2StakeInfos[machineIds[i]];
+            // 跳过已到期/未质押 (block.timestamp >= endAtTimestamp), 不阻塞其余机器
+            if (block.timestamp >= stakeInfo.endAtTimestamp) {
+                continue;
+            }
+            stakeInfo.endAtTimestamp += additionSeconds;
+            if (stakeInfo.nextRenterCanRentAt == 0 && !stakeInfo.isRentedByUser) {
+                stakeInfo.nextRenterCanRentAt = block.timestamp;
+            }
+            emit AdminAddedStakeHours(msg.sender, machineIds[i], additionHours);
+            emit AfterAddHoursEndTime(machineIds[i], stakeInfo.endAtTimestamp);
+        }
     }
 
     // [NEW 2026-05-10] 时间感知当前挖矿阶段 — 给前端/subgraph/dune 用
