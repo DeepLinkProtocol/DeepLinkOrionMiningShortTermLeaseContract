@@ -1679,7 +1679,10 @@ contract NFTStaking is
     }
 
     /// @notice 批量代延长 (省 gas). 已到期/未质押的机器跳过 (不 revert 整批), 防单台 race 拖垮整批
-    /// @dev 实际延了哪些以 AdminAddedStakeHours 事件为准; bounds 错误仍整批 revert (调用方编程错误)
+    /// @dev 实际延了哪些以 AdminAddedStakeHours/AfterAddHoursEndTime 事件为准 (链下据此回写 DB);
+    ///      bounds 错误仍整批 revert (调用方编程错误).
+    /// @dev ⚠️ 调用方必须对 machineIds 去重: 重复 id 会被各延一次 (endAt += N×additionHours),
+    ///      绕过单次 [2,4320]h 上限. 仅 owner/stakeAdmin 可调且可逆, 故不在链上去重(string 去重 gas 贵).
     function adminAddStakeHoursBatch(string[] calldata machineIds, uint256 additionHours) external {
         _onlyStakeAdmin();
         require(additionHours >= 2, InvalidStakeHours());
