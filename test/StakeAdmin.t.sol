@@ -283,4 +283,133 @@ contract StakeAdminTest is Test {
         vm.expectRevert("batch too large");
         nftStaking.adminAddStakeHoursBatch(ids, 2160);
     }
+
+    // ====== P0: 仅延长 endAt, 其他 StakeInfo 字段全保全 ======
+    function test_adminAddStakeHours_preservesOtherFields() public {
+        _stake("M1", 1000 ether, 1000);
+        ( address holderB, uint256 startB, uint256 claimB, uint256 endB, uint256 calcB,
+          uint256 reservedB, uint256 nftB, uint256 claimedB, bool rentedB, uint256 gpuB, uint256 nextB )
+          = nftStaking.machineId2StakeInfos("M1");
+        vm.prank(owner);
+        nftStaking.adminAddStakeHours("M1", 2160);
+        ( address holderA, uint256 startA, uint256 claimA, uint256 endA, uint256 calcA,
+          uint256 reservedA, uint256 nftA, uint256 claimedA, bool rentedA, uint256 gpuA, uint256 nextA )
+          = nftStaking.machineId2StakeInfos("M1");
+        assertEq(holderA, holderB, "holder");
+        assertEq(startA, startB, "startAt");
+        assertEq(claimA, claimB, "lastClaim");
+        assertEq(endA, endB + 2160 * 1 hours, "endAt +3mo");
+        assertEq(calcA, calcB, "calcPoint unchanged");
+        assertEq(reservedA, reservedB, "reservedAmount unchanged");
+        assertEq(nftA, nftB, "nftCount");
+        assertEq(claimedA, claimedB, "claimed");
+        assertEq(rentedA, rentedB, "isRented");
+        assertEq(gpuA, gpuB, "gpuCount");
+        // 新质押 nextRenterCanRentAt = stakeTime (非0) → 不重置, 保持不变
+        assertEq(nextA, nextB, "nextRenterCanRentAt unchanged when nonzero");
+    }
+
+    // ====== P0: nextRenterCanRentAt==0 且未租 → 重置为 now (恢复可租) ======
+    function test_adminAddStakeHours_resetsNextRenterWhenZero() public {
+        _stake("M1", 1000 ether, 1000);
+        vm.prank(owner);
+        nftStaking.fixNextRenterCanRentAt("M1", 0); // 模拟 endRentMachine 即将到期时置 0
+        vm.prank(owner);
+        nftStaking.adminAddStakeHours("M1", 2160);
+        ( , , , , , , , , , , uint256 nextA ) = nftStaking.machineId2StakeInfos("M1");
+        assertEq(nextA, block.timestamp, "nextRenterCanRentAt reset to now");
+    }
+
+    // ====== P1: AfterAddHoursEndTime 事件携带正确的新 endTimestamp (脚本据此回写DB) ======
+    function test_adminAddStakeHours_emitsAfterAddHoursEndTime() public {
+        _stake("M1", 1000 ether, 1000);
+        ( , , , uint256 endB, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        vm.expectEmit(false, false, false, true);
+        emit NFTStaking.AfterAddHoursEndTime("M1", endB + 2160 * 1 hours);
+        vm.prank(owner);
+        nftStaking.adminAddStakeHours("M1", 2160);
+    }
+
+    // ====== P2: 批量重复 id → 各延一次 (已知/文档化行为, 脚本侧 Set 去重) ======
+    function test_adminAddStakeHoursBatch_duplicateIds_doubleExtend() public {
+        _stake("M1", 1000 ether, 1000);
+        ( , , , uint256 endB, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        string[] memory ids = new string[](2);
+        ids[0] = "M1"; ids[1] = "M1";
+        vm.prank(owner);
+        nftStaking.adminAddStakeHoursBatch(ids, 100);
+        ( , , , uint256 endA, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        assertEq(endA, endB + 2 * 100 * 1 hours, "duplicate id extended twice");
+    }
+
+    // ====== P2: 空数组 → 无 revert 无副作用 ======
+    function test_adminAddStakeHoursBatch_emptyArray_noop() public {
+        string[] memory ids = new string[](0);
+        vm.prank(owner);
+        nftStaking.adminAddStakeHoursBatch(ids, 2160); // 不 revert
+    }
+
+    // ====== P2: 恰好 100 台 (边界, 全不存在→全跳过) 不 revert ======
+    function test_adminAddStakeHoursBatch_exactly100_ok() public {
+        string[] memory ids = new string[](100);
+        for (uint256 i = 0; i < 100; i++) ids[i] = "GHOST";
+        vm.prank(owner);
+        nftStaking.adminAddStakeHoursBatch(ids, 2160); // 100 通过, 全跳过(GHOST endAt=0)
+    }
+
+    // ====== P2: 单函数到期边界 — block.timestamp == endAt 视为到期, revert ======
+    function test_adminAddStakeHours_exactlyAtExpiry_reverts() public {
+        _stake("M1", 1000 ether, 3);
+        ( , , , uint256 endAt, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        vm.warp(endAt); // 正好到期时刻
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(NFTStaking.MachineNotStaked.selector, "M1"));
+        nftStaking.adminAddStakeHours("M1", 2160);
+    }
+
+    // ====== P2: setStakeAdmin(0) 停用 — 老 admin 失权, owner 仍可用 ======
+    function test_setStakeAdmin_zeroDisables() public {
+        _stake("M1", 1000 ether, 1000);
+        vm.prank(owner);
+        nftStaking.setStakeAdmin(stakeAdminAddr);
+        vm.prank(owner);
+        nftStaking.setStakeAdmin(address(0)); // 停用
+        assertEq(nftStaking.stakeAdmin(), address(0));
+        vm.prank(stakeAdminAddr);
+        vm.expectRevert(NFTStaking.NotAdmin.selector);
+        nftStaking.adminAddStakeHours("M1", 2160);
+        vm.prank(owner); // owner 仍可
+        nftStaking.adminAddStakeHours("M1", 2160);
+    }
+
+    // ====== P2: 批量也能用 stakeAdmin 调 ======
+    function test_adminAddStakeHoursBatch_byStakeAdmin() public {
+        _stake("M1", 1000 ether, 1000);
+        vm.prank(owner);
+        nftStaking.setStakeAdmin(stakeAdminAddr);
+        ( , , , uint256 endB, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        string[] memory ids = new string[](1);
+        ids[0] = "M1";
+        vm.prank(stakeAdminAddr);
+        nftStaking.adminAddStakeHoursBatch(ids, 2160);
+        ( , , , uint256 endA, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        assertEq(endA, endB + 2160 * 1 hours);
+    }
+
+    // ====== P3: 模糊测试 — 合法 bounds 内 endAt 严格 +h*3600, 越界 revert ======
+    function testFuzz_adminAddStakeHours_bounds(uint256 h) public {
+        _stake("M1", 1000 ether, 1000); // 质押时长在 stakeV2 上限内; 不 warp 故不会提前到期
+        ( , , , uint256 endB, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+        if (h >= 2 && h <= 4320) {
+            vm.prank(owner);
+            nftStaking.adminAddStakeHours("M1", h);
+            ( , , , uint256 endA, , , , , , , ) = nftStaking.machineId2StakeInfos("M1");
+            assertEq(endA, endB + h * 1 hours, "extend exact");
+            assertGt(endA, endB, "monotonic increase");
+        } else {
+            vm.prank(owner);
+            vm.expectRevert(NFTStaking.InvalidStakeHours.selector);
+            nftStaking.adminAddStakeHours("M1", h);
+        }
+    }
 }

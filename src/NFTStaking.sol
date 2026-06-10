@@ -1646,6 +1646,8 @@ contract NFTStaking is
     event AdminAddedStakeHours(address indexed admin, string machineId, uint256 additionHours);
 
     /// @notice 设置/旋转 stakeAdmin 运维钱包 (onlyOwner)
+    /// @dev 允许 newAdmin == address(0): 即"停用"运维角色, 之后只有 owner 能调 adminAddStakeHours.
+    ///      (与 setPayoutAdmin 不同 — 后者 0 是"未初始化"sentinel 故禁止; 此处 0 是合法的停用开关)
     function setStakeAdmin(address newAdmin) external onlyOwner {
         address old = stakeAdmin;
         stakeAdmin = newAdmin;
