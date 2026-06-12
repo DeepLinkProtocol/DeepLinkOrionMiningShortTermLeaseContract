@@ -147,6 +147,18 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     // owner 调 setDlcPriceMarkupBps(10600) 即 DLC 价 +6%。本合约无 __gap，此变量必须追加在所有 storage 变量末尾。
     uint256 public dlcPriceMarkupBps;
 
+    // v14 [2026-06-12]: per-renewal escrow 台账, 支撑 adminReverseUnpaidRenewal 精确撤销"平台已垫付但用户未付款"的续租。
+    // _renewRentV2 每笔续租 push 一条记录(当时的秒数+各 fee), 撤销时按 index 撤回该笔精确金额并标 consumed(防重复撤),
+    // 保证撤销秒数与 fee 同步、与续租入账一一对应, 杜绝"秒和钱解耦"导致的超额退款/DoS。⚠️ 必须追加在所有 storage 末尾。
+    struct RenewalSegment {
+        uint256 rentSeconds;
+        uint256 baseFee;     // DLC
+        uint256 platformFee; // DLC
+        uint256 extraFee;    // Point/DLP
+        bool consumed;
+    }
+    mapping(uint256 => RenewalSegment[]) public rentId2RenewalSegments;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -925,6 +937,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         feeInfo.baseFee += baseRentFee;
         feeInfo.extraFee += extraRentFeeInPoint;
         feeInfo.platformFee += platformFee;
+
+        // [v14] 记录本笔续租的 escrow 台账(秒数+各 fee), 供 adminReverseUnpaidRenewal 精确撤销未付款续租
+        rentId2RenewalSegments[rentId].push(RenewalSegment({
+            rentSeconds: additionalRentSeconds,
+            baseFee: baseRentFee,
+            platformFee: platformFee,
+            extraFee: extraRentFeeInPoint,
+            consumed: false
+        }));
 
         SafeERC20.safeTransferFrom(feeToken, msg.sender, address(this), platformFee + baseRentFee);
         IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
@@ -1831,68 +1852,81 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     event ReverseUnpaidRenewal(
         string machineId,
         uint256 rentId,
+        uint256 renewalIndex,
         uint256 secondsReversed,
         uint256 dlcRefunded,
         uint256 pointRefunded,
-        address refundTo
+        address renter,
+        address payer
     );
 
-    /// @notice [v14] 撤销一笔"平台已垫付但用户未付款"的续租：仅缩短 rentEndTime + 退回平台垫付的 fee，
-    ///   绝不删除/终止整个租约（用户已付费的时段不受影响）。铁律：只终止这笔续租，不终止订单。
-    /// @dev 背景：approve 续租是"平台先 proxyRenewRentV2 把 DLC+DLP 垫付进本合约 → 之后再向用户 transferFrom
+    /// @notice [v14] 撤销一笔"平台已垫付但用户未付款"的续租：按 _renewRentV2 记录的 escrow 台账(renewalIndex)
+    ///   精确撤回该笔续租的秒数+各 fee，退回链上记录的垫付方(machine2ProxyRentPayer)。绝不删除/终止整个租约。
+    ///   铁律：只撤这笔续租，不终止订单；require 撤销后 rentEndTime 仍 > now，绝不切用户已付费/在用时段。
+    /// @dev 背景：approve 续租是"平台先 proxyRenewRentV2 把 DLC+DLP 垫付进本合约托管 → 之后再向用户 transferFrom
     ///   收款"。用户收款失败时，平台垫付的 fee 卡在合约里、随租约到期发给矿工/销毁 → 平台净亏（已确认 348 笔
-    ///   ≈110万 DLP+3200万 DLC 历史敞口）。本函数让后端在用户消费这段续租时间之前把该续租撤销：缩短 rentEndTime、
-    ///   扣减 feeInfo、把对应垫付从合约退回平台。funds 一直由合约托管(_renewRentV2 转入 address(this))，矿工此前
-    ///   未拿到这部分，故可干净退回。仅作用 V2(DLP) 租赁(extraFee 是 Point)。各 fee 金额由后端按该笔续租实际值
-    ///   传入，合约校验不超过 feeInfo 持有量、且撤销后 rentEndTime 仍 > now(保护用户已付时段)。
-    ///   全有或全无：若会切到已用时段则整体 revert(后端改撤更小尾部或放弃)。owner 或 canUpgradeAddress 可调。
+    ///   ≈110万 DLP+3200万 DLC 历史敞口）。
+    /// @dev 安全模型(经多专家审计重构)：
+    ///   - 不接受 caller 自报金额：秒数与各 fee 一律取自 _renewRentV2 入账时记录的 RenewalSegment，秒与钱天然同步，
+    ///     杜绝"secondsToReverse=1 却撤满额 fee"的解耦超额退款/DoS。
+    ///   - seg.consumed 标记防重复撤销同一笔。
+    ///   - 仅限平台垫付(machine2ProxyRented)的非月租 V2 租约；退款只发链上记录的 payer，不接受任意 refundTo。
+    ///   - 退款封顶合约实际余额(min(balance))，防共享托管池被超额抽走殃及其他在租机器。
+    ///   - 仅 owner(多签/冷钱包)可调，不再含 canUpgradeAddress(后端热钱包)，与资金敏感操作权限对齐。
     /// @param machineId 机器 ID
-    /// @param secondsToReverse 撤销的续租秒数(从未使用尾部扣，撤销后 rentEndTime 须仍 > block.timestamp)
-    /// @param baseFeeToReverse 该续租的 baseFee(DLC)，从 feeInfo.baseFee 扣并退回
-    /// @param platformFeeToReverse 该续租的 platformFee(DLC)，从 feeInfo.platformFee 扣并退回
-    /// @param extraFeeToReverse 该续租的 extraFee(Point/DLP)，从 feeInfo.extraFee 扣并退回
-    /// @param refundTo 退回地址(平台垫付钱包)
-    function adminReverseUnpaidRenewal(
-        string calldata machineId,
-        uint256 secondsToReverse,
-        uint256 baseFeeToReverse,
-        uint256 platformFeeToReverse,
-        uint256 extraFeeToReverse,
-        address refundTo
-    ) external nonReentrant {
-        require(msg.sender == owner() || msg.sender == canUpgradeAddress, "not authorized");
-        require(refundTo != address(0), "refundTo zero");
-        require(secondsToReverse > 0, "zero seconds");
+    /// @param renewalIndex rentId2RenewalSegments[rentId] 中要撤销的那笔续租下标
+    function adminReverseUnpaidRenewal(string calldata machineId, uint256 renewalIndex) external nonReentrant {
+        require(msg.sender == owner(), "not authorized");
 
         uint256 rentId = machineId2RentId[machineId];
         RentInfo storage rentInfo = rentId2RentInfo[rentId];
         require(rentInfo.renter != address(0), "no active rent");
         require(rentInfo.rentEndTime > block.timestamp, "rent ended");
-        // 铁律：只能撤未使用尾部，撤销后 rentEndTime 仍须 > now，绝不动用户已付费/正在用的时段
-        require(rentInfo.rentEndTime - secondsToReverse > block.timestamp, "would cut used/active time");
+        // 仅平台垫付(proxy-rented)的非月租租约可撤；普通用户已付租约一律拒绝
+        require(machine2ProxyRented[machineId], "not proxy-rented");
+        require(!machineId2IsMonthlyRent[machineId], "monthly not allowed");
+        address payer = machine2ProxyRentPayer[machineId];
+        require(payer != address(0), "no payer");
 
         FeeInfo storage feeInfo = rentId2FeeInfoInDLC[rentId];
         require(!feeInfo.isV1, "only V2 rental");
-        require(feeInfo.baseFee >= baseFeeToReverse, "baseFee exceeds held");
-        require(feeInfo.platformFee >= platformFeeToReverse, "platformFee exceeds held");
-        require(feeInfo.extraFee >= extraFeeToReverse, "extraFee exceeds held");
 
-        // 缩短租期 + 扣减 fee 记账
-        rentInfo.rentEndTime -= secondsToReverse;
-        feeInfo.baseFee -= baseFeeToReverse;
-        feeInfo.platformFee -= platformFeeToReverse;
-        feeInfo.extraFee -= extraFeeToReverse;
+        RenewalSegment[] storage segs = rentId2RenewalSegments[rentId];
+        require(renewalIndex < segs.length, "bad renewalIndex");
+        RenewalSegment storage seg = segs[renewalIndex];
+        require(!seg.consumed, "already reversed");
 
-        // 从合约托管余额退回平台垫付
-        uint256 dlcRefund = baseFeeToReverse + platformFeeToReverse;
+        // 铁律：撤销后 rentEndTime 仍须 > now，绝不切用户已付费/在用时段
+        require(rentInfo.rentEndTime - seg.rentSeconds > block.timestamp, "would cut used/active time");
+        // feeInfo 必须仍持有该 segment 的量(若已被其它撤销/消费扣减到不足则拒，防下溢)
+        require(
+            feeInfo.baseFee >= seg.baseFee && feeInfo.platformFee >= seg.platformFee
+                && feeInfo.extraFee >= seg.extraFee,
+            "fee already consumed"
+        );
+
+        // effects(先改状态，CEI)
+        seg.consumed = true;
+        rentInfo.rentEndTime -= seg.rentSeconds;
+        feeInfo.baseFee -= seg.baseFee;
+        feeInfo.platformFee -= seg.platformFee;
+        feeInfo.extraFee -= seg.extraFee;
+
+        // interactions：退回 payer，封顶合约实际余额(共享池防御)
+        uint256 dlcRefund = seg.baseFee + seg.platformFee;
+        uint256 dlcBal = feeToken.balanceOf(address(this));
+        if (dlcRefund > dlcBal) dlcRefund = dlcBal;
         if (dlcRefund > 0) {
-            SafeERC20.safeTransfer(feeToken, refundTo, dlcRefund);
+            SafeERC20.safeTransfer(feeToken, payer, dlcRefund);
         }
-        if (extraFeeToReverse > 0) {
-            IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
-            SafeERC20.safeTransfer(pointToken, refundTo, extraFeeToReverse);
+        uint256 pointRefund = seg.extraFee;
+        IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
+        uint256 pointBal = pointToken.balanceOf(address(this));
+        if (pointRefund > pointBal) pointRefund = pointBal;
+        if (pointRefund > 0) {
+            SafeERC20.safeTransfer(pointToken, payer, pointRefund);
         }
-        emit ReverseUnpaidRenewal(machineId, rentId, secondsToReverse, dlcRefund, extraFeeToReverse, refundTo);
+        emit ReverseUnpaidRenewal(machineId, rentId, renewalIndex, seg.rentSeconds, dlcRefund, pointRefund, rentInfo.renter, payer);
     }
 
     function distributePlatformFee(uint256 rentId, string memory machineId, uint256 platformFee) internal {
