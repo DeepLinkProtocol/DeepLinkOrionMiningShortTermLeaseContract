@@ -161,7 +161,7 @@ contract RentCleanupTest is Test {
 
     /// @notice Test: Rent version after v12 PayoutWallet upgrade
     function testVersion() public view {
-        assertEq(rent.version(), 12, "version should be 12 (v12 PayoutWallet)");
+        assertEq(rent.version(), 14, "version should be 14 (v14 clawback)");
     }
 
     // ============ Helpers ============
