@@ -467,33 +467,47 @@ contract RentClawbackTest is RentTest {
         rent.adminReverseUnpaidRenewal(machineId, 0);
     }
 
-    // ---- 二轮审计 CRITICAL 修复验证: proxy 机器上租客【自付】续租(renewRentV2),
-    //      撤销退款必须发回真实付款方(seg.payer=租客), 绝不发平台(否则盗走租客的钱) ----
-    function testReverse_renterSelfRenew_refundsRenterNotPlatform() public {
+    // ---- [v14] proxy 机器上租客【自付】续租在源头被 guard 拦死(只有平台垫付方可续 proxy 租约),
+    //      使二轮 CRITICAL(租客自付被撤却退给平台=盗款)结构上不可能 + 修复 endRent 退款错向 MEDIUM ----
+    function testGuard_renterCannotSelfRenewProxyRental() public {
         _setupDLP();
         string memory machineId = "mixedM";
-        _proxyRentV2(machineId, 1 hours); // 平台(payer) 垫付初租
-        // 租客自付续租: msg.sender=renter, _renewRentV2 跳过 proxy 检查, 从租客钱包扣款
+        _proxyRentV2(machineId, 1 hours); // 平台(payer) 垫付初租, machine2ProxyRented=true
+        // 租客试图自付续租 -> 被 guard 拒(msg.sender=renter != machine2ProxyRentPayer=payer)
         deal(address(rewardToken), renter, 1_000_000 ether);
         deal(DLP, renter, 1_000_000 ether);
         vm.startPrank(renter);
         rewardToken.approve(address(rent), type(uint256).max);
         IERC20(DLP).approve(address(rent), type(uint256).max);
-        rent.renewRentV2(machineId, 1 hours); // segment 0, payer=renter
+        vm.expectRevert(bytes("proxy renew only by payer"));
+        rent.renewRentV2(machineId, 1 hours);
         vm.stopPrank();
+    }
 
+    // ---- 第三方代付续租 proxy 租约也被拒(只有记录的 payer 可续) ----
+    function testGuard_thirdPartyCannotRenewProxyRental() public {
+        _setupDLP();
+        string memory machineId = "thirdM";
+        _proxyRentV2(machineId, 1 hours);
+        address third = address(0xCC);
+        deal(address(rewardToken), third, 1_000_000 ether);
+        deal(DLP, third, 1_000_000 ether);
+        vm.startPrank(third);
+        rewardToken.approve(address(rent), type(uint256).max);
+        IERC20(DLP).approve(address(rent), type(uint256).max);
+        vm.expectRevert(bytes("proxy renew only by payer"));
+        rent.proxyRenewRentV2(renter, machineId, 1 hours);
+        vm.stopPrank();
+    }
+
+    // ---- 平台垫付方续 proxy 租约正常通过(回归保护: guard 不误伤正规流程) ----
+    function testGuard_platformPayerCanRenewProxyRental() public {
+        _setupDLP();
+        string memory machineId = "okM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours); // payer(平台) 续, 应通过
         uint256 rentId = _rentId(machineId);
-        (, uint256 segBase, uint256 segPlat,, address segPayer,) = rent.rentId2RenewalSegments(rentId, 0);
-        assertEq(segPayer, renter, "segment payer must be renter (self-paid)");
-
-        uint256 renterDlcBefore = rewardToken.balanceOf(renter);
-        uint256 platformDlcBefore = rewardToken.balanceOf(payer);
-
-        vm.prank(owner);
-        rent.adminReverseUnpaidRenewal(machineId, 0);
-
-        // 退款发回租客(真实付款方), 平台分文未得 → 修复了"退错向盗款"CRITICAL
-        assertEq(rewardToken.balanceOf(renter), renterDlcBefore + segBase + segPlat, "renter refunded, not stolen");
-        assertEq(rewardToken.balanceOf(payer), platformDlcBefore, "platform got nothing");
+        (,,,, address segPayer,) = rent.rentId2RenewalSegments(rentId, 0);
+        assertEq(segPayer, payer, "proxy renewal payer == platform payer");
     }
 }

@@ -858,8 +858,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             RenTimeCannotOverMachineUnstakeTime()
         );
 
-        if (msg.sender != renter) {
-            require(machine2ProxyRented[machineId] == true, NotProxyRentingMachine());
+        // [v14] 续租付款方收紧: proxy 租约(平台垫付)的续租只能由记录的 machine2ProxyRentPayer(平台)发起;
+        //   非 proxy(直租)只能由租客本人续租。保证 proxy 机器上每笔续租付款方恒为平台 → endRentMachineV2 提前
+        //   退租 pro-rata 退给 machine2ProxyRentPayer 永远正确(修复 endRent 退款错向 MEDIUM), 且二轮 CRITICAL
+        //   (proxy 机器上租客自付续租被撤却退给平台=盗款)结构上不可能。后端续租恒从原 rent_payer_wallet 发起(实测),
+        //   不受影响。
+        if (machine2ProxyRented[machineId]) {
+            require(msg.sender == machine2ProxyRentPayer[machineId], "proxy renew only by payer");
+        } else {
+            require(msg.sender == renter, NotProxyRentingMachine());
         }
 
         uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
@@ -914,8 +921,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             RenTimeCannotOverMachineUnstakeTime()
         );
 
-        if (msg.sender != renter) {
-            require(machine2ProxyRented[machineId] == true, NotProxyRentingMachine());
+        // [v14] 续租付款方收紧: proxy 租约(平台垫付)的续租只能由记录的 machine2ProxyRentPayer(平台)发起;
+        //   非 proxy(直租)只能由租客本人续租。保证 proxy 机器上每笔续租付款方恒为平台 → endRentMachineV2 提前
+        //   退租 pro-rata 退给 machine2ProxyRentPayer 永远正确(修复 endRent 退款错向 MEDIUM), 且二轮 CRITICAL
+        //   (proxy 机器上租客自付续租被撤却退给平台=盗款)结构上不可能。后端续租恒从原 rent_payer_wallet 发起(实测),
+        //   不受影响。
+        if (machine2ProxyRented[machineId]) {
+            require(msg.sender == machine2ProxyRentPayer[machineId], "proxy renew only by payer");
+        } else {
+            require(msg.sender == renter, NotProxyRentingMachine());
         }
 
         uint256 newRentDuration = rentId2RentInfo[rentId].rentEndTime - block.timestamp + additionalRentSeconds;
