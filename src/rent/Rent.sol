@@ -155,6 +155,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 baseFee;     // DLC
         uint256 platformFee; // DLC
         uint256 extraFee;    // Point/DLP
+        address payer;       // 该笔续租的实际链上付款方(msg.sender), 撤销退款发回此地址, 杜绝退错向盗款
         bool consumed;
     }
     mapping(uint256 => RenewalSegment[]) public rentId2RenewalSegments;
@@ -938,12 +939,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         feeInfo.extraFee += extraRentFeeInPoint;
         feeInfo.platformFee += platformFee;
 
-        // [v14] 记录本笔续租的 escrow 台账(秒数+各 fee), 供 adminReverseUnpaidRenewal 精确撤销未付款续租
+        // [v14] 记录本笔续租的 escrow 台账(秒数+各 fee+付款方), 供 adminReverseUnpaidRenewal 精确撤销未付款续租。
+        // payer=msg.sender 记录真实付款方: proxy 续租=平台垫付方; 租客自付续租(renewRentV2)=租客本人。撤销按此退款,
+        // 杜绝"租客自付的续租被撤销却退给平台"的盗款(二轮审计 CRITICAL)。
         rentId2RenewalSegments[rentId].push(RenewalSegment({
             rentSeconds: additionalRentSeconds,
             baseFee: baseRentFee,
             platformFee: platformFee,
             extraFee: extraRentFeeInPoint,
+            payer: msg.sender,
             consumed: false
         }));
 
@@ -1882,11 +1886,9 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         RentInfo storage rentInfo = rentId2RentInfo[rentId];
         require(rentInfo.renter != address(0), "no active rent");
         require(rentInfo.rentEndTime > block.timestamp, "rent ended");
-        // 仅平台垫付(proxy-rented)的非月租租约可撤；普通用户已付租约一律拒绝
+        // 仅平台垫付(proxy-rented)的非月租租约可撤；普通用户直租一律拒绝(scope 限定)
         require(machine2ProxyRented[machineId], "not proxy-rented");
         require(!machineId2IsMonthlyRent[machineId], "monthly not allowed");
-        address payer = machine2ProxyRentPayer[machineId];
-        require(payer != address(0), "no payer");
 
         FeeInfo storage feeInfo = rentId2FeeInfoInDLC[rentId];
         require(!feeInfo.isV1, "only V2 rental");
@@ -1895,6 +1897,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         require(renewalIndex < segs.length, "bad renewalIndex");
         RenewalSegment storage seg = segs[renewalIndex];
         require(!seg.consumed, "already reversed");
+        // ★ 退款发回该笔续租的【真实付款方】(seg.payer), 而非租约级 machine2ProxyRentPayer。
+        //   proxy 机器上租客可经 renewRentV2 自付续租, 此时 seg.payer=租客; 若硬退给平台会盗走租客的钱(二轮审计 CRITICAL)。
+        address payer = seg.payer;
+        require(payer != address(0), "seg payer zero");
 
         // 铁律：撤销后 rentEndTime 仍须 > now，绝不切用户已付费/在用时段
         require(rentInfo.rentEndTime - seg.rentSeconds > block.timestamp, "would cut used/active time");
