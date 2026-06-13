@@ -543,8 +543,8 @@ contract RentClawbackTest is RentTest {
     }
 
     // ---- version 升到 15 ----
-    function testVersion_is15() public view {
-        assertEq(rent.version(), 15, "version == 15");
+    function testVersion_is16() public view {
+        assertEq(rent.version(), 16, "version == 16");
     }
 
     // ---- setClawbackAdmin 仅 owner 可调 ----

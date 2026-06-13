@@ -166,6 +166,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     //   改不了收款地址、碰不到其他资金、不能升级 → 即使泄露危害可控。⚠️ 无 __gap, 必须追加在所有 storage 末尾。
     address public clawbackAdmin;
 
+    // v16 [2026-06-13]: 推送价最大有效期(秒)。getTokenPrice 中若推送价超此龄则回退 oracle, 防喂价 cron 死后链上价
+    //   永久冻结、DLC 计价租金按陈旧价烧错钱。0=不启用(行为同旧版)。owner 设。⚠️ 无 __gap, 追加在 storage 末尾。
+    uint256 public maxPriceAge;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -550,7 +554,13 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function getTokenPrice() internal view returns (uint256) {
-        if (tokenPriceInfo.timestamp > 0&& tokenPriceInfo.price > 0){
+        if (tokenPriceInfo.timestamp > 0 && tokenPriceInfo.price > 0) {
+            // [SECURITY-fix M-5 v16] 配置了 maxPriceAge 且推送价超龄 → 回退 oracle。原代码只要有推送价就一直用,
+            //   喂价 cron 死掉后链上价永久冻结, DLC 计价租金按陈旧价烧错钱(市场跌时少收)。移植自 RentDBC.sol。
+            if (maxPriceAge != 0 && block.timestamp - tokenPriceInfo.timestamp > maxPriceAge
+                && address(oracle) != address(0)) {
+                return oracle.getTokenPriceInUSD(10, address(feeToken));
+            }
             return tokenPriceInfo.price;
         }
         return oracle.getTokenPriceInUSD(10, address(feeToken));
@@ -1339,7 +1349,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 15;
+        return 16;
+    }
+
+    /// @notice v16: 设置推送价最大有效期(秒)。0=不启用。超龄则 getTokenPrice 回退 oracle, 防喂价 cron 死后用陈旧价烧错钱。
+    function setMaxPriceAge(uint256 v) external onlyOwner {
+        maxPriceAge = v;
     }
 
     /// @dev [v12 PayoutWallet] 跨合约查矿工 payout (NFTStaking 是 source of truth)
