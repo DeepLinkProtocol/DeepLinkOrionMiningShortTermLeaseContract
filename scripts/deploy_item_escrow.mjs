@@ -29,12 +29,30 @@ const ESCROW_OWNER = process.env.ESCROW_OWNER
 const DLP_TOKEN = process.env.DLP_TOKEN || '0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6'
 const FEE_RECIPIENT = process.env.FEE_RECIPIENT || '0xCAA5cB0983cd544283346c82f3870931a295365B'
 const ARBITER = process.env.ARBITER || '0xB5A5ab31E5dEd47Cd61de1bbD62b1Dd161daA6f2'
+const DRY_RUN = process.env.DRY_RUN === '1'   // 只校验参数+链上探针, 不上链
+
+// boss 2026-06-13 拍板的主网真值 — 硬断言, 防 .env 填错/大小写/粘错/残留 override (主网填错不可逆无救)
+const MAINNET_CHAIN_ID = 19880818
+const EXPECTED = {
+  owner: '0x244f8191010a9C20aaE96DC4afa4E1D63983802E',
+  dlpToken: '0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6',
+  feeRecipient: '0xCAA5cB0983cd544283346c82f3870931a295365B',
+  arbiter: '0xB5A5ab31E5dEd47Cd61de1bbD62b1Dd161daA6f2',
+}
+const eqAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase()
 
 function die(m) { console.error('FATAL:', m); process.exit(1) }
 if (!DEPLOYER_KEY) die('DEPLOYER_KEY (或 OWNER_KEY) 未设')
 if (!ESCROW_OWNER || !ethers.isAddress(ESCROW_OWNER)) die('ESCROW_OWNER 未设/非法 (合约 owner 地址)')
 for (const [n, v] of [['DLP_TOKEN', DLP_TOKEN], ['FEE_RECIPIENT', FEE_RECIPIENT], ['ARBITER', ARBITER]])
   if (!ethers.isAddress(v)) die(`${n} 非法: ${v}`)
+// [终审 BLOCKER] owner 硬断言: 任何网络都强制 = boss 拍板地址 (owner 填错=治理+升级权落错方, 主网真钱不可逆)
+if (!eqAddr(ESCROW_OWNER, EXPECTED.owner)) die(`ESCROW_OWNER 必须 = ${EXPECTED.owner} (boss 2026-06-13 拍板), 当前=${ESCROW_OWNER}`)
+// [终审 HIGH] 主网链路: 三地址必须 = 期望真值 (测试网才允许 override; 防 .env 残留测试网值静默覆盖默认)
+if (CHAIN_ID === MAINNET_CHAIN_ID) {
+  for (const [n, got, exp] of [['DLP_TOKEN', DLP_TOKEN, EXPECTED.dlpToken], ['FEE_RECIPIENT', FEE_RECIPIENT, EXPECTED.feeRecipient], ['ARBITER', ARBITER, EXPECTED.arbiter]])
+    if (!eqAddr(got, exp)) die(`主网部署 ${n} 必须 = ${exp}, 当前=${got} (检查 .env 是否残留 override)`)
+}
 
 const escArt = JSON.parse(fs.readFileSync(path.join(repoRoot, 'out/ItemTradeEscrow.sol/ItemTradeEscrow.json'), 'utf8'))
 const proxyArt = JSON.parse(fs.readFileSync(path.join(repoRoot, 'out/ERC1967Proxy.sol/ERC1967Proxy.json'), 'utf8'))
@@ -62,6 +80,19 @@ async function main() {
   const bal = await provider.getBalance(wallet.address)
   console.log('Deployer DBC balance:', ethers.formatEther(bal))
   if (bal < ethers.parseEther('0.5')) throw new Error(`Deployer 余额过低: ${ethers.formatEther(bal)} DBC`)
+
+  // [终审 HIGH] DLP_TOKEN 链上探针: 确认确实是 ERC20 合约 (防填成 EOA/错合约/测试网空地址)
+  const code = await provider.getCode(DLP_TOKEN)
+  if (!code || code === '0x') throw new Error(`DLP_TOKEN ${DLP_TOKEN} 链上无合约代码 — 地址错或网络错`)
+  try {
+    const erc = new ethers.Contract(DLP_TOKEN, ['function symbol() view returns (string)', 'function decimals() view returns (uint8)'], provider)
+    const [sym, dec] = await Promise.all([erc.symbol(), erc.decimals()])
+    console.log(`DLP_TOKEN 探针: symbol=${sym} decimals=${dec} (人工核对: 应是 DLP/Point, decimals=18)`)
+    if (Number(dec) !== 18) throw new Error(`DLP_TOKEN decimals=${dec} != 18 — 金额单位会算错, 中止`)
+  } catch (e) { throw new Error(`DLP_TOKEN ${DLP_TOKEN} symbol()/decimals() 失败, 可能不是 ERC20: ${e.message}`) }
+  // [终审 MED] deployer 不应是 owner/治理私钥
+  if (eqAddr(wallet.address, ESCROW_OWNER)) console.warn('⚠️ deployer == owner: 建议用独立一次性 deployer, 勿用 owner/治理私钥当部署者')
+  if (DRY_RUN) { console.log('\n[DRY_RUN] 参数 + 链上探针校验全通过, 未上链。去掉 DRY_RUN=1 即正式部署。'); return }
 
   // 1. 部署 implementation
   sectionLog('Step 1: 部署 implementation')
