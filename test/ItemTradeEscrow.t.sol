@@ -245,8 +245,37 @@ contract ItemTradeEscrowTest is Test {
         vm.prank(buyer);
         esc.openDispute(OID);
         vm.prank(stranger);
-        vm.expectRevert(bytes("not arbiter"));
+        vm.expectRevert(bytes("not arbiter/owner"));
         esc.resolveDispute(OID, true);
+    }
+
+    function test_resolve_ownerFallback() public {
+        // arbiter 私钥丢失时 owner 兜底裁决，防 Disputed 资金永久锁死
+        _create(OID);
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        uint256 before = dlp.balanceOf(buyer);
+        vm.prank(owner);
+        esc.resolveDispute(OID, false); // owner 退款买家
+        assertEq(dlp.balanceOf(buyer), before + PRICE);
+        assertEq(uint8(esc.getOrder(OID).state), uint8(ItemTradeEscrow.State.Refunded));
+    }
+
+    function test_feeBps_snapshotAtCreate() public {
+        // 下单时锁定 2.5%；owner 事后改费率不影响在途订单
+        _create(OID);
+        vm.prank(owner);
+        esc.setFeeBps(1000); // 改到 10%
+        uint256 expectFee = PRICE * 250 / 10000; // 仍按下单时 2.5%
+        vm.prank(buyer);
+        esc.confirmReceived(OID);
+        assertEq(dlp.balanceOf(feeRecv), expectFee);
+        assertEq(dlp.balanceOf(seller), PRICE - expectFee);
+        // 新订单才用新费率
+        bytes32 oid2 = keccak256("order-2");
+        vm.prank(buyer);
+        esc.createOrder(oid2, seller, PRICE);
+        assertEq(esc.getOrder(oid2).feeBps, 1000);
     }
 
     function test_openDispute_onlyParties() public {
@@ -293,6 +322,16 @@ contract ItemTradeEscrowTest is Test {
         vm.expectRevert(bytes("not upgrader"));
         esc.upgradeToAndCall(address(impl2), "");
         // owner is canUpgradeAddress by default
+        vm.prank(owner);
+        esc.upgradeToAndCall(address(impl2), "");
+        assertEq(esc.version(), 1);
+    }
+
+    function test_upgrade_ownerFallback_afterCanUpgradeChanged() public {
+        // 即使 canUpgradeAddress 改成别处，owner 仍能兜底升级（防 H-1 永久锁死）
+        vm.prank(owner);
+        esc.setCanUpgradeAddress(stranger);
+        ItemTradeEscrow impl2 = new ItemTradeEscrow();
         vm.prank(owner);
         esc.upgradeToAndCall(address(impl2), "");
         assertEq(esc.version(), 1);

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -26,7 +26,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
  */
 contract ItemTradeEscrow is
     Initializable,
-    OwnableUpgradeable,
+    Ownable2StepUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
@@ -62,6 +62,7 @@ contract ItemTradeEscrow is
         uint256 amount;     // 托管的 DLP 数量
         uint64 createdAt;
         uint64 deliveredAt; // 0 表示未交付；非 0 = 自动确认计时起点
+        uint16 feeBps;      // 下单时锁定的手续费率（防 owner 事后改费率影响在途订单）
         State state;
     }
 
@@ -99,6 +100,7 @@ contract ItemTradeEscrow is
         require(_owner != address(0), "owner=0");
 
         __Ownable_init(_owner);
+        __Ownable2Step_init();
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
@@ -115,8 +117,9 @@ contract ItemTradeEscrow is
     }
 
     // ───────────────────────────── 修饰
-    modifier onlyArbiter() {
-        require(msg.sender == arbiter, "not arbiter");
+    // 纠纷裁决者 = arbiter（日常）或 owner（兜底，防 arbiter 私钥丢失导致 Disputed 资金永久锁死）
+    modifier onlyArbiterOrOwner() {
+        require(msg.sender == arbiter || msg.sender == owner(), "not arbiter/owner");
         _;
     }
 
@@ -140,6 +143,7 @@ contract ItemTradeEscrow is
         o.amount = amount;
         o.createdAt = uint64(block.timestamp);
         o.deliveredAt = 0;
+        o.feeBps = feeBps;      // 锁定下单时费率
         o.state = State.Paid;
 
         dlpToken.safeTransferFrom(msg.sender, address(this), amount);
@@ -195,8 +199,8 @@ contract ItemTradeEscrow is
         emit OrderDisputed(orderId, msg.sender);
     }
 
-    /// @notice arbiter 裁决纠纷：releaseToSeller=true 放款卖家（扣 fee），否则全额退买家。
-    function resolveDispute(bytes32 orderId, bool releaseToSeller) external nonReentrant onlyArbiter {
+    /// @notice arbiter（或 owner 兜底）裁决纠纷：releaseToSeller=true 放款卖家（扣 fee），否则全额退买家。
+    function resolveDispute(bytes32 orderId, bool releaseToSeller) external nonReentrant onlyArbiterOrOwner {
         Order storage o = orders[orderId];
         require(o.state == State.Disputed, "not disputed");
         if (releaseToSeller) {
@@ -215,7 +219,7 @@ contract ItemTradeEscrow is
     function _release(bytes32 orderId, Order storage o, address by) private {
         uint256 amt = o.amount;
         address seller = o.seller;
-        uint256 fee = (amt * feeBps) / 10000;
+        uint256 fee = (amt * o.feeBps) / 10000;  // 用订单锁定的费率，不受事后 setFeeBps 影响
         uint256 net = amt - fee;
 
         o.state = State.Released; // 先置终态，杜绝重入/重复放款
@@ -269,8 +273,9 @@ contract ItemTradeEscrow is
     }
 
     // ───────────────────────────── UUPS 升级授权
+    // canUpgradeAddress 日常升级；owner 兜底，防 setCanUpgradeAddress 误设成坏地址导致升级权永久锁死。
     function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == canUpgradeAddress, "not upgrader");
+        require(msg.sender == canUpgradeAddress || msg.sender == owner(), "not upgrader");
     }
 
     uint256[44] private __gap;
