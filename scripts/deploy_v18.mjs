@@ -20,14 +20,17 @@ import dotenv from 'dotenv'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
-dotenv.config({ path: path.join(repoRoot, '.env') })
+// .env 优先用中央(P0 后秘钥移到中央私密库), 回退本地 (与 deploy_rent_v14/v15 一致)
+const CENTRAL_ENV = 'C:/Project/Fengxia/deeplink2/project-secret-files-2026-06-12/DeepLinkOrionMiningShortTermLeaseContract/.env'
+dotenv.config({ path: fs.existsSync(CENTRAL_ENV) ? CENTRAL_ENV : path.join(repoRoot, '.env') })
 
 const RPC_URL = 'https://rpc.dbcwallet.io'
 const CHAIN_ID = 19880818
 const STAKING_PROXY = process.env.STAKING_PROXY || '0x6268aba94d0d0e4fb917cc02765f631f309a7388'
 const ORIGINAL_CAN_UPGRADE = process.env.CAN_UPGRADE_ADDRESS || '0x36Ede4Fe3CD9F270747f07c15D8098F10dF6D8e8'
 const OWNER_KEY = process.env.OWNER_KEY
-const STAKE_ADMIN_ADDRESS = process.env.STAKE_ADMIN_ADDRESS  // v18 运维钱包地址 (必填)
+const PREFLIGHT_ONLY = process.env.PREFLIGHT_ONLY === '1'
+const STAKE_ADMIN_ADDRESS = process.env.STAKE_ADMIN_ADDRESS || '0x584B0E811e5597f4343Bb2A2972F9A3234B6FEF6'  // v18 运维钱包地址 (默认 0x584B0E81=whitelist/stake/clawback 同一低权钱包)
 
 if (!OWNER_KEY) { console.error('FATAL: OWNER_KEY not set in .env'); process.exit(1) }
 if (!STAKE_ADMIN_ADDRESS || !ethers.isAddress(STAKE_ADMIN_ADDRESS)) {
@@ -67,7 +70,15 @@ async function main() {
   if (curOwner.toLowerCase() !== wallet.address.toLowerCase()) throw new Error(`Owner mismatch: ${curOwner}`)
   if (curVersion !== 17n) throw new Error(`Expected version 17 on-chain, got ${curVersion}`)
   if (curPayoutAdmin === ethers.ZeroAddress) throw new Error('payoutAdmin 未初始化 — 异常, 中止 (v18 不应重跑 initializePayout)')
+  const curStakeAdmin = await proxy.stakeAdmin().catch(() => '(v17 无此函数, 预期)')
+  console.log('stakeAdmin(before):', curStakeAdmin, '(v17 无 getter → 升级后应=0x0 待 setStakeAdmin)')
   console.log('Pre-flight 通过.')
+
+  if (PREFLIGHT_ONLY) {
+    sectionLog('PREFLIGHT_ONLY — 不发任何交易, 退出')
+    console.log(`计划: setUpgradeAddress(owner) → 部署 v18 impl → upgradeToAndCall(impl,"0x") → setStakeAdmin(${STAKE_ADMIN_ADDRESS}) → 恢复 canUpgradeAddress`)
+    return
+  }
 
   // ----- Step 1: setUpgradeAddress(owner) -----
   sectionLog('Step 1: setUpgradeAddress(owner) — 临时升级权')
