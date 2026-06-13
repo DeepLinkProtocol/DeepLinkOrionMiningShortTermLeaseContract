@@ -204,11 +204,23 @@ contract ItemTradeEscrowTest is Test {
         esc.cancel(OID);
     }
 
-    function test_cancel_onlyParties() public {
+    function test_cancel_sellerOnly() public {
         _create(OID);
-        vm.prank(stranger);
-        vm.expectRevert(bytes("forbidden"));
+        // 反诈 F-1: 买家不能单方取消退款（防收货后自退）
+        vm.prank(buyer);
+        vm.expectRevert(bytes("not seller"));
         esc.cancel(OID);
+        // 陌生人也不行
+        vm.prank(stranger);
+        vm.expectRevert(bytes("not seller"));
+        esc.cancel(OID);
+        // 买家付款后想退出 → 走 openDispute（arbiter 退款）
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        uint256 before = dlp.balanceOf(buyer);
+        vm.prank(arbiter);
+        esc.resolveDispute(OID, false);
+        assertEq(dlp.balanceOf(buyer), before + PRICE);
     }
 
     // ───────── dispute / resolve

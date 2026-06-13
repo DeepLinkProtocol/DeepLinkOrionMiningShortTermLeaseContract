@@ -177,11 +177,13 @@ contract ItemTradeEscrow is
         _release(orderId, o, msg.sender);
     }
 
-    /// @notice 交付前取消（买卖任一方）→ 全额退买家。
+    /// @notice 交付前取消 → 全额退买家。**仅卖家可调**（卖家谢绝订单）。
+    ///   反诈关键(审计 F-1)：买家不能付款后单方退款——否则可"游戏内收货→抢在 markDelivered 前 cancel→拿货又退款"。
+    ///   买家想付款后退出 → 走 openDispute 由 arbiter 裁决（卖家没交付则退款）。
     function cancel(bytes32 orderId) external nonReentrant {
         Order storage o = orders[orderId];
         require(o.state == State.Paid, "not cancellable");
-        require(msg.sender == o.buyer || msg.sender == o.seller, "forbidden");
+        require(msg.sender == o.seller, "not seller");
         uint256 amt = o.amount;
         address buyer = o.buyer;
         o.state = State.Cancelled;
