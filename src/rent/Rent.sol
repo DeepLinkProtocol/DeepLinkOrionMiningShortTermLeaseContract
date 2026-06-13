@@ -160,6 +160,12 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
     mapping(uint256 => RenewalSegment[]) public rentId2RenewalSegments;
 
+    // v15 [2026-06-13]: clawback 专用低权限运维钱包。adminReverseUnpaidRenewal 改为 owner||clawbackAdmin 可调,
+    //   让自动追回任务用此低权限钱包(KMS 签名)上链, 避免把 owner(冷钱包/可升级合约)私钥放后端。
+    //   该角色权限极小: 只能调 adminReverseUnpaidRenewal 撤销"未付款续租", 退款只发回链上记录的 seg.payer(平台垫付方),
+    //   改不了收款地址、碰不到其他资金、不能升级 → 即使泄露危害可控。⚠️ 无 __gap, 必须追加在所有 storage 末尾。
+    address public clawbackAdmin;
+
     event RentMachine(
         address indexed machineOnwer,
         uint256 rentId,
@@ -186,6 +192,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     );
     event ExtraRentFeeTransfer(address indexed machineOnwer, uint256 rentId, uint256 amount);
     event DlcPriceMarkupUpdated(uint256 oldBps, uint256 newBps);
+    event ClawbackAdminUpdated(address indexed oldAdmin, address indexed newAdmin);
+    // [v15] 每笔续租入账时 emit 真实 renewalIndex(=segment 数组下标), 让链下精确记录该笔在链上的 index,
+    //   clawback 时按此 index 精确撤销, 杜绝"按 DB 数组位置推断 index"导致的错位(误撤已付款续租)。
+    event RenewalSegmentRecorded(uint256 indexed rentId, uint256 renewalIndex, address payer, uint256 rentSeconds);
     event ReportMachineFault(uint256 rentId, string machineId, address reporter);
     event BurnedFee(
         string machineId, uint256 rentId, uint256 burnTime, uint256 burnDLCAmount, address renter, uint8 rentGpuCount
@@ -964,6 +974,8 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
             payer: msg.sender,
             consumed: false
         }));
+        // [v15] emit 本笔的真实链上 index, 供链下精确记账 + clawback 按 index 精确撤销(不靠数组位置推断)。
+        emit RenewalSegmentRecorded(rentId, rentId2RenewalSegments[rentId].length - 1, msg.sender, additionalRentSeconds);
 
         SafeERC20.safeTransferFrom(feeToken, msg.sender, address(this), platformFee + baseRentFee);
         IERC20 pointToken = IERC20(address(0x9b09b4B7a748079DAd5c280dCf66428e48E38Cd6));
@@ -1319,7 +1331,7 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     }
 
     function version() external pure returns (uint256) {
-        return 14;
+        return 15;
     }
 
     /// @dev [v12 PayoutWallet] 跨合约查矿工 payout (NFTStaking 是 source of truth)
@@ -1347,6 +1359,15 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         uint256 oldBps = dlcPriceMarkupBps;
         dlcPriceMarkupBps = bps;
         emit DlcPriceMarkupUpdated(oldBps, bps);
+    }
+
+    /// @notice v15: 设置/轮换 clawback 专用低权限运维钱包（onlyOwner）。设 address(0) = kill-switch, 立即收回授权,
+    ///         此后只有 owner 能 clawback。该钱包只能调 adminReverseUnpaidRenewal(退款固定发回 seg.payer 平台方),
+    ///         不能改任何其他状态/资金/升级权 → 授予安全。
+    function setClawbackAdmin(address addr) external onlyOwner {
+        address old = clawbackAdmin;
+        clawbackAdmin = addr;
+        emit ClawbackAdminUpdated(old, addr);
     }
 
     /// @notice v6 升级初始化：同步已有未赔付 slash 的计数器
@@ -1894,7 +1915,10 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
     /// @param machineId 机器 ID
     /// @param renewalIndex rentId2RenewalSegments[rentId] 中要撤销的那笔续租下标
     function adminReverseUnpaidRenewal(string calldata machineId, uint256 renewalIndex) external nonReentrant {
-        require(msg.sender == owner(), "not authorized");
+        // [v15] owner(冷钱包) 或 clawbackAdmin(低权限运维钱包, KMS 签名) 可调。
+        //   该函数本身不接受任意退款地址(只退 seg.payer=链上记录的平台垫付方)、不改关键参数、不能升级,
+        //   故授予 clawbackAdmin 不扩大其能力面: 它只能触发"把未付款续租的垫付退回平台"这一确定动作。
+        require(msg.sender == owner() || (clawbackAdmin != address(0) && msg.sender == clawbackAdmin), "not authorized");
 
         uint256 rentId = machineId2RentId[machineId];
         RentInfo storage rentInfo = rentId2RentInfo[rentId];

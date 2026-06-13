@@ -510,4 +510,136 @@ contract RentClawbackTest is RentTest {
         (,,,, address segPayer,) = rent.rentId2RenewalSegments(rentId, 0);
         assertEq(segPayer, payer, "proxy renewal payer == platform payer");
     }
+
+    // ════════ v15: clawbackAdmin 角色测试 ════════
+    address constant CLAWBACK_ADMIN = address(0xC1A);
+
+    event RenewalSegmentRecorded(uint256 indexed rentId, uint256 renewalIndex, address payer, uint256 rentSeconds);
+
+    // ---- v15: RenewalSegmentRecorded 事件 emit 正确的绝对 index/payer/rentSeconds(供链下精确记账) ----
+    function testRenewalSegmentRecorded_emitsCorrectIndex() public {
+        _setupDLP();
+        string memory machineId = "evtM";
+        _proxyRentV2(machineId, 1 hours);
+        uint256 rentId = _rentId(machineId);
+        // 第 1 笔续租 → index 0
+        vm.expectEmit(true, false, false, true);
+        emit RenewalSegmentRecorded(rentId, 0, payer, 1 hours);
+        _renew(machineId, 1 hours);
+        // 第 2 笔续租 → index 1
+        vm.expectEmit(true, false, false, true);
+        emit RenewalSegmentRecorded(rentId, 1, payer, 30 minutes);
+        _renew(machineId, 30 minutes);
+        // index 与链上数组一致, 且按此 index 能精确 clawback
+        (uint256 s1,,,,,) = rent.rentId2RenewalSegments(rentId, 1);
+        assertEq(s1, 30 minutes, "index1 seg matches");
+        vm.prank(owner);
+        rent.adminReverseUnpaidRenewal(machineId, 1); // 按 emit 的 index 精确撤第 2 笔
+        (,,,,, bool consumed1) = rent.rentId2RenewalSegments(rentId, 1);
+        assertTrue(consumed1, "index1 reversed");
+        (,,,,, bool consumed0) = rent.rentId2RenewalSegments(rentId, 0);
+        assertFalse(consumed0, "index0 untouched");
+    }
+
+    // ---- version 升到 15 ----
+    function testVersion_is15() public view {
+        assertEq(rent.version(), 15, "version == 15");
+    }
+
+    // ---- setClawbackAdmin 仅 owner 可调 ----
+    function testSetClawbackAdmin_onlyOwner() public {
+        vm.prank(address(0xDEAD));
+        vm.expectRevert();
+        rent.setClawbackAdmin(CLAWBACK_ADMIN);
+        // owner 可设
+        vm.prank(owner);
+        rent.setClawbackAdmin(CLAWBACK_ADMIN);
+        assertEq(rent.clawbackAdmin(), CLAWBACK_ADMIN, "clawbackAdmin set");
+    }
+
+    // ---- clawbackAdmin 可执行 clawback(与 owner 等效退款) ----
+    function testClawbackAdmin_canReverse() public {
+        _setupDLP();
+        string memory machineId = "caM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours); // segment 0
+        vm.prank(owner);
+        rent.setClawbackAdmin(CLAWBACK_ADMIN);
+
+        uint256 rentId = _rentId(machineId);
+        (uint256 segSeconds, uint256 segBase, uint256 segPlatform, uint256 segExtra, ,) =
+            rent.rentId2RenewalSegments(rentId, 0);
+        (,,, uint256 endBefore,) = rent.rentId2RentInfo(rentId);
+        uint256 dlcBefore = rewardToken.balanceOf(payer);
+        uint256 dlpBefore = IERC20(DLP).balanceOf(payer);
+
+        vm.prank(CLAWBACK_ADMIN);
+        rent.adminReverseUnpaidRenewal(machineId, 0);
+
+        (,,, uint256 endAfter,) = rent.rentId2RentInfo(rentId);
+        assertEq(endAfter, endBefore - segSeconds, "rentEndTime reduced");
+        assertEq(rewardToken.balanceOf(payer), dlcBefore + segBase + segPlatform, "DLC refunded to seg.payer not admin");
+        assertEq(IERC20(DLP).balanceOf(payer), dlpBefore + segExtra, "DLP refunded to seg.payer");
+        (,,,,, bool consumedAfter) = rent.rentId2RenewalSegments(rentId, 0);
+        assertTrue(consumedAfter, "consumed");
+    }
+
+    // ---- 非 owner 非 clawbackAdmin 仍被拒(授权面没扩大) ----
+    function testClawbackAdmin_otherStillRejected() public {
+        _setupDLP();
+        string memory machineId = "rejM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours);
+        vm.prank(owner);
+        rent.setClawbackAdmin(CLAWBACK_ADMIN);
+        vm.prank(address(0xBEEF)); // 既非 owner 也非 clawbackAdmin
+        vm.expectRevert(bytes("not authorized"));
+        rent.adminReverseUnpaidRenewal(machineId, 0);
+    }
+
+    // ---- owner 设 clawbackAdmin 后 owner 自己仍能调(双授权) ----
+    function testClawbackAdmin_ownerStillWorks() public {
+        _setupDLP();
+        string memory machineId = "ownStillM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours);
+        vm.prank(owner);
+        rent.setClawbackAdmin(CLAWBACK_ADMIN);
+        vm.prank(owner); // owner 仍可
+        rent.adminReverseUnpaidRenewal(machineId, 0);
+        (,,,,, bool consumed) = rent.rentId2RenewalSegments(_rentId(machineId), 0);
+        assertTrue(consumed, "owner still authorized");
+    }
+
+    // ---- kill-switch: 设 address(0) 收回授权, 之前的 clawbackAdmin 不再能调 ----
+    function testClawbackAdmin_killSwitch() public {
+        _setupDLP();
+        string memory machineId = "killM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours);
+        vm.prank(owner);
+        rent.setClawbackAdmin(CLAWBACK_ADMIN);
+        vm.prank(owner);
+        rent.setClawbackAdmin(address(0)); // kill-switch
+        assertEq(rent.clawbackAdmin(), address(0), "cleared");
+        vm.prank(CLAWBACK_ADMIN);
+        vm.expectRevert(bytes("not authorized"));
+        rent.adminReverseUnpaidRenewal(machineId, 0);
+    }
+
+    // ---- 默认(未设)时 clawbackAdmin=0, 仅 owner 可调(与 v14 行为一致, 防 address(0) 绕过) ----
+    function testClawbackAdmin_defaultZeroOnlyOwner() public {
+        _setupDLP();
+        string memory machineId = "defM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours);
+        assertEq(rent.clawbackAdmin(), address(0), "default zero");
+        // address(0) 不能因 clawbackAdmin==0 而绕过(msg.sender 不会是 0)
+        vm.prank(address(0xDEAD));
+        vm.expectRevert(bytes("not authorized"));
+        rent.adminReverseUnpaidRenewal(machineId, 0);
+        // owner 仍可
+        vm.prank(owner);
+        rent.adminReverseUnpaidRenewal(machineId, 0);
+    }
 }

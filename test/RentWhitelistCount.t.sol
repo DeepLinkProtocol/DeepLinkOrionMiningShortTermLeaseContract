@@ -185,6 +185,6 @@ contract RentWhitelistCountTest is Test {
     }
 
     function test_version() public view {
-        assertEq(rent.version(), 14, "Version should be 14 (v14 clawback)");
+        assertEq(rent.version(), 15, "Version should be 15 (v15 clawbackAdmin)");
     }
 }
