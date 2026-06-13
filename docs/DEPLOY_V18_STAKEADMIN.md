@@ -2,6 +2,16 @@
 
 > 本手册由第三轮升级流程专家审计产出。所有交易用 **ethers .mjs 脚本**（cast 对 DBC RPC 有 "duplicate field data" 兼容问题），全部 **type:0 legacy**。
 
+## ★ 本次部署最终决定（2026-06-13，feng 拍板 + 独立审计 GO）
+
+- **stakeAdmin 运维钱包 = `0x584B0E811e5597f4343Bb2A2972F9A3234B6FEF6`**（= whitelist/stakeAdmin/clawbackAdmin **同一把低权钱包**，私钥已纳管 KMS）。该角色只能延长质押 endAt、碰不到资金/不能升级。
+- **范围 = 只续白名单**（`STAKE_RENEW_ALLOW_ALL=false` + 配 `STAKE_RENEW_WALLET_ALLOWLIST=<网吧钱包,...>`），**绝不用 ALLOW_ALL**（会续网吧主故意想让到期的机器，2026-06-10 또와PC방教训）。
+- **私钥来源已改 KMS（无需 scp 本地文件）**：`stake_auto_renew.js` 已 KMS 适配（`import _kmsEnv.js` + `loadStakeAdminKey()` 读 `process.env.STAKE_ADMIN_KEY||WHITELIST_ADMIN_KEY||CLAWBACK_ADMIN_KEY`）。0x584B0E81 私钥在 2026-06-13 clawback 转正时**已加进 rpc3 `nodejs.env` KMS bundle**（名 `CLAWBACK_ADMIN_KEY`），stake 任务直接复用，**不再需要 `stake_admin.local.json`**。
+- **deploy_v18.mjs 已就绪**：加了中央 `.env` fallback（P0 后秘钥移中央）+ `PREFLIGHT_ONLY=1` 只读模式 + `STAKE_ADMIN_ADDRESS` 默认 0x584B0E81。
+- **preflight 已过（2026-06-13 只读）**：链上 `version()==17`（⚠️ 旧 CLAUDE.md 写的 16 已过时，实际 17）、owner `0x244f8191`(98 DBC)、canUpgradeAddress `0x36Ede4Fe`、payoutAdmin `0xB5099738` 已初始化。
+- **独立审计 GO（0 BLOCKER/0 HIGH）**：storage forge 逐槽比对 v17 slot 0-46 全不变、stakeAdmin 干净占 slot 47；adminAddStakeHours 与 addStakeHours 逐字一致只少 holder 检查；32 测试全过。任务 KMS 适配正确 + fail-closed 默认 + 链上自检兜底。
+- **gas**：stakeAdmin 钱包 0x584B0E81 现约 49 DBC，够初期；任务每跑前检查 < `STAKE_RENEW_MIN_GAS_DBC`(5) 则跳过+告警。
+
 ## 关键事实（已核对源码）
 
 - **`_authorizeUpgrade`**：`require(msg.sender == canUpgradeAddress)` — **只有 canUpgradeAddress 能升级，owner 不能直接升**。
@@ -13,13 +23,20 @@
 
 ## 升级前预检（只读）
 
+**推荐用脚本的只读模式（一条命令跑完全部预检 + 打印计划）**：
 ```
-forge build --sizes                                  # NFTStaking runtime ~42,966B (见下注)
+cd DeepLinkOrionMiningShortTermLeaseContract
+forge build --skip test                              # 确保 out/NFTStaking.sol 是 v18 (artifact version()==18)
+PREFLIGHT_ONLY=1 node scripts/deploy_v18.mjs         # 只读: 查 version/owner/canUpgrade/payoutAdmin/balance, 不发任何交易
+```
+脚本会断言 `version()==17` + owner 匹配 + payoutAdmin 已初始化, 任一不符即中止。等价的手工 cast 检查：
+```
 cast call PROXY "version()(uint256)"                 # == 17
 cast call PROXY "owner()(address)"                   # == 0x244f8191010a9C20aaE96DC4afa4E1D63983802E
 cast call PROXY "canUpgradeAddress()(address)"       # == 0x36Ede4Fe3CD9F270747f07c15D8098F10dF6D8e8
 cast call PROXY "payoutAdmin()(address)"             # != 0  (已初始化, 切勿重复 init)
 ```
+> ⚠️ NFTStaking runtime ~42,966B 超 EIP-170 24KB 但 DBC 不强制此限（现网 v17 同量级正常运行）, 不影响部署（见文末说明）。
 
 ## 升级步骤（每步后必须验证状态）
 
@@ -76,8 +93,8 @@ owner 调 **`setStakeAdmin(address(0))`** 立即停用运维角色 → `adminAdd
 ## 脚本上线（合约升级后）
 
 每日续期脚本 `DeepLinkServerNodeJS/TimeTask/stake_auto_renew.js`：
-1. **私钥**：`stake_admin.local.json`（`{"privateKey":"0x..."}`，600 权限，gitignore）scp 到 rpc3 `/data/deeplink/nodejs/`。
-2. **充 gas**：stakeAdmin 运维钱包需充 DBC 付 gas（参照 payoutAdmin 的 100 DBC）。脚本每次跑前检查余额 < `STAKE_RENEW_MIN_GAS_DBC`(默认5) 则跳过+告警，**指定专人负责充值**。
+1. **私钥（已 KMS 化，无需 scp 本地文件）**：脚本已 `import _kmsEnv.js` + `loadStakeAdminKey()` 读 `process.env.STAKE_ADMIN_KEY||WHITELIST_ADMIN_KEY||CLAWBACK_ADMIN_KEY`。0x584B0E81 私钥**已在 rpc3 `nodejs.env` KMS bundle**（名 `CLAWBACK_ADMIN_KEY`，clawback 转正时加的）→ 直接复用，**不要 scp `stake_admin.local.json`**（旧路径，仅本地调试 fallback）。部署前确认 tmpfs `/dev/shm/deeplink-secrets/nodejs.env` 在场（reboot 后需先 decrypt）。
+2. **充 gas**：stakeAdmin 钱包 0x584B0E81 现约 49 DBC 够初期。脚本每次跑前检查余额 < `STAKE_RENEW_MIN_GAS_DBC`(默认5) 则跳过+告警，**指定专人负责充值**。
 3. **范围 fail-closed**：实跑必须显式设 `STAKE_RENEW_WALLET_ALLOWLIST=0x钱包,...`（只续指定网吧）或 `STAKE_RENEW_ALLOW_ALL=true`（全网，慎用——会续网吧主故意让到期的机器）。两者都不设 = 拒绝运行。
 4. **PM2 常驻**：需 `pm2 start TimeTask/stake_auto_renew.js --name dl-task-stake-renew` + `pm2 save`（`autorestart:true`），否则 cron 不会跑。脚本内 `node-schedule` 每天 03:30 KST 触发。
 5. **先 DRY_RUN 观察**：`STAKE_RENEW_DRY_RUN=true`(默认) 跑 1-2 天看 TG 告警的待续清单核对无误，再设 `false`。脚本每天会发心跳 TG（含「0 台无需续」），**静默 = 任务死了**，可据此做 dead-man 监控。
