@@ -874,7 +874,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         //   (proxy 机器上租客自付续租被撤却退给平台=盗款)结构上不可能。后端续租恒从原 rent_payer_wallet 发起(实测),
         //   不受影响。
         if (machine2ProxyRented[machineId]) {
-            require(msg.sender == machine2ProxyRentPayer[machineId], "proxy renew only by payer");
+            // [v15] 放宽(免注册表零维护): proxy 续租只需"不是租客本人"即可——任意平台钱包(活跃/退役/未来新增)都能续,
+            //   无需注册。唯一目的=防租客自付续租使 seg.payer=租客→clawback 撤销退给租客=盗平台款; 挡住租客即堵死。
+            //   第三方乱续需自掏垫款且无利可图(uncollected 时 clawback 把垫款退回其本人), 无害。renter 参数已被上方
+            //   `require(rentInfo.renter == renter)` 锚定为真实租客, 故 msg.sender != renter 不可绕过。
+            require(msg.sender != renter, "renter cannot self-renew proxy rental");
         } else {
             require(msg.sender == renter, NotProxyRentingMachine());
         }
@@ -937,7 +941,11 @@ contract Rent is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyG
         //   (proxy 机器上租客自付续租被撤却退给平台=盗款)结构上不可能。后端续租恒从原 rent_payer_wallet 发起(实测),
         //   不受影响。
         if (machine2ProxyRented[machineId]) {
-            require(msg.sender == machine2ProxyRentPayer[machineId], "proxy renew only by payer");
+            // [v15] 放宽(免注册表零维护): proxy 续租只需"不是租客本人"即可——任意平台钱包(活跃/退役/未来新增)都能续,
+            //   无需注册。唯一目的=防租客自付续租使 seg.payer=租客→clawback 撤销退给租客=盗平台款; 挡住租客即堵死。
+            //   第三方乱续需自掏垫款且无利可图(uncollected 时 clawback 把垫款退回其本人), 无害。renter 参数已被上方
+            //   `require(rentInfo.renter == renter)` 锚定为真实租客, 故 msg.sender != renter 不可绕过。
+            require(msg.sender != renter, "renter cannot self-renew proxy rental");
         } else {
             require(msg.sender == renter, NotProxyRentingMachine());
         }

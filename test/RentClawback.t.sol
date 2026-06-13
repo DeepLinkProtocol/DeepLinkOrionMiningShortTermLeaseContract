@@ -467,25 +467,25 @@ contract RentClawbackTest is RentTest {
         rent.adminReverseUnpaidRenewal(machineId, 0);
     }
 
-    // ---- [v14] proxy 机器上租客【自付】续租在源头被 guard 拦死(只有平台垫付方可续 proxy 租约),
-    //      使二轮 CRITICAL(租客自付被撤却退给平台=盗款)结构上不可能 + 修复 endRent 退款错向 MEDIUM ----
+    // ---- [v14→v15] proxy 机器上租客【自付】续租在源头被 guard 拦死(防二轮 CRITICAL: 租客自付被 clawback
+    //      退给租客=盗款 + endRent 退款错向)。v15 把守卫从"只能原垫付方"放宽为"只要不是租客"(免注册零维护) ----
     function testGuard_renterCannotSelfRenewProxyRental() public {
         _setupDLP();
         string memory machineId = "mixedM";
         _proxyRentV2(machineId, 1 hours); // 平台(payer) 垫付初租, machine2ProxyRented=true
-        // 租客试图自付续租 -> 被 guard 拒(msg.sender=renter != machine2ProxyRentPayer=payer)
+        // 租客试图自付续租 -> 被 guard 拒(msg.sender == renter)
         deal(address(rewardToken), renter, 1_000_000 ether);
         deal(DLP, renter, 1_000_000 ether);
         vm.startPrank(renter);
         rewardToken.approve(address(rent), type(uint256).max);
         IERC20(DLP).approve(address(rent), type(uint256).max);
-        vm.expectRevert(bytes("proxy renew only by payer"));
+        vm.expectRevert(bytes("renter cannot self-renew proxy rental"));
         rent.renewRentV2(machineId, 1 hours);
         vm.stopPrank();
     }
 
-    // ---- 第三方代付续租 proxy 租约也被拒(只有记录的 payer 可续) ----
-    function testGuard_thirdPartyCannotRenewProxyRental() public {
+    // ---- [v15] 第三方(非租客)代付续租 proxy 租约现在【允许】(免注册零维护; 第三方自掏垫款无利可图无害) ----
+    function testGuard_thirdPartyCanNowRenewProxyRental() public {
         _setupDLP();
         string memory machineId = "thirdM";
         _proxyRentV2(machineId, 1 hours);
@@ -495,9 +495,10 @@ contract RentClawbackTest is RentTest {
         vm.startPrank(third);
         rewardToken.approve(address(rent), type(uint256).max);
         IERC20(DLP).approve(address(rent), type(uint256).max);
-        vm.expectRevert(bytes("proxy renew only by payer"));
-        rent.proxyRenewRentV2(renter, machineId, 1 hours);
+        rent.proxyRenewRentV2(renter, machineId, 1 hours);   // 非租客 → 通过
         vm.stopPrank();
+        (,,,, address segPayer,) = rent.rentId2RenewalSegments(_rentId(machineId), 0);
+        assertEq(segPayer, third, "third-party renewal seg.payer=third (clawback refunds them, harmless)");
     }
 
     // ---- 平台垫付方续 proxy 租约正常通过(回归保护: guard 不误伤正规流程) ----
@@ -625,6 +626,67 @@ contract RentClawbackTest is RentTest {
         vm.prank(CLAWBACK_ADMIN);
         vm.expectRevert(bytes("not authorized"));
         rent.adminReverseUnpaidRenewal(machineId, 0);
+    }
+
+    // ════════ v15: proxy 续租守卫放宽为"非租客即可"(免注册表零维护) ════════
+    address constant ALT_PAYER = address(0xA17);   // 另一个平台续租钱包(非原垫付方)
+
+    function _fundApprove(address w) internal {
+        deal(address(rewardToken), w, 1_000_000 ether);
+        deal(DLP, w, 1_000_000 ether);
+        vm.startPrank(w);
+        rewardToken.approve(address(rent), type(uint256).max);
+        IERC20(DLP).approve(address(rent), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    // ---- 任意平台钱包(非原垫付方、无需注册)可续租 proxy 租约 ----
+    function testProxyRenew_anyNonRenterWalletCanRenew() public {
+        _setupDLP();
+        string memory machineId = "altRenewM";
+        _proxyRentV2(machineId, 1 hours);          // 原垫付方 = payer(0xAA)
+        _fundApprove(ALT_PAYER);
+        // ALT_PAYER 不是原垫付方、没注册任何东西, 但不是租客 → 应通过
+        vm.prank(ALT_PAYER);
+        rent.proxyRenewRentV2(renter, machineId, 1 hours);
+        uint256 rentId = _rentId(machineId);
+        (,,,, address segPayer,) = rent.rentId2RenewalSegments(rentId, 0);
+        assertEq(segPayer, ALT_PAYER, "seg.payer = actual renewing wallet (ALT)");
+    }
+
+    // ---- 原垫付方仍能续(向后兼容) ----
+    function testProxyRenew_originalPayerStillWorks() public {
+        _setupDLP();
+        string memory machineId = "origRenewM";
+        _proxyRentV2(machineId, 1 hours);
+        _renew(machineId, 1 hours);                // payer(原垫付方)续
+        (,,,, address segPayer,) = rent.rentId2RenewalSegments(_rentId(machineId), 0);
+        assertEq(segPayer, payer, "original payer can still renew");
+    }
+
+    // ---- ★安全核心: 租客自付续租 proxy 租约被挡(防 clawback 退给租客=盗款) ----
+    function testProxyRenew_renterCannotSelfRenew() public {
+        _setupDLP();
+        string memory machineId = "renterBlockM";
+        _proxyRentV2(machineId, 1 hours);
+        _fundApprove(renter);
+        vm.prank(renter);
+        vm.expectRevert(bytes("renter cannot self-renew proxy rental"));
+        rent.proxyRenewRentV2(renter, machineId, 1 hours);
+    }
+
+    // ---- 退役钱包(模拟): 任意非租客钱包续都行, 无需任何注册/迁移 ----
+    function testProxyRenew_retiredStyleWalletNoRegistrationNeeded() public {
+        _setupDLP();
+        string memory machineId = "retiredM";
+        _proxyRentV2(machineId, 1 hours);          // 原垫付方 payer(0xAA), 假设已"退役"
+        // 用一个全新钱包(代表新活跃池钱包)直接续, 不做任何 owner 操作
+        address newPoolWallet = address(0xBEEF);
+        _fundApprove(newPoolWallet);
+        vm.prank(newPoolWallet);
+        rent.proxyRenewRentV2(renter, machineId, 1 hours);
+        (,,,, address segPayer,) = rent.rentId2RenewalSegments(_rentId(machineId), 0);
+        assertEq(segPayer, newPoolWallet, "new pool wallet renews directly, zero maintenance");
     }
 
     // ---- 默认(未设)时 clawbackAdmin=0, 仅 owner 可调(与 v14 行为一致, 防 address(0) 绕过) ----
