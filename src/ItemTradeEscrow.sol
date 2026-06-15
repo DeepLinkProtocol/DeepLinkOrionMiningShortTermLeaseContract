@@ -36,6 +36,8 @@ contract ItemTradeEscrow is
     uint16 public constant MAX_FEE_BPS = 1000;            // 手续费上限 10%（防误设/治理滥用）
     uint256 public constant MIN_AUTO_CONFIRM = 1 days;    // 自动确认周期下限
     uint256 public constant MAX_AUTO_CONFIRM = 30 days;   // 自动确认周期上限
+    uint256 public constant MIN_DISPUTE_TIMEOUT = 14 days; // disputeTimeout 下限（防过短导致仲裁来不及）
+    uint256 public constant MAX_DISPUTE_TIMEOUT = 90 days; // disputeTimeout 上限
 
     // ───────────────────────────── 配置（owner 可调）
     IERC20 public dlpToken;          // 结算代币（DLP / Point）
@@ -68,6 +70,18 @@ contract ItemTradeEscrow is
 
     mapping(bytes32 => Order) public orders;
 
+    // ───────────────────────────── 灾难兜底（方向 B，append-only 存储；出厂默认关闭）
+    // Disputed 状态超时自救窗口：从 deliveredAt 起算，超过 disputeTimeout 后卖家可单方放款。
+    // 防「买家恶意 openDispute 永久冻结已交付订单的卖家货款」。0 = 关闭（kill-switch，出厂默认）。
+    // 命门：仅对 deliveredAt != 0（确已交付）的订单生效；纯 Paid 期开的纠纷永不可超时放款，
+    // 仍只能由 arbiter/owner 裁决，杜绝「未交付却被卖家超时拿钱」。
+    uint256 public disputeTimeout;
+
+    // 纠纷发起方（openDispute 调用者）。append-only 存储，紧随 disputeTimeout 之后。
+    // 红队向量3 修复命门：claimDisputeTimeout 超时自救仅对**买家发起**的纠纷开放，
+    // 杜绝骗子卖家自走「markDelivered(不真发货)→自己 openDispute→超时 claim 提走买家本金」。
+    mapping(bytes32 => address) public disputeInitiator;
+
     // ───────────────────────────── 事件（后端索引器监听回写订单状态）
     event OrderCreated(bytes32 indexed orderId, address indexed buyer, address indexed seller, uint256 amount);
     event OrderDelivered(bytes32 indexed orderId, uint64 deliveredAt);
@@ -82,6 +96,7 @@ contract ItemTradeEscrow is
     event FeeBpsUpdated(uint16 prev, uint16 next);
     event AutoConfirmPeriodUpdated(uint256 prev, uint256 next);
     event CanUpgradeAddressUpdated(address indexed prev, address indexed next);
+    event DisputeTimeoutUpdated(uint256 prev, uint256 next);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -113,7 +128,7 @@ contract ItemTradeEscrow is
     }
 
     function version() external pure returns (uint256) {
-        return 1;
+        return 2;
     }
 
     // ───────────────────────────── 修饰
@@ -198,6 +213,7 @@ contract ItemTradeEscrow is
         require(o.state == State.Paid || o.state == State.Delivered, "bad state");
         require(msg.sender == o.buyer || msg.sender == o.seller, "forbidden");
         o.state = State.Disputed;
+        disputeInitiator[orderId] = msg.sender; // 记录发起方，供 claimDisputeTimeout 闸门校验
         emit OrderDisputed(orderId, msg.sender);
     }
 
@@ -215,6 +231,27 @@ contract ItemTradeEscrow is
             emit OrderRefunded(orderId, buyer, amt, "dispute");
         }
         emit DisputeResolved(orderId, releaseToSeller, msg.sender);
+    }
+
+    /// @notice 灾难兜底（方向 B）：买家恶意 openDispute 永久冻结一笔**已交付**订单的卖家货款时，
+    ///   卖家可在 disputeTimeout 之后单方触发放款自救。出厂 disputeTimeout==0=关闭（kill-switch）。
+    ///   - 仅 Disputed 态；仅卖家可调。
+    ///   - 命门：require deliveredAt != 0 —— 纯 Paid 期开的纠纷（卖家从未交付）永不可走此路径，
+    ///     仍只能由 arbiter/owner 裁决，杜绝「没交货却超时拿钱」。
+    ///   - 仲裁优先：窗口内 arbiter/owner 可随时 resolveDispute 终结，之后本函数因非 Disputed 而 revert。
+    ///   - 计时锚点 = deliveredAt（不是 openDispute 时刻），与买家何时挑起纠纷无关，避免买家拖延起算点。
+    ///   - 红队向量3 命门：require disputeInitiator == buyer —— 仅**买家发起**的纠纷才允许卖家超时自救。
+    ///     杜绝骗子卖家自走「markDelivered(不真发货)→自己 openDispute→超时 claim 提走买家本金」；
+    ///     卖家自开的纠纷只能由 arbiter/owner 裁决（或买家另行处理），不能走此路径。
+    function claimDisputeTimeout(bytes32 orderId) external nonReentrant {
+        Order storage o = orders[orderId];
+        require(o.state == State.Disputed, "not disputed");
+        require(o.deliveredAt != 0, "never delivered");
+        require(disputeInitiator[orderId] == o.buyer, "not buyer-initiated");
+        require(disputeTimeout != 0, "timeout disabled");
+        require(block.timestamp >= uint256(o.deliveredAt) + disputeTimeout, "too early");
+        require(msg.sender == o.seller, "not seller");
+        _release(orderId, o, msg.sender);
     }
 
     // ───────────────────────────── 内部：放款（CEI + SafeERC20）
@@ -268,6 +305,14 @@ contract ItemTradeEscrow is
         autoConfirmPeriod = next;
     }
 
+    /// @notice 启用/调整/关闭 Disputed 超时自救窗口。next==0 = 关闭（kill-switch）；
+    ///   否则必须落在 [MIN_DISPUTE_TIMEOUT, MAX_DISPUTE_TIMEOUT]。出厂默认 0（关闭，安全默认）。
+    function setDisputeTimeout(uint256 next) external onlyOwner {
+        require(next == 0 || (next >= MIN_DISPUTE_TIMEOUT && next <= MAX_DISPUTE_TIMEOUT), "out of range");
+        emit DisputeTimeoutUpdated(disputeTimeout, next);
+        disputeTimeout = next;
+    }
+
     function setCanUpgradeAddress(address next) external onlyOwner {
         require(next != address(0), "canUpgrade=0");
         emit CanUpgradeAddressUpdated(canUpgradeAddress, next);
@@ -280,5 +325,7 @@ contract ItemTradeEscrow is
         require(msg.sender == canUpgradeAddress || msg.sender == owner(), "not upgrader");
     }
 
-    uint256[44] private __gap;
+    // __gap 从 44 → 42：v2 新增 2 个 storage slot（disputeTimeout + disputeInitiator，
+    // 均 append 在 orders 之后、__gap 之前），总占用不变 → 升级安全。
+    uint256[42] private __gap;
 }

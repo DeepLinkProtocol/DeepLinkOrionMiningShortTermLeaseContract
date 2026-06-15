@@ -53,7 +53,8 @@ contract ItemTradeEscrowTest is Test {
         assertEq(esc.feeBps(), 250);
         assertEq(esc.autoConfirmPeriod(), 7 days);
         assertEq(esc.owner(), owner);
-        assertEq(esc.version(), 1);
+        assertEq(esc.version(), 2);
+        assertEq(esc.disputeTimeout(), 0); // 灾难兜底出厂默认关闭
     }
 
     function test_cannot_reinitialize() public {
@@ -336,7 +337,7 @@ contract ItemTradeEscrowTest is Test {
         // owner is canUpgradeAddress by default
         vm.prank(owner);
         esc.upgradeToAndCall(address(impl2), "");
-        assertEq(esc.version(), 1);
+        assertEq(esc.version(), 2);
     }
 
     function test_upgrade_ownerFallback_afterCanUpgradeChanged() public {
@@ -346,7 +347,316 @@ contract ItemTradeEscrowTest is Test {
         ItemTradeEscrow impl2 = new ItemTradeEscrow();
         vm.prank(owner);
         esc.upgradeToAndCall(address(impl2), "");
-        assertEq(esc.version(), 1);
+        assertEq(esc.version(), 2);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   claimDisputeTimeout — 恶意冻结灾难兜底（方向 B，出厂默认关闭）
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function test_disputeTimeout_default_off() public view {
+        assertEq(esc.disputeTimeout(), 0); // 出厂默认关闭（kill-switch）
+        assertEq(esc.MIN_DISPUTE_TIMEOUT(), 14 days);
+        assertEq(esc.MAX_DISPUTE_TIMEOUT(), 90 days);
+        assertEq(esc.version(), 2);
+    }
+
+    // 1) Delivered → buyer openDispute → setDisputeTimeout(30d) → warp → seller 自救放款
+    function test_claimDisputeTimeout_releasesToSeller_withFee() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.prank(buyer); // 买家恶意冻结
+        esc.openDispute(OID);
+
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+
+        vm.warp(block.timestamp + 30 days);
+        vm.prank(seller); // 卖家自救
+        esc.claimDisputeTimeout(OID);
+
+        uint256 fee = PRICE * 250 / 10000; // feeBps 锁定 = 下单时 2.5%
+        uint256 net = PRICE - fee;
+        assertEq(dlp.balanceOf(seller), net);
+        assertEq(dlp.balanceOf(feeRecv), fee);
+        assertEq(dlp.balanceOf(address(esc)), 0);
+        assertEq(uint8(esc.getOrder(OID).state), uint8(ItemTradeEscrow.State.Released));
+    }
+
+    // 2) 红队约束1命门：Paid（从未 markDelivered）→ openDispute → warp 很久 → revert("never delivered")
+    function test_claimDisputeTimeout_rejects_neverDelivered() public {
+        _create(OID); // 仅 Paid，deliveredAt == 0
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        vm.prank(owner);
+        esc.setDisputeTimeout(14 days);
+
+        vm.warp(block.timestamp + 365 days); // 等再久也不行
+        vm.prank(seller);
+        vm.expectRevert(bytes("never delivered"));
+        esc.claimDisputeTimeout(OID);
+    }
+
+    // 3) 窗口未到：warp(timeout - 1) → revert("too early")
+    function test_claimDisputeTimeout_tooEarly() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        uint64 deliveredAt = esc.getOrder(OID).deliveredAt;
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+
+        vm.warp(uint256(deliveredAt) + 30 days - 1); // 差 1 秒
+        vm.prank(seller);
+        vm.expectRevert(bytes("too early"));
+        esc.claimDisputeTimeout(OID);
+    }
+
+    // 4) disputeTimeout == 0（默认/被 owner 关闭）→ revert("timeout disabled")
+    function test_claimDisputeTimeout_disabledByDefault() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        // 未设 disputeTimeout，仍为 0
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(seller);
+        vm.expectRevert(bytes("timeout disabled"));
+        esc.claimDisputeTimeout(OID);
+    }
+
+    function test_claimDisputeTimeout_killSwitch_relock() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        vm.startPrank(owner);
+        esc.setDisputeTimeout(30 days);
+        esc.setDisputeTimeout(0); // kill-switch 重新关闭
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(seller);
+        vm.expectRevert(bytes("timeout disabled"));
+        esc.claimDisputeTimeout(OID);
+    }
+
+    // 5) 仲裁优先：窗口内 resolveDispute(false) 全退买家，事后 claim → revert("not disputed")
+    function test_claimDisputeTimeout_arbiterTakesPriority() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+
+        uint256 before = dlp.balanceOf(buyer);
+        vm.prank(arbiter); // 窗口内仲裁先于自救生效
+        esc.resolveDispute(OID, false);
+        assertEq(dlp.balanceOf(buyer), before + PRICE); // 全退买家，无 fee
+        assertEq(uint8(esc.getOrder(OID).state), uint8(ItemTradeEscrow.State.Refunded));
+
+        vm.warp(block.timestamp + 30 days);
+        vm.prank(seller);
+        vm.expectRevert(bytes("not disputed")); // 已终结
+        esc.claimDisputeTimeout(OID);
+    }
+
+    // 6a) 权限：非 seller 调 → revert("not seller")
+    function test_claimDisputeTimeout_onlySeller() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+        vm.warp(block.timestamp + 30 days);
+
+        vm.prank(buyer);
+        vm.expectRevert(bytes("not seller"));
+        esc.claimDisputeTimeout(OID);
+        vm.prank(stranger);
+        vm.expectRevert(bytes("not seller"));
+        esc.claimDisputeTimeout(OID);
+        vm.prank(arbiter);
+        vm.expectRevert(bytes("not seller"));
+        esc.claimDisputeTimeout(OID);
+    }
+
+    // 6b) setDisputeTimeout 非 owner → revert
+    function test_setDisputeTimeout_onlyOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert();
+        esc.setDisputeTimeout(30 days);
+        vm.prank(arbiter);
+        vm.expectRevert();
+        esc.setDisputeTimeout(30 days);
+    }
+
+    // 6c) 上下界：13d/91d revert；0/14d/90d ok
+    function test_setDisputeTimeout_bounds() public {
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("out of range"));
+        esc.setDisputeTimeout(13 days);
+        vm.expectRevert(bytes("out of range"));
+        esc.setDisputeTimeout(91 days);
+
+        esc.setDisputeTimeout(14 days);
+        assertEq(esc.disputeTimeout(), 14 days);
+        esc.setDisputeTimeout(90 days);
+        assertEq(esc.disputeTimeout(), 90 days);
+        esc.setDisputeTimeout(0); // kill-switch 允许
+        assertEq(esc.disputeTimeout(), 0);
+        vm.stopPrank();
+    }
+
+    // 7) claim 后再 claim / confirm / resolve 全 revert（终态不可逆）
+    function test_claimDisputeTimeout_terminalIrreversible() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+        vm.warp(block.timestamp + 30 days);
+        vm.prank(seller);
+        esc.claimDisputeTimeout(OID); // → Released
+
+        vm.prank(seller);
+        vm.expectRevert(bytes("not disputed"));
+        esc.claimDisputeTimeout(OID);
+        vm.prank(buyer);
+        vm.expectRevert(bytes("bad state"));
+        esc.confirmReceived(OID);
+        vm.prank(arbiter);
+        vm.expectRevert(bytes("not disputed"));
+        esc.resolveDispute(OID, true);
+    }
+
+    // 8) 非 Disputed 态（Paid / Delivered / Released）调 claimDisputeTimeout → revert("not disputed")
+    function test_claimDisputeTimeout_rejects_nonDisputedStates() public {
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+
+        // Paid
+        _create(OID);
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(seller);
+        vm.expectRevert(bytes("not disputed"));
+        esc.claimDisputeTimeout(OID);
+
+        // Delivered
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(seller);
+        vm.expectRevert(bytes("not disputed"));
+        esc.claimDisputeTimeout(OID);
+
+        // Released (买家确认)
+        vm.prank(buyer);
+        esc.confirmReceived(OID);
+        vm.prank(seller);
+        vm.expectRevert(bytes("not disputed"));
+        esc.claimDisputeTimeout(OID);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    //   红队向量3：disputeInitiator 闸门 —— 仅买家发起的纠纷才允许卖家超时自救
+    // ───────────────────────────────────────────────────────────────────────
+
+    // 10) 🔴 BLOCKER：seller 自走 markDelivered(不真发货)→seller 自己 openDispute→
+    //     warp(disputeTimeout)→seller claimDisputeTimeout 必须 revert("not buyer-initiated")。
+    //     堵死骗子卖家单方提走买家本金的攻击向量。
+    function test_claimDisputeTimeout_rejects_sellerInitiated() public {
+        _create(OID);
+        vm.startPrank(seller);
+        esc.markDelivered(OID);
+        esc.openDispute(OID); // 卖家自开纠纷
+        vm.stopPrank();
+
+        // 记录的发起方应是 seller（不是 buyer）
+        assertEq(esc.disputeInitiator(OID), seller);
+
+        vm.prank(owner);
+        esc.setDisputeTimeout(30 days);
+        vm.warp(block.timestamp + 30 days);
+
+        vm.prank(seller);
+        vm.expectRevert(bytes("not buyer-initiated"));
+        esc.claimDisputeTimeout(OID);
+
+        // 资金仍锁在合约，订单仍 Disputed，只能等 arbiter 裁
+        assertEq(dlp.balanceOf(address(esc)), PRICE);
+        assertEq(uint8(esc.getOrder(OID).state), uint8(ItemTradeEscrow.State.Disputed));
+    }
+
+    // 11) seller 自开纠纷后，arbiter 仍可正常裁决（兜底路径不受影响）
+    function test_sellerInitiated_arbiterCanStillResolve() public {
+        _create(OID);
+        vm.startPrank(seller);
+        esc.markDelivered(OID);
+        esc.openDispute(OID);
+        vm.stopPrank();
+        assertEq(esc.disputeInitiator(OID), seller);
+
+        uint256 before = dlp.balanceOf(buyer);
+        vm.prank(arbiter);
+        esc.resolveDispute(OID, false); // 卖家没真发货 → 退买家
+        assertEq(dlp.balanceOf(buyer), before + PRICE);
+        assertEq(uint8(esc.getOrder(OID).state), uint8(ItemTradeEscrow.State.Refunded));
+    }
+
+    // 12) disputeInitiator 记录正确：buyer 开记 buyer
+    function test_disputeInitiator_recordsBuyer() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.markDelivered(OID);
+        assertEq(esc.disputeInitiator(OID), address(0)); // 开纠纷前为 0
+        vm.prank(buyer);
+        esc.openDispute(OID);
+        assertEq(esc.disputeInitiator(OID), buyer);
+    }
+
+    // 13) disputeInitiator 记录正确：seller 开记 seller（Paid 态直接开）
+    function test_disputeInitiator_recordsSeller() public {
+        _create(OID);
+        vm.prank(seller);
+        esc.openDispute(OID); // Paid 态卖家开纠纷
+        assertEq(esc.disputeInitiator(OID), seller);
+    }
+
+    // 9) fuzz：claimDisputeTimeout 路径放款 net + fee == amount, fee <= amount
+    function testFuzz_claimDisputeTimeout_feeMath(uint256 amount) public {
+        amount = bound(amount, 1, 1_000_000 ether);
+        dlp.mint(buyer, amount);
+        bytes32 oid = keccak256(abi.encode("dt", amount));
+        vm.prank(buyer);
+        esc.createOrder(oid, seller, amount);
+        vm.prank(seller);
+        esc.markDelivered(oid);
+        vm.prank(buyer);
+        esc.openDispute(oid);
+        vm.prank(owner);
+        esc.setDisputeTimeout(14 days);
+        vm.warp(block.timestamp + 14 days);
+
+        uint256 sellerBefore = dlp.balanceOf(seller);
+        uint256 feeBefore = dlp.balanceOf(feeRecv);
+        vm.prank(seller);
+        esc.claimDisputeTimeout(oid);
+        uint256 paidNet = dlp.balanceOf(seller) - sellerBefore;
+        uint256 paidFee = dlp.balanceOf(feeRecv) - feeBefore;
+        assertEq(paidNet + paidFee, amount);
+        assertLe(paidFee, amount);
     }
 
     // ───────── fuzz fee math invariant: net + fee == amount, fee <= amount
