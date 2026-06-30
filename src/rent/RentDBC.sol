@@ -88,6 +88,14 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     // [R2 HIGH 修复] pending 总额。pending 故意比活跃租约存活更久，故 setPointToken 必须同时 require 此值为 0，
     // 否则换币后旧 DLP 被困、矿工 claim 取不出 / 新币 escrow 被挪用。
     uint256 public totalPendingPointPayout;
+    // [审计加固 2026-06-30] DBC 退款(payer paybackDBC / 平台费)直转失败时转入 pending，受款方自行 claimDbcPayout；
+    //   保证 endRent 永不因 token 暂停/受款地址被拉黑而 revert 卡死(原仅矿工 DLP 腿做了隔离)。
+    //   pending 比活跃租约存活更久 → setFeeToken/rescueToken 守卫须同时 require 此值为 0。
+    mapping(address => uint256) public pendingDbcPayout;
+    uint256 public totalPendingDbcPayout;
+    // [审计加固] priceSetter 单次推价偏离熔断倍数：0=关(默认,不改现有行为)；>0 时新价须在 [old/X, old*X] 内，
+    //   防 priceSetter 被盗推绝对离谱价(1wei/1e30)瞬间错价。owner 可配(setPriceMaxDeviationX)，建议部署后设(如 10)。
+    uint256 public priceMaxDeviationX;
     // [R3 HIGH] dbcAI.getMachineInfo 的 isDeepLink 命名空间参数，owner 可调（默认 false=主链原生 DBC 挖矿机器）。
     // ⚠️ 上线前必须用真实 dbcAI(0xa7B9…) fork 验证：对中国 DBC 机器传 false/true 哪个返回正确 calcPoint/owner。
     bool public dbcAIQueryIsDeepLink;
@@ -127,6 +135,9 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     event PayBackPointFeeShortfall(string machineId, uint256 rentId, uint256 owed, uint256 actual);
     event PointPayoutDeferred(address indexed minerPayout, uint256 rentId, uint256 amount); // 直转失败转 pending
     event PointPayoutClaimed(address indexed minerPayout, uint256 amount);
+    event DbcPayoutDeferred(address indexed recipient, uint256 rentId, uint256 amount); // DBC 退款/平台费直转失败转 pending
+    event DbcPayoutClaimed(address indexed recipient, uint256 amount);
+    event RentAdminSet(address indexed admin, bool isAdd); // [审计加固] rentAdmin 角色变更可审计
     event MaxRentDurationUpdated(uint256 oldValue, uint256 newValue);
     event RentBonusBridgeUpdated(address oldBridge, address newBridge);
     event RentBonusNotified(string machineId, bool isRented, bool ok); // 桥调用结果（ok=false 表示桥失败但租用不受影响）
@@ -202,10 +213,11 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         canUpgradeAddress = addr;
     }
 
-    /// @dev [MED 修复] 有活跃租约时禁止切换支付/积分币种，否则托管的旧币种结算时读到新指针会卡死/冻结资金
+    /// @dev [MED 修复] 有活跃租约时禁止切换支付/积分币种，否则托管的旧币种结算时读到新指针会卡死/冻结资金。
+    ///   [审计加固] 还须无未领 DBC pending（claimDbcPayout 取的是 feeToken，换币后旧 DBC pending 取不出）。
     function setFeeToken(address _feeToken) external onlyOwner {
         require(_feeToken != address(0), ZeroAddress());
-        require(activeRentalCount == 0, TokenLockedWhileRentalsActive());
+        require(activeRentalCount == 0 && totalPendingDbcPayout == 0, TokenLockedWhileRentalsActive());
         feeToken = IRewardToken(_feeToken);
     }
 
@@ -273,6 +285,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     function setRentAdmins(address[] calldata admins, bool isAdd) external onlyOwner {
         for (uint256 i = 0; i < admins.length; i++) {
             rentAdmins[admins[i]] = isAdd;
+            emit RentAdminSet(admins[i], isAdd); // [审计加固] 可审计：rentAdmin 是代付/选 minerPayout 的高权角色
         }
     }
 
@@ -284,10 +297,22 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         emit DbcPriceMarkupUpdated(oldBps, bps);
     }
 
+    /// @notice [审计加固] 单次推价偏离熔断倍数。0=关；建议部署后设(如 10)防 priceSetter 被盗推绝对离谱价。
+    function setPriceMaxDeviationX(uint256 x) external onlyOwner {
+        priceMaxDeviationX = x;
+    }
+
     function setTokenPriceInUSD(uint256 price) external {
         require(price > 0, "invalid price");
         require(msg.sender == priceSetter, "has no permission");
         uint256 oldPrice = tokenPriceInfo.price;
+        // [审计加固] 偏离熔断(opt-in)：启用且有旧价时，新价须在 [old/X, old*X]，挡被盗 priceSetter 推绝对离谱价。
+        if (priceMaxDeviationX > 0 && oldPrice > 0) {
+            require(
+                price <= oldPrice * priceMaxDeviationX && price * priceMaxDeviationX >= oldPrice,
+                "price deviation too large"
+            );
+        }
         tokenPriceInfo.price = price;
         tokenPriceInfo.timestamp = block.timestamp;
         emit TokenPriceUpdated(oldPrice, price, block.timestamp);
@@ -541,21 +566,34 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
             activeRentalCount -= 1;
         }
 
-        // 退款给 payer
+        // [审计加固] 退款给 payer：try/catch 包裹，token 暂停/payer 被拉黑时转 pending 由 payer 自行 claimDbcPayout，
+        //   保证 endRent 永不卡死（原裸 safeTransfer 失败会整笔 revert 致机器永久卡 rented，需 owner forceCleanup）。
         if (paybackDBC > 0) {
-            SafeERC20.safeTransfer(feeToken, payer, paybackDBC);
-            emit PayBackFee(machineId, rentId, payer, paybackDBC);
+            try feeToken.transfer(payer, paybackDBC) returns (bool ok) {
+                if (ok) emit PayBackFee(machineId, rentId, payer, paybackDBC);
+                else _deferDbcPayout(payer, rentId, paybackDBC);
+            } catch {
+                _deferDbcPayout(payer, rentId, paybackDBC);
+            }
         }
         if (paybackPoint > 0) {
-            SafeERC20.safeTransfer(pointToken, payer, paybackPoint);
-            emit PayBackPointFee(machineId, rentId, payer, paybackPoint);
+            try pointToken.transfer(payer, paybackPoint) returns (bool ok) {
+                if (ok) emit PayBackPointFee(machineId, rentId, payer, paybackPoint);
+                else _deferPayout(payer, rentId, paybackPoint);
+            } catch {
+                _deferPayout(payer, rentId, paybackPoint);
+            }
         }
-        // 已用 baseFee 的 DBC 销毁
+        // 已用 baseFee 的 DBC 销毁。[审计加固] burnFrom 用 try/catch：token 暂停时跳过(DBC 留合约,owner 可 rescue),
+        //   不阻塞 endRent。approve 先于 try(自授权,失败极罕见=token 全暂停,此时走 forceCleanup 兜底)。
         if (burnAmount > 0) {
             feeToken.approve(address(this), burnAmount);
-            feeToken.burnFrom(address(this), burnAmount);
-            emit BurnedFee(machineId, rentId, block.timestamp, burnAmount, rentInfo.renter);
-            totalBurnedAmount += burnAmount;
+            try feeToken.burnFrom(address(this), burnAmount) {
+                emit BurnedFee(machineId, rentId, block.timestamp, burnAmount, rentInfo.renter);
+                totalBurnedAmount += burnAmount;
+            } catch {
+                // 销毁失败(token 暂停)→ DBC 暂留合约,不阻塞退租；事后 owner 处理
+            }
         }
         // [HIGH 修复] 矿工 DLP payout 用 try/catch：失败（黑名单/合约 revert）转 pending 由矿工自行 claim，
         // 保证 endRent 永不因恶意/失效 minerPayout 卡死（机器解锁 + 本金结算照常完成）。
@@ -570,10 +608,14 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
                 _deferPayout(rentInfo.minerPayout, rentId, minerAmount);
             }
         }
-        // platformFee 给平台
+        // [审计加固] platformFee 给平台：try/catch 包裹，失败转 pending 由平台收款方自行 claimDbcPayout，不阻塞退租。
         if (platformAmount > 0) {
-            SafeERC20.safeTransfer(feeToken, platformFeeRecipient, platformAmount);
-            emit PlatformFeeTransfer(platformFeeRecipient, rentId, platformAmount);
+            try feeToken.transfer(platformFeeRecipient, platformAmount) returns (bool ok) {
+                if (ok) emit PlatformFeeTransfer(platformFeeRecipient, rentId, platformAmount);
+                else _deferDbcPayout(platformFeeRecipient, rentId, platformAmount);
+            } catch {
+                _deferDbcPayout(platformFeeRecipient, rentId, platformAmount);
+            }
         }
 
         emit EndRentMachine(rentInfo.minerPayout, rentId, machineId, rentInfo.rentEndTime, rentInfo.renter);
@@ -587,6 +629,13 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         pendingPointPayout[minerPayout] += amount;
         totalPendingPointPayout += amount;
         emit PointPayoutDeferred(minerPayout, rentId, amount);
+    }
+
+    /// @dev [审计加固] DBC 退款(payer)/平台费直转失败时转 pending（setFeeToken/rescueToken 守卫依赖此值）
+    function _deferDbcPayout(address recipient, uint256 rentId, uint256 amount) internal {
+        pendingDbcPayout[recipient] += amount;
+        totalPendingDbcPayout += amount;
+        emit DbcPayoutDeferred(recipient, rentId, amount);
     }
 
     /// @dev [+30% 桥] 通知主链 RentBridge 标记机器被租/退租。try/catch 包裹：桥未配置(0)或失败都不阻塞
@@ -613,11 +662,24 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         emit PointPayoutClaimed(msg.sender, amount);
     }
 
+    /// @notice [审计加固] payer/平台领取因 DBC 直转失败而暂存的退款/平台费
+    function claimDbcPayout() external nonReentrant {
+        uint256 amount = pendingDbcPayout[msg.sender];
+        require(amount > 0, NothingToClaim());
+        pendingDbcPayout[msg.sender] = 0;
+        totalPendingDbcPayout -= amount;
+        SafeERC20.safeTransfer(feeToken, msg.sender, amount);
+        emit DbcPayoutClaimed(msg.sender, amount);
+    }
+
     /// @notice owner 救援被困/误转入的代币（仅在无活跃租约且无未领 pending 时；此时合约无任何在途义务）。
     /// @dev 解决审计 LOW：误转入/shortfall 残留/旧币种残留的 DLP/DBC 否则永久冻结。
     function rescueToken(address token, address to, uint256 amount) external onlyOwner nonReentrant {
         require(to != address(0), ZeroAddress());
-        require(activeRentalCount == 0 && totalPendingPointPayout == 0, HasObligations());
+        require(
+            activeRentalCount == 0 && totalPendingPointPayout == 0 && totalPendingDbcPayout == 0,
+            HasObligations()
+        );
         SafeERC20.safeTransfer(IERC20(token), to, amount);
     }
 

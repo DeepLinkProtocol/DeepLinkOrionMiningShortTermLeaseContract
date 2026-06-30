@@ -291,6 +291,39 @@ contract RentDBCTest is Test {
         assertEq(rentDbc.pendingPointPayout(bad), 0, "pending cleared");
     }
 
+    // [审计加固 2026-06-30] payer DBC 退款腿被拉黑时 → defer 不卡死 + 可 claimDbcPayout（顺带测 burn try/catch 不 revert）
+    function test_EndRent_BlacklistedPayer_DefersDbcNotBricks() public {
+        BlacklistableToken bl = new BlacklistableToken();
+        vm.prank(owner);
+        rentDbc.setFeeToken(address(bl)); // 无活跃租约时允许切 DBC 币
+        bl.mint(payerWallet, 1_000_000_000 ether);
+        vm.prank(payerWallet);
+        bl.approve(address(rentDbc), type(uint256).max);
+
+        vm.prank(payerWallet);
+        rentDbc.rentProxy(renter, minerPayout, MID, ONE_HOUR);
+
+        // 提前退租(用一半) → 有 paybackDBC 退给 payer；先把 payer 在 DBC token 拉黑
+        vm.warp(block.timestamp + 30 minutes);
+        bl.setBlocked(payerWallet, true);
+
+        vm.prank(renter);
+        rentDbc.endRentMachine(MID); // 不应 revert（payer DBC 退款 + burn 失败都被隔离）
+
+        uint256 owed = rentDbc.pendingDbcPayout(payerWallet);
+        assertGt(owed, 0, "payer DBC payback deferred");
+        assertEq(rentDbc.getRenter(MID), address(0), "machine freed");
+        assertEq(rentDbc.activeRentalCount(), 0, "count decremented");
+
+        // 解除黑名单后 payer 可 claim
+        bl.setBlocked(payerWallet, false);
+        uint256 beforeBal = bl.balanceOf(payerWallet);
+        vm.prank(payerWallet);
+        rentDbc.claimDbcPayout();
+        assertEq(bl.balanceOf(payerWallet) - beforeBal, owed, "claimed");
+        assertEq(rentDbc.pendingDbcPayout(payerWallet), 0, "pending cleared");
+    }
+
     // [LOW→MED] 续租总时长上限
     function test_RenewRent_ExceedsCap_Reverts() public {
         vm.prank(owner);
