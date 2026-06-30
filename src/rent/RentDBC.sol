@@ -5,7 +5,6 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "../interface/IRewardToken.sol";
 import "../interface/IDBCAIContract.sol";
 import "../interface/IOracle.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
@@ -20,14 +19,14 @@ interface IRentBonusBridge {
 
 /// @title RentDBC — DBC 支付版短租合约（面向中国矿工机器）
 /// @notice 与 DLC `Rent.sol` 完全独立、零耦合。功能对标 DLC 租赁，但：
-///   - 支付/销毁币种 = DBC（ERC20 gas 币，带 burnFrom），租金 base 部分按比例销毁；
+///   - 支付币种 = DBC（标准 ERC20，无需 burnFrom），租金 base 部分按比例"销毁"=transfer 到 burnAddress(默认黑洞)；
 ///   - 不依赖 NFTStaking：机器算力(calcPoint)从 dbcAI 合约读，质押生命周期/slash/白名单/在线检查全部去掉；
 ///   - 矿工挖矿走 Substrate 主链原生 DBC 挖矿（不在本合约），矿工的 DLP 积分租金收益在退租时结算；
 ///   - 国家判定(中国机器) + 10 个代付钱包 = DeepLink 后端职责，本合约只限制发起人为授权后端钱包（防绕过）；
 ///   - 矿工收 DLP 租金的地址由矿工在 DeepLink 自行指定，后端下单时以 `minerPayout` 参数传入。
 /// @dev 资金模型（对标 DLC V2）：
 ///   payer(代付钱包) 转入 DBC(baseFee + platformFee) + DLP 积分(extraFee) →
-///   退租按已用时长比例结算：已用 baseFee 的 DBC burnFrom 销毁 / platformFee 给平台 / 已用 extraFee 的 DLP 给矿工 /
+///   退租按已用时长比例结算：已用 baseFee 的 DBC transfer 到 burnAddress(销毁) / platformFee 给平台 / 已用 extraFee 的 DLP 给矿工 /
 ///   未用部分 DBC + DLP 退还 payer。
 contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     uint8 public constant SECONDS_PER_BLOCK = 6;
@@ -35,7 +34,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     uint256 public constant FACTOR = 10_000;
     uint256 public constant USD_DECIMALS = 1_000_000;
 
-    IRewardToken public feeToken; // DBC
+    IERC20 public feeToken; // DBC ERC20（标准 ERC20，不再需 burnFrom；销毁部分改为 transfer 到 burnAddress）
     IDBCAIContract public dbcAIContract; // 机器算力/owner 数据源（不依赖 NFTStaking）
     IOracle public oracle; // DBC/USD 兜底价格源
     /// @notice DLP 积分代币（与 DLC 版同一个 Point Token 0x9b09…，矿工租金收益）。initialize 设入，可 owner 调整。
@@ -103,6 +102,9 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     uint256 public maxPriceAge;
     // [+30% 桥] 主链 RentBridge precompile 地址（0=禁用）。租出/退租时通知主链标记被租，享受原生挖矿 +30% 加成。
     address public rentBonusBridge;
+    // [boss 2026-06-30] 销毁地址：base 的"销毁"部分不再依赖可销毁 ERC20 的 burnFrom（DBC ERC20 无 burnFrom），
+    //   改为 transfer 到此指定地址。initialize 默认 0x…dEaD(真黑洞)；owner 可 setBurnAddress 改为指定收集地址。
+    address public burnAddress;
 
     event RentMachine(
         address indexed minerPayout,
@@ -140,6 +142,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     event RentAdminSet(address indexed admin, bool isAdd); // [审计加固] rentAdmin 角色变更可审计
     event MaxRentDurationUpdated(uint256 oldValue, uint256 newValue);
     event RentBonusBridgeUpdated(address oldBridge, address newBridge);
+    event BurnAddressUpdated(address oldAddr, address newAddr);
     event RentBonusNotified(string machineId, bool isRented, bool ok); // 桥调用结果（ok=false 表示桥失败但租用不受影响）
 
     error ZeroAddress();
@@ -190,7 +193,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
                 && _platformFeeRecipient != address(0),
             ZeroAddress()
         );
-        feeToken = IRewardToken(_feeToken);
+        feeToken = IERC20(_feeToken);
         dbcAIContract = IDBCAIContract(_dbcAIContract);
         pointToken = IERC20(_pointToken);
         platformFeeRecipient = _platformFeeRecipient;
@@ -199,6 +202,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         //   部署后仍应 setCanUpgradeAddress 指向多签/timelock 并链上读回确认。
         canUpgradeAddress = _initialOwner;
         platformFeeRate = 10; // 默认 10%
+        burnAddress = 0x000000000000000000000000000000000000dEaD; // [boss] 销毁默认黑洞；可 setBurnAddress 改指定地址
     }
 
     function _authorizeUpgrade(address newImplementation) internal view override {
@@ -218,7 +222,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     function setFeeToken(address _feeToken) external onlyOwner {
         require(_feeToken != address(0), ZeroAddress());
         require(activeRentalCount == 0 && totalPendingDbcPayout == 0, TokenLockedWhileRentalsActive());
-        feeToken = IRewardToken(_feeToken);
+        feeToken = IERC20(_feeToken);
     }
 
     function setDBCAIContract(address addr) external onlyOwner {
@@ -275,6 +279,13 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     function setRentBonusBridge(address addr) external onlyOwner {
         emit RentBonusBridgeUpdated(rentBonusBridge, addr);
         rentBonusBridge = addr;
+    }
+
+    /// @notice [boss 2026-06-30] 设置销毁地址（base 销毁部分 transfer 到此处）。0x…dEaD=真黑洞，或指定收集地址。
+    function setBurnAddress(address addr) external onlyOwner {
+        require(addr != address(0), ZeroAddress());
+        emit BurnAddressUpdated(burnAddress, addr);
+        burnAddress = addr;
     }
 
     function setPriceSetter(address addr) external onlyOwner {
@@ -584,15 +595,16 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
                 _deferPayout(payer, rentId, paybackPoint);
             }
         }
-        // 已用 baseFee 的 DBC 销毁。[审计加固] burnFrom 用 try/catch：token 暂停时跳过(DBC 留合约,owner 可 rescue),
-        //   不阻塞 endRent。approve 先于 try(自授权,失败极罕见=token 全暂停,此时走 forceCleanup 兜底)。
+        // [boss 2026-06-30] 已用 baseFee 的 DBC "销毁"：不再 burnFrom(DBC ERC20 无可销毁接口)，改为 transfer 到
+        //   burnAddress(默认 0x…dEaD 真黑洞，或 owner 指定的收集地址)。[审计加固] try/catch：失败留合约不阻塞退租。
         if (burnAmount > 0) {
-            feeToken.approve(address(this), burnAmount);
-            try feeToken.burnFrom(address(this), burnAmount) {
-                emit BurnedFee(machineId, rentId, block.timestamp, burnAmount, rentInfo.renter);
-                totalBurnedAmount += burnAmount;
+            try feeToken.transfer(burnAddress, burnAmount) returns (bool ok) {
+                if (ok) {
+                    emit BurnedFee(machineId, rentId, block.timestamp, burnAmount, rentInfo.renter);
+                    totalBurnedAmount += burnAmount;
+                }
             } catch {
-                // 销毁失败(token 暂停)→ DBC 暂留合约,不阻塞退租；事后 owner 处理
+                // 转账失败(token 暂停)→ DBC 暂留合约,不阻塞退租；事后 owner 处理
             }
         }
         // [HIGH 修复] 矿工 DLP payout 用 try/catch：失败（黑名单/合约 revert）转 pending 由矿工自行 claim，

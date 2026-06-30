@@ -137,15 +137,16 @@ contract RentDBCTest is Test {
     function test_EndRent_FullDuration_BurnsBase_PaysMiner_AndPlatform() public {
         (uint256 base, uint256 plat, uint256 extra) = _rent(ONE_HOUR);
         uint256 burnedBefore = rentDbc.totalBurnedAmount();
-        uint256 dbcSupplyBefore = dbc.totalSupply();
+        address burnAddr = rentDbc.burnAddress(); // 默认 0x…dEaD
+        uint256 burnAddrBefore = dbc.balanceOf(burnAddr);
 
         // 租期结束后退租
         vm.warp(block.timestamp + ONE_HOUR + 1);
         rentDbc.endRentMachine(MID);
 
-        // base 的 DBC 被销毁
-        assertEq(rentDbc.totalBurnedAmount() - burnedBefore, base, "burned base");
-        assertEq(dbcSupplyBefore - dbc.totalSupply(), base, "supply down by base");
+        // [boss] base 的 DBC "销毁" = transfer 到 burnAddress（不再 burnFrom，故 totalSupply 不变）
+        assertEq(rentDbc.totalBurnedAmount() - burnedBefore, base, "burned base (counter)");
+        assertEq(dbc.balanceOf(burnAddr) - burnAddrBefore, base, "base sent to burnAddress");
         // platform 拿到 platformFee（DBC）
         assertEq(dbc.balanceOf(platform), plat, "platform fee");
         // 矿工拿到 extra（DLP）
@@ -289,6 +290,29 @@ contract RentDBCTest is Test {
         rentDbc.claimPointPayout();
         assertEq(bl.balanceOf(bad), extra, "claimed");
         assertEq(rentDbc.pendingPointPayout(bad), 0, "pending cleared");
+    }
+
+    // [boss 2026-06-30] "销毁" = transfer 到指定 burnAddress（owner 可改），不依赖 burnFrom
+    function test_BurnGoesToDesignatedAddress() public {
+        address collector = address(0xC0FFEE);
+        vm.prank(owner);
+        rentDbc.setBurnAddress(collector);
+        assertEq(rentDbc.burnAddress(), collector, "burnAddress set");
+
+        (uint256 base,,) = _rent(ONE_HOUR);
+        vm.warp(block.timestamp + ONE_HOUR + 1);
+        rentDbc.endRentMachine(MID);
+        assertEq(dbc.balanceOf(collector), base, "base sent to designated burn address");
+        assertEq(rentDbc.totalBurnedAmount(), base, "burn counter");
+    }
+
+    function test_SetBurnAddress_RejectsZero_OnlyOwner() public {
+        vm.prank(owner);
+        vm.expectRevert(RentDBC.ZeroAddress.selector);
+        rentDbc.setBurnAddress(address(0));
+        vm.prank(renter); // 非 owner
+        vm.expectRevert();
+        rentDbc.setBurnAddress(address(0x123));
     }
 
     // [审计加固 2026-06-30] payer DBC 退款腿被拉黑时 → defer 不卡死 + 可 claimDbcPayout（顺带测 burn try/catch 不 revert）
