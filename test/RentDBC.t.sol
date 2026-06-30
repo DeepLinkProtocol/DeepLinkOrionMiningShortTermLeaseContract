@@ -91,10 +91,40 @@ contract RentDBCTest is Test {
         rentDbc.rentProxy(renter, minerPayout, MID, ONE_HOUR);
     }
 
+    // [#8 B 方案] getRentCostInPoint 把平台总成本(base+plat DBC + extra DLP)折算成统一积分口径，
+    //   供后端「租客付 = 成本 × 加价」结构上保证 revenue ≥ cost。验证公式正确 + 覆盖全额代付。
+    function test_GetRentCostInPoint_MatchesOutlayInPointTerms() public {
+        (uint256 base, uint256 plat, uint256 extra) = rentDbc.getRentFees(MID, ONE_HOUR);
+        uint256 price = 5000; // = setUp 的 setTokenPriceInUSD(5000)，USD 6dec/DBC
+        uint256 expected = (base + plat) * price * 1e15 / 1e18 + extra;
+        uint256 got = rentDbc.getRentCostInPoint(MID, ONE_HOUR);
+        assertEq(got, expected, "cost-in-point formula");
+        assertGt(got, 0, "cost>0");
+        // extra 已是积分口径，必然 ≤ 总成本积分；DBC 部分也被计入（cost > extra 当 base/plat>0）
+        assertGe(got, extra, "covers extra point");
+        assertGt(got, extra, "includes dbc portion");
+    }
+
+    // 单调：租期翻倍，成本积分单调增（防定价被时长绕过）
+    function test_GetRentCostInPoint_MonotonicInDuration() public {
+        assertGt(
+            rentDbc.getRentCostInPoint(MID, 2 * ONE_HOUR),
+            rentDbc.getRentCostInPoint(MID, ONE_HOUR),
+            "longer rent costs more"
+        );
+    }
+
     function test_RentProxy_RejectsBadDuration() public {
         vm.prank(payerWallet);
         vm.expectRevert(abi.encodeWithSelector(RentDBC.InvalidRentDuration.selector, uint256(5 minutes)));
         rentDbc.rentProxy(renter, minerPayout, MID, 5 minutes);
+    }
+
+    // [审计修 HIGH] renter=0 必须拒绝：否则破坏 isRented 哨兵 → 双租 + escrow 孤儿锁死
+    function test_RentProxy_RejectsZeroRenter() public {
+        vm.prank(payerWallet);
+        vm.expectRevert(RentDBC.ZeroAddress.selector);
+        rentDbc.rentProxy(address(0), minerPayout, MID, ONE_HOUR);
     }
 
     function test_RentProxy_RejectsDoubleRent() public {

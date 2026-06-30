@@ -183,7 +183,10 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         dbcAIContract = IDBCAIContract(_dbcAIContract);
         pointToken = IERC20(_pointToken);
         platformFeeRecipient = _platformFeeRecipient;
-        canUpgradeAddress = msg.sender;
+        // [审计修 MED] 升级权默认给 _initialOwner(治理/多签)而非 msg.sender(部署 EOA)——非原子部署/脚本部署时
+        //   deployer 热钱包不应静默拿到升级全权(_authorizeUpgrade 只认 canUpgradeAddress,泄露=可升级到恶意 impl 盗全部 escrow)。
+        //   部署后仍应 setCanUpgradeAddress 指向多签/timelock 并链上读回确认。
+        canUpgradeAddress = _initialOwner;
         platformFeeRate = 10; // 默认 10%
     }
 
@@ -356,6 +359,17 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         platformFeeDBC = (baseFeeDBC + extraFeeDBC) * platformFeeRate / 100;
     }
 
+    /// @notice 平台代付总成本，全部折算成 DLP 积分(point)口径，供后端按「租客付 = 成本 × 加价」定价(B 方案)，
+    ///   结构上保证 revenue ≥ cost、不依赖链下价格源。base+platform 的 DBC 按当前 DBC 价折 USD(6dec) 再按
+    ///   1e15/USD(与 getExtraRentFeeInPoint 同口径)折积分，加上 extra 积分。
+    /// @dev DBC(1e18) × dbcUSDPrice(USD 6dec/DBC) / 1e18 = USD(6dec)；× 1e15 = point。整数除法向下取整(亚单位)，
+    ///   后端在 ×加价后 Math.ceil 吸收，绝不令平台少收。
+    function getRentCostInPoint(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        (uint256 baseFeeDBC, uint256 platformFeeDBC, uint256 extraFeePoint) = getRentFees(machineId, rentSeconds);
+        uint256 dbcCostPoint = (baseFeeDBC + platformFeeDBC) * getTokenPrice() * 1e15 / 1e18;
+        return dbcCostPoint + extraFeePoint;
+    }
+
     // ----------------------------- rent -----------------------------
 
     function isRented(string memory machineId) public view returns (bool) {
@@ -387,6 +401,10 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         nonReentrant
     {
         require(msg.sender != renter, RenterAndPayerIsSame());
+        // [审计修 HIGH] renter 必须非零：isRented() 用 rentId2RentInfo.renter!=address(0) 当活跃哨兵，
+        //   若后端误传 renter=0 → 租约建立但 isRented 返 false → 同机可被双租 + 第一笔 escrow 成孤儿永久锁死
+        //   + activeRentalCount 卡住(setFeeToken/rescueToken 永久锁)。renter 是后端参数,不能信,合约层兜底。
+        require(renter != address(0), ZeroAddress());
         require(minerPayout != address(0), ZeroAddress());
         require(rentSeconds >= 10 minutes && rentSeconds <= 10 hours, InvalidRentDuration(rentSeconds));
         require(!isRented(machineId), MachineAlreadyRented());
