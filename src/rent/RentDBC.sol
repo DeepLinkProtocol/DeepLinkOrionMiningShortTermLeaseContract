@@ -106,6 +106,11 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     //   改为 transfer 到此指定地址。initialize 默认 0x…dEaD(真黑洞)；owner 可 setBurnAddress 改为指定收集地址。
     address public burnAddress;
 
+    // [v6 2026-07-09] extra 租金改「每机矿工自设 + 全局封顶」（镜像 DLC NFTStaking，取代全局 extraRentFeePerMinuteUSD）。
+    //   矿工经 DeepLink 界面设每小时价 → 后端验证「已验证绑定=矿工拥有该机 stash」后用 rentAdmin/owner 代写上链，合约强制不超封顶。
+    mapping(string => uint256) public machineId2ExtraRentFeeInUSDPerMinutes; // 每机每分钟额外租金（USD 6dec）
+    uint256 public maxExtraRentFeeInUSDPerMinutes; // 全局封顶（USD/分钟 6dec）；上线设 $0.1/hr = 100000/60 ≈ 1666
+
     event RentMachine(
         address indexed minerPayout,
         uint256 rentId,
@@ -144,6 +149,8 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     event RentBonusBridgeUpdated(address oldBridge, address newBridge);
     event BurnAddressUpdated(address oldAddr, address newAddr);
     event RentBonusNotified(string machineId, bool isRented, bool ok); // 桥调用结果（ok=false 表示桥失败但租用不受影响）
+    event ExtraRentFeeSet(string machineId, uint256 feeInUSD); // [v6] 每机 extra 每分钟价（USD 6dec）设置
+    event MaxExtraRentFeeUpdated(uint256 feeInUSD); // [v6] extra 全局封顶更新
 
     error ZeroAddress();
     error ZeroCalcPoint();
@@ -165,6 +172,8 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     error RentDurationCapExceeded(uint256 total, uint256 cap);
     error NotOriginalPayer();
     error NothingToClaim();
+    error MaxRentExtraFeeNotSet(); // [v6] extra 封顶未设时禁止设价
+    error CanNotOverExtraFeeLimit(uint256 max); // [v6] 设价超封顶
     error PendingPayoutsOutstanding();
     error HasObligations();
 
@@ -255,7 +264,41 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
     }
 
     function setExtraRentFeePerMinuteUSD(uint256 v) external onlyOwner {
-        extraRentFeePerMinuteUSD = v;
+        extraRentFeePerMinuteUSD = v; // [v6 废弃] 全局 extra 已改每机自设；保留不删仅为 storage/ABI 兼容，不再参与定价
+    }
+
+    // ───────────── [v6 2026-07-09] extra 每机矿工自设 + 封顶（镜像 DLC NFTStaking:659-688） ─────────────
+    /// @notice 全局封顶（USD/分钟，6dec）。矿工/后端设价不得超此值。上线设 $0.1/hr = round(100000/60) = 1666。
+    function setMaxExtraRentFeeInUSDPerMinutes(uint256 feeInUSD) external onlyOwner {
+        maxExtraRentFeeInUSDPerMinutes = feeInUSD;
+        emit MaxExtraRentFeeUpdated(feeInUSD);
+    }
+
+    /// @notice 读某机每分钟额外租金（USD 6dec）。
+    function getMachineExtraRentFee(string memory machineId) external view returns (uint256) {
+        return machineId2ExtraRentFeeInUSDPerMinutes[machineId];
+    }
+
+    /// @notice 矿工经 DeepLink 界面设每小时价 → 后端验证「已验证绑定=矿工拥有该机」后用 owner/rentAdmin 钱包代写。
+    ///   合约强制 ≤ 封顶。传入为每分钟 USD（6dec）；界面每小时价 ÷ 60 由后端换算。
+    function setExtraRentFeeByAdmin(string calldata machineId, uint256 feeInUSD) external {
+        require(msg.sender == owner() || rentAdmins[msg.sender], NotRentAdmin());
+        require(maxExtraRentFeeInUSDPerMinutes > 0, MaxRentExtraFeeNotSet());
+        require(feeInUSD <= maxExtraRentFeeInUSDPerMinutes, CanNotOverExtraFeeLimit(maxExtraRentFeeInUSDPerMinutes));
+        machineId2ExtraRentFeeInUSDPerMinutes[machineId] = feeInUSD;
+        emit ExtraRentFeeSet(machineId, feeInUSD);
+    }
+
+    /// @notice 批量设价（≤100 台）。
+    function setExtraRentFeeByAdminBatch(string[] calldata machineIds, uint256 feeInUSD) external {
+        require(msg.sender == owner() || rentAdmins[msg.sender], NotRentAdmin());
+        require(machineIds.length <= 100, "batch too large");
+        require(maxExtraRentFeeInUSDPerMinutes > 0, MaxRentExtraFeeNotSet());
+        require(feeInUSD <= maxExtraRentFeeInUSDPerMinutes, CanNotOverExtraFeeLimit(maxExtraRentFeeInUSDPerMinutes));
+        for (uint256 i = 0; i < machineIds.length; i++) {
+            machineId2ExtraRentFeeInUSDPerMinutes[machineIds[i]] = feeInUSD;
+            emit ExtraRentFeeSet(machineIds[i], feeInUSD);
+        }
     }
 
     /// @notice 单租约总时长上限（秒）。0 = 不限。防 renewRent 把矿工机器无限期锁住。
@@ -351,7 +394,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         uint256 totalFactor = FACTOR * FACTOR;
         uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPoint * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
             / 60 / 60 / totalFactor;
-        rentFeeUSD = rentFeeUSD * 6 / 10; // 60%
+        rentFeeUSD = rentFeeUSD * 5 / 100; // [v6 2026-07-09] 5%（原 60%，boss 令降 base 让中国租客更便宜）
         return rentFeeUSD;
     }
 
@@ -364,17 +407,18 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         return baseRentFeeDBC * markup / FACTOR;
     }
 
-    /// @notice 额外租金（USD，6 位小数），矿工 DLP 租金来源（owner 全局配置，替代 NFTStaking 每机配置）
-    function getExtraRentFeeInUSD(uint256 rentSeconds) public view returns (uint256) {
-        if (extraRentFeePerMinuteUSD == 0) {
+    /// @notice 额外租金（USD，6 位小数），矿工 DLP 租金来源。[v6] 改每机矿工自设（machineId2ExtraRentFeeInUSDPerMinutes）
+    function getExtraRentFeeInUSD(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        uint256 ratePerMin = machineId2ExtraRentFeeInUSDPerMinutes[machineId];
+        if (ratePerMin == 0) {
             return 0;
         }
-        return extraRentFeePerMinuteUSD * (rentSeconds / 60);
+        return ratePerMin * (rentSeconds / 60);
     }
 
     /// @notice 额外租金（DLP 积分），= USD × 1e15（对标 DLC getExtraRentFeeInPoint）
-    function getExtraRentFeeInPoint(uint256 rentSeconds) public view returns (uint256) {
-        return getExtraRentFeeInUSD(rentSeconds) * 1e15;
+    function getExtraRentFeeInPoint(string memory machineId, uint256 rentSeconds) public view returns (uint256) {
+        return getExtraRentFeeInUSD(machineId, rentSeconds) * 1e15;
     }
 
     /// @notice 报价：返回总价(DBC) + 各部分。base/platform 为 DBC，extra 为 DLP 积分
@@ -384,10 +428,10 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         returns (uint256 baseFeeDBC, uint256 platformFeeDBC, uint256 extraFeePoint)
     {
         baseFeeDBC = getBaseMachinePrice(machineId, rentSeconds);
-        extraFeePoint = getExtraRentFeeInPoint(rentSeconds);
+        extraFeePoint = getExtraRentFeeInPoint(machineId, rentSeconds);
         uint256 extraFeeDBC = 0;
         {
-            uint256 extraUSD = getExtraRentFeeInUSD(rentSeconds);
+            uint256 extraUSD = getExtraRentFeeInUSD(machineId, rentSeconds);
             if (extraUSD > 0) {
                 extraFeeDBC = 1e18 * extraUSD / getTokenPrice();
             }
@@ -723,6 +767,7 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
 
     function version() external pure returns (uint256) {
         // v5: +30% 被租挖矿加成桥（rentProxy/endRent 通知主链 RentBridge，guarded try/catch 不阻塞）
-        return 5;
+        // v6 (2026-07-09): base 60%→5% + extra 全局→每机矿工自设+封顶（镜像 DLC，矿工界面设每小时价 ≤$0.1/hr）
+        return 6;
     }
 }
