@@ -40,7 +40,9 @@ contract RentDBCTest is Test {
 
         rentDbc.setPriceSetter(priceSetter);
         rentDbc.setPlatformFeeRate(10); // 10%
-        rentDbc.setExtraRentFeePerMinuteUSD(1000); // USD 6-decimals/min → 矿工 DLP 租金
+        // [v6] extra 改每机矿工自设 + 封顶：设封顶 + 给测试机 MID 设每分钟 1000 (USD 6dec) → 矿工 DLP 租金
+        rentDbc.setMaxExtraRentFeeInUSDPerMinutes(2000); // 封顶 2000/min
+        rentDbc.setExtraRentFeeByAdmin(MID, 1000); // MID 每分钟 1000
         address[] memory admins = new address[](1);
         admins[0] = payerWallet;
         rentDbc.setRentAdmins(admins, true);

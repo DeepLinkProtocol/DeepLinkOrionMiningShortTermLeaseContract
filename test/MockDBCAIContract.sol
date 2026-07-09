@@ -21,7 +21,7 @@ contract DBCStakingContractMock is IDBCAIContract {
     constructor() {
         machineInfoStore["machineId"] = MachineInfo({
             machineOwner: address(0x10), // machineOwner
-            calcPoint: 100, // calcPoint
+            calcPoint: 100000, // calcPoint (v6 真实 GPU 量级,原 100 玩具值使 5% base 截断为 0)
             cpuRate: 3600, // cpuRate
             gpuType: "NVIDIA", // gpuType
             gpuMem: 16, // gpuMem
@@ -32,7 +32,7 @@ contract DBCStakingContractMock is IDBCAIContract {
 
         machineInfoStore["machineId2"] = MachineInfo({
             machineOwner: address(0x20), // machineOwner
-            calcPoint: 100, // calcPoint
+            calcPoint: 100000, // calcPoint (v6 真实 GPU 量级,原 100 玩具值使 5% base 截断为 0)
             cpuRate: 3600, // cpuRate
             gpuType: "NVIDIA", // gpuType
             gpuMem: 16, // gpuMem
@@ -43,7 +43,7 @@ contract DBCStakingContractMock is IDBCAIContract {
 
         machineInfoStore["machineId3"] = MachineInfo({
             machineOwner: address(0x10), // machineOwner
-            calcPoint: 100, // calcPoint
+            calcPoint: 100000, // calcPoint (v6 真实 GPU 量级,原 100 玩具值使 5% base 截断为 0)
             cpuRate: 3600, // cpuRate
             gpuType: "NVIDIA", // gpuType
             gpuMem: 16, // gpuMem

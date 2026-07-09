@@ -392,9 +392,9 @@ contract RentDBC is Initializable, OwnableUpgradeable, UUPSUpgradeable, Reentran
         require(calcPoint > 0, ZeroCalcPoint());
 
         uint256 totalFactor = FACTOR * FACTOR;
-        uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPoint * ONE_CALC_POINT_USD_VALUE_PER_MONTH / 30 / 24
-            / 60 / 60 / totalFactor;
-        rentFeeUSD = rentFeeUSD * 5 / 100; // [v6 2026-07-09] 5%（原 60%，boss 令降 base 让中国租客更便宜）
+        // [v6 2026-07-09] 5%（原 60%，boss 令降 base 让中国租客更便宜）。× 5 提到除法前 = multiply-before-divide 减整数截断。
+        uint256 rentFeeUSD = USD_DECIMALS * rentSeconds * calcPoint * ONE_CALC_POINT_USD_VALUE_PER_MONTH * 5 / 100
+            / 30 / 24 / 60 / 60 / totalFactor;
         return rentFeeUSD;
     }
 
